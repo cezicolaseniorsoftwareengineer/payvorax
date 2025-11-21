@@ -8,7 +8,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session
 
-from app.pix.models import TipoTransacao
+from app.pix.models import TipoTransacao, TransacaoPix
 from app.pix.schemas import (
     PixCreateRequest,
     PixConfirmRequest,
@@ -24,6 +24,8 @@ from app.core.database import get_db
 from app.core.logger import get_logger_with_correlation
 from app.auth.dependencies import get_current_user, require_active_account
 from app.auth.models import User
+from app.core.utils import mask_cpf_cnpj, format_brasilia_time
+import re
 
 router = APIRouter(tags=["PIX"])
 
@@ -72,7 +74,7 @@ def criar_transacao_pix(
             if confirmed_pix:
                 pix = confirmed_pix
 
-        return PixResponse.model_validate(pix)
+        return build_pix_response(pix, db)
 
     except ValueError as e:
         logger.warning(f"Erro de validação PIX: {str(e)}")
@@ -107,7 +109,7 @@ def confirmar_transacao_pix(
         if not pix:
             raise HTTPException(status_code=404, detail="Transação não encontrada")
 
-        return PixResponse.model_validate(pix)
+        return build_pix_response(pix, db)
 
     except HTTPException:
         raise
@@ -130,7 +132,7 @@ def consultar_pix(
     if not pix:
         raise HTTPException(status_code=404, detail="Transação não encontrada")
 
-    return PixResponse.model_validate(pix)
+    return build_pix_response(pix, db)
 
 
 @router.delete("/transacoes/{pix_id}", response_model=PixResponse)
@@ -154,7 +156,7 @@ def cancelar_agendamento_pix(
         if not pix:
             raise HTTPException(status_code=404, detail="Transação não encontrada ou não pertence ao usuário")
 
-        return PixResponse.model_validate(pix)
+        return build_pix_response(pix, db)
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -179,7 +181,7 @@ def consultar_extrato(
         total_transacoes=resultado["total_transacoes"],
         total_valor=resultado["total_valor"],
         saldo=resultado["saldo"],
-        transacoes=[PixResponse.model_validate(t) for t in resultado["transacoes"]]
+        transacoes=[build_pix_response(t, db) for t in resultado["transacoes"]]
     )
 
 
@@ -265,8 +267,96 @@ def processar_recebimento_pix(
 
         logger.info(f"Limite de crédito aumentado em R$ {aumento_limite:.2f} para user {current_user.id}")
 
-        return PixResponse.model_validate(pix)
+        return build_pix_response(pix, db)
 
     except Exception as e:
         logger.error(f"Erro ao processar recebimento: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Erro ao processar depósito")
+
+
+def build_pix_response(pix: Any, db: Session) -> PixResponse:
+    """
+    Constructs a PixResponse with enriched data (names, masked docs, formatted time).
+    """
+    # 1. Basic fields
+    response_data = {
+        "id": pix.id,
+        "valor": pix.valor,
+        "chave_pix": pix.chave_pix,
+        "tipo_chave": pix.tipo_chave,
+        "tipo": pix.tipo,
+        "status": pix.status,
+        "descricao": pix.descricao,
+        "data_agendamento": pix.data_agendamento,
+        "criado_em": pix.criado_em,
+        "atualizado_em": pix.atualizado_em,
+        "formatted_time": format_brasilia_time(pix.criado_em)
+    }
+
+    # 2. Identify Sender and Receiver
+    # Default values
+    sender_name = "Desconhecido"
+    sender_doc = "***"
+    receiver_name = "Desconhecido"
+    receiver_doc = "***"
+
+    # Fetch the owner of this transaction record
+    owner_user = db.query(User).filter(User.id == pix.user_id).first()
+
+    if pix.tipo == TipoTransacao.ENVIADO:
+        # The owner is the sender
+        if owner_user:
+            sender_name = owner_user.nome
+            sender_doc = mask_cpf_cnpj(owner_user.cpf_cnpj)
+
+        # Try to find the receiver via correlation_id (Internal Transfer)
+        # Look for a RECEBIDO transaction with same correlation_id
+        receiver_tx = db.query(TransacaoPix).filter(
+            TransacaoPix.correlation_id == pix.correlation_id,
+            TransacaoPix.tipo == TipoTransacao.RECEBIDO
+        ).first()
+
+        if receiver_tx:
+            receiver_user = db.query(User).filter(User.id == receiver_tx.user_id).first()
+            if receiver_user:
+                receiver_name = receiver_user.nome
+                receiver_doc = mask_cpf_cnpj(receiver_user.cpf_cnpj)
+        else:
+            # External or not found - Try to resolve from Key
+            # If key is CPF/CNPJ, we might mask it. If it's email, show it.
+            receiver_name = "Destinatário Externo"
+            receiver_doc = mask_cpf_cnpj(pix.chave_pix) # Best effort
+
+    elif pix.tipo == TipoTransacao.RECEBIDO:
+        # The owner is the receiver
+        if owner_user:
+            receiver_name = owner_user.nome
+            receiver_doc = mask_cpf_cnpj(owner_user.cpf_cnpj)
+
+        # Try to find the sender via correlation_id (Internal Transfer)
+        # Look for an ENVIADO transaction with same correlation_id
+        sender_tx = db.query(TransacaoPix).filter(
+            TransacaoPix.correlation_id == pix.correlation_id,
+            TransacaoPix.tipo == TipoTransacao.ENVIADO
+        ).first()
+
+        if sender_tx:
+            sender_user = db.query(User).filter(User.id == sender_tx.user_id).first()
+            if sender_user:
+                sender_name = sender_user.nome
+                sender_doc = mask_cpf_cnpj(sender_user.cpf_cnpj)
+        else:
+            # Deposit or External
+            if "SIMULACAO" in pix.chave_pix or "Depósito" in (pix.descricao or ""):
+                sender_name = "Depósito via QR Code"
+                sender_doc = "Instituição Financeira"
+            else:
+                sender_name = "Remetente Externo"
+                sender_doc = "***"
+
+    response_data["sender_name"] = sender_name
+    response_data["sender_doc"] = sender_doc
+    response_data["receiver_name"] = receiver_name
+    response_data["receiver_doc"] = receiver_doc
+
+    return PixResponse(**response_data)

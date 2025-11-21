@@ -94,6 +94,13 @@ class PixResponse(BaseModel):
     criado_em: datetime
     atualizado_em: datetime
 
+    # Detailed Receipt Fields
+    sender_name: Optional[str] = None
+    sender_doc: Optional[str] = None
+    receiver_name: Optional[str] = None
+    receiver_doc: Optional[str] = None
+    formatted_time: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 

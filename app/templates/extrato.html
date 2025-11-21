@@ -62,6 +62,73 @@
     <div class="text-center text-gray-500 py-8">Carregando transações...</div>
 </div>
 
+<!-- Receipt Modal -->
+<div id="receipt-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+        <!-- Header -->
+        <div class="bg-gray-50 p-6 border-b border-gray-100 flex justify-between items-center">
+            <h3 class="text-lg font-bold text-gray-900">Comprovante de Transação</h3>
+            <button onclick="closeReceipt()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+
+        <!-- Content -->
+        <div class="p-6 space-y-6">
+            <!-- Value and Status -->
+            <div class="text-center">
+                <p class="text-sm text-gray-500 mb-1">Valor da Transação</p>
+                <h2 class="text-3xl font-bold text-gray-900" id="receipt-value">R$ 0,00</h2>
+                <div id="receipt-status" class="mt-2 inline-block"></div>
+            </div>
+
+            <!-- Details Grid -->
+            <div class="space-y-4 text-sm">
+                <div class="flex justify-between py-2 border-b border-gray-50">
+                    <span class="text-gray-500">Data e Hora</span>
+                    <span class="font-medium text-gray-900 text-right" id="receipt-date">--/--/----</span>
+                </div>
+
+                <!-- Sender -->
+                <div class="py-2 border-b border-gray-50">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Origem</p>
+                    <p class="font-bold text-gray-900" id="receipt-sender-name">Nome do Remetente</p>
+                    <p class="text-gray-500" id="receipt-sender-doc">***.***.***-**</p>
+                </div>
+
+                <!-- Receiver -->
+                <div class="py-2 border-b border-gray-50">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Destino</p>
+                    <p class="font-bold text-gray-900" id="receipt-receiver-name">Nome do Destinatário</p>
+                    <p class="text-gray-500" id="receipt-receiver-doc">***.***.***-**</p>
+                </div>
+
+                <div class="flex justify-between py-2 border-b border-gray-50">
+                    <span class="text-gray-500">Descrição</span>
+                    <span class="font-medium text-gray-900 text-right" id="receipt-desc">-</span>
+                </div>
+
+                <div class="pt-2">
+                    <p class="text-xs text-gray-400 mb-1">ID da Transação</p>
+                    <p class="font-mono text-xs text-gray-500 break-all" id="receipt-id">UUID</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="bg-gray-50 p-4 flex gap-3">
+            <button onclick="window.print()"
+                class="flex-1 bg-white border border-gray-200 text-gray-700 font-medium py-2.5 rounded-xl hover:bg-gray-50 transition-colors flex justify-center items-center gap-2">
+                <i data-lucide="printer" class="w-4 h-4"></i> Imprimir
+            </button>
+            <button onclick="closeReceipt()"
+                class="flex-1 bg-purple-600 text-white font-medium py-2.5 rounded-xl hover:bg-purple-700 transition-colors">
+                Fechar
+            </button>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -115,83 +182,143 @@
         }
 
         transactions.forEach(t => {
-            const dateObj = new Date(t.criado_em || t.data_criacao); // Fallback for different field names if needed
-            const date = dateObj.toLocaleDateString('pt-BR', {
-                day: '2-digit', month: '2-digit', year: 'numeric'
-            });
-            const time = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            // 1. Determine Counterparty Name (The "Title")
+            let counterpartyName = 'Desconhecido';
+            if (t.tipo === 'ENVIADO') {
+                counterpartyName = t.receiver_name || 'Destinatário Desconhecido';
+            } else {
+                counterpartyName = t.sender_name || 'Remetente Desconhecido';
+            }
+
+            // 2. Determine Transaction Type (The "Type")
+            let transactionType = 'Transferência Pix';
+            if (t.descricao && t.descricao.toLowerCase().includes('boleto')) {
+                transactionType = 'Pagamento de Boleto';
+            } else if (t.descricao && t.descricao.toLowerCase().includes('depósito')) {
+                transactionType = 'Depósito';
+            } else if (t.tipo === 'RECEBIDO' && t.chave_pix === 'SIMULACAO_QR_CODE') {
+                transactionType = 'Depósito via QR Code';
+            }
+
+            // 3. Format Time (Brasília Time)
+            let timeDisplay = '';
+            let fullDateDisplay = '';
+
+            if (t.formatted_time) {
+                // Backend sends "DD/MM/YYYY às HH:mm:ss"
+                const parts = t.formatted_time.split(' às ');
+                if (parts.length === 2) {
+                    const timeShort = parts[1].substring(0, 5); // HH:mm
+                    const dateShort = parts[0].substring(0, 5); // DD/MM
+                    timeDisplay = `${timeShort}`;
+                    fullDateDisplay = `${parts[0]} ${timeShort}`;
+                } else {
+                    timeDisplay = t.formatted_time;
+                    fullDateDisplay = t.formatted_time;
+                }
+            } else {
+                const d = new Date(t.criado_em || t.data_criacao);
+                timeDisplay = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                fullDateDisplay = d.toLocaleDateString('pt-BR') + ' ' + timeDisplay;
+            }
+
+            // Nubank Style Subtitle: "HH:mm - Tipo"
+            const subtitleText = `${timeDisplay} - ${transactionType}`;
 
             const isNegative = t.tipo === 'ENVIADO';
-            const colorClass = isNegative ? 'text-red-600' : 'text-green-600';
-            const sign = isNegative ? '-' : '+';
+            const colorClass = isNegative ? 'text-gray-900' : 'text-green-600'; // Nubank uses black for sent, green for received usually, or just black/gray. Let's stick to user request or standard. User asked for "ícone de enviado".
+            // Actually Nubank uses black for value usually, but let's keep green/red for clarity or adapt.
+            // User didn't specify value color, but "ícone de enviado".
+
+            const sign = isNegative ? '-' : ''; // Nubank often doesn't show + for incoming, just value.
+
+            // Icons
             const icon = isNegative ? 'arrow-up-right' : 'arrow-down-left';
-            const iconBg = isNegative ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600';
+            const iconBg = isNegative ? 'bg-gray-100 text-gray-900' : 'bg-green-100 text-green-700'; // Nubank style is subtle
 
             let statusBadge = '';
             let actions = '';
 
-            if (t.status === 'CONFIRMADO') statusBadge = '<span class="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Confirmado</span>';
+            if (t.status === 'CONFIRMADO') {
+                // Nubank doesn't show "Confirmado" badge in the list usually, just the item.
+                // But we'll keep a small indicator or just hide it for confirmed to be cleaner.
+                // Let's keep it minimal.
+                statusBadge = '';
+            }
             else if (t.status === 'AGENDADO') {
-                statusBadge = '<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">Agendado</span>';
+                statusBadge = '<span class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs font-medium">Agendado</span>';
                 actions = `
-                    <button onclick="cancelarAgendamento('${t.id}')" class="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors" title="Cancelar Agendamento">
+                    <button onclick="cancelarAgendamento('${t.id}')" class="p-1 text-red-500 hover:bg-red-50 rounded transition-colors" title="Cancelar">
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                     </button>
                 `;
             }
-            else if (t.status === 'FALHA') statusBadge = '<span class="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">Falha</span>';
-            else if (t.status === 'CANCELADO') statusBadge = '<span class="px-2 py-1 bg-gray-100 text-gray-500 rounded-full text-xs font-medium line-through">Cancelado</span>';
-            else statusBadge = `<span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">${t.status}</span>`;
+            else if (t.status === 'FALHA') statusBadge = '<span class="px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs font-medium">Falha</span>';
+            else if (t.status === 'CANCELADO') statusBadge = '<span class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-medium line-through">Cancelado</span>';
+            else statusBadge = `<span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">${t.status}</span>`;
+
+            // Add Receipt Button (Subtle)
+            const receiptBtn = `
+                <button onclick="openReceipt('${t.id}')" class="p-1 text-gray-400 hover:text-purple-600 transition-colors" title="Ver Comprovante">
+                    <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                </button>
+            `;
+            // In Nubank list, clicking the item usually opens details. We'll use the button for now.
 
             // Desktop Row
             const row = `
-                <tr class="hover:bg-gray-50 transition-colors">
-                    <td class="p-4 text-sm text-gray-600">
-                        ${date} <span class="text-xs text-gray-400 ml-1">${time}</span>
+                <tr class="hover:bg-gray-50 transition-colors group cursor-pointer" onclick="openReceipt('${t.id}')">
+                    <td class="p-4 text-sm text-gray-500">
+                        ${fullDateDisplay}
                     </td>
-                    <td class="p-4 text-sm text-gray-900 font-medium">
-                        ${t.descricao || (t.tipo === 'ENVIADO' ? 'Transferência Enviada' : 'Transferência Recebida')}
-                        ${t.data_agendamento ? `<br><span class="text-xs text-blue-500">Agendado para: ${new Date(t.data_agendamento).toLocaleDateString('pt-BR')}</span>` : ''}
+                    <td class="p-4">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 rounded-full ${iconBg}">
+                                <i data-lucide="${icon}" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-bold text-gray-900">${counterpartyName}</p>
+                                <p class="text-xs text-gray-500">${transactionType}</p>
+                            </div>
+                        </div>
                     </td>
-                    <td class="p-4 flex items-center gap-2">
+                    <td class="p-4">
                         ${statusBadge}
-                        ${actions}
                     </td>
-                    <td class="p-4 text-sm font-bold text-right ${colorClass}">
+                    <td class="p-4 text-sm font-bold text-right ${t.tipo === 'ENVIADO' ? 'text-gray-900' : 'text-green-600'}">
                         ${sign} ${formatCurrency(t.valor)}
                     </td>
                 </tr>
             `;
             tbody.innerHTML += row;
 
-            // Mobile Card
+            // Mobile Card (Nubank Style)
             const card = `
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-                    <div class="flex items-center gap-3">
-                        <div class="p-2 rounded-full ${iconBg}">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-start cursor-pointer hover:bg-gray-50 transition-colors" onclick="openReceipt('${t.id}')">
+                    <div class="flex items-start gap-4">
+                        <div class="p-3 rounded-full ${iconBg} mt-1">
                             <i data-lucide="${icon}" class="w-5 h-5"></i>
                         </div>
                         <div>
-                            <p class="text-sm font-semibold text-gray-900">
-                                ${t.descricao || (t.tipo === 'ENVIADO' ? 'Transferência' : 'Depósito')}
+                            <h4 class="text-base font-bold text-gray-900 leading-tight mb-1">
+                                ${counterpartyName}
+                            </h4>
+                            <p class="text-sm text-gray-500 font-medium">
+                                ${subtitleText}
                             </p>
-                            <p class="text-xs text-gray-500">${date} às ${time}</p>
-                            ${t.data_agendamento ? `<p class="text-xs text-blue-500 mt-1">Agendado: ${new Date(t.data_agendamento).toLocaleDateString('pt-BR')}</p>` : ''}
+                            ${statusBadge ? `<div class="mt-1">${statusBadge}</div>` : ''}
                         </div>
                     </div>
                     <div class="text-right">
-                        <p class="text-sm font-bold ${colorClass}">${sign} ${formatCurrency(t.valor)}</p>
-                        <div class="mt-1 flex justify-end items-center gap-2">
-                            ${statusBadge}
-                            ${actions}
-                        </div>
+                        <p class="text-base font-bold ${t.tipo === 'ENVIADO' ? 'text-gray-900' : 'text-green-600'}">
+                            ${sign} ${formatCurrency(t.valor)}
+                        </p>
+                        ${actions ? `<div class="mt-2 flex justify-end" onclick="event.stopPropagation()">${actions}</div>` : ''}
                     </div>
                 </div>
             `;
             mobileContainer.innerHTML += card;
-        });
-
-        // Re-initialize icons for new elements
+        });        // Re-initialize icons for new elements
         if (window.lucide) {
             lucide.createIcons();
         }
@@ -228,6 +355,41 @@
             const filtered = allTransactions.filter(t => t.status === status);
             renderTable(filtered);
         }
+    }
+
+    function openReceipt(id) {
+        const t = allTransactions.find(tx => tx.id === id);
+        if (!t) return;
+
+        document.getElementById('receipt-value').innerText = formatCurrency(t.valor);
+        document.getElementById('receipt-date').innerText = t.formatted_time || new Date(t.criado_em).toLocaleString('pt-BR');
+        document.getElementById('receipt-desc').innerText = t.descricao || '-';
+        document.getElementById('receipt-id').innerText = t.id;
+
+        // Sender
+        document.getElementById('receipt-sender-name').innerText = t.sender_name || 'Desconhecido';
+        document.getElementById('receipt-sender-doc').innerText = t.sender_doc || '***';
+
+        // Receiver
+        document.getElementById('receipt-receiver-name').innerText = t.receiver_name || 'Desconhecido';
+        document.getElementById('receipt-receiver-doc').innerText = t.receiver_doc || '***';
+
+        // Status Badge in Modal
+        const statusEl = document.getElementById('receipt-status');
+        if (t.status === 'CONFIRMADO') statusEl.innerHTML = '<span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">Confirmado</span>';
+        else if (t.status === 'AGENDADO') statusEl.innerHTML = '<span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">Agendado</span>';
+        else statusEl.innerHTML = `<span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">${t.status}</span>`;
+
+        // Show Modal
+        const modal = document.getElementById('receipt-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function closeReceipt() {
+        const modal = document.getElementById('receipt-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
     }
 
     // Load on start
