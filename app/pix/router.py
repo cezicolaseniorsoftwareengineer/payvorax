@@ -256,6 +256,15 @@ def processar_recebimento_pix(
         # Auto-confirm since it's a simulation
         confirmar_pix(db, pix.id, correlation_id)
 
+        # Increase credit limit by 50% of the deposited amount
+        aumento_limite = dados.valor * 0.50
+        current_user.limite_credito += aumento_limite
+        db.add(current_user)
+        db.commit()
+        db.refresh(current_user)
+
+        logger.info(f"Limite de crédito aumentado em R$ {aumento_limite:.2f} para user {current_user.id}")
+
         return PixResponse.model_validate(pix)
 
     except Exception as e:

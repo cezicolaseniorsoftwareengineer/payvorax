@@ -102,6 +102,7 @@
                 if (response.ok) {
                     const data = await response.json();
                     localStorage.setItem('user_name', data.nome); // Backup for UI
+                    localStorage.setItem('access_token', data.access_token); // Persistência extra
                     window.location.href = '/';
                 } else {
                     alert('Credenciais inválidas');

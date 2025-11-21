@@ -4,13 +4,15 @@ Implements idempotency, state machine transitions, and audit logging.
 """
 from uuid import uuid4
 from typing import Optional, Dict, Any
+import re
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.pix.models import TransacaoPix, StatusPix as ModelStatusPix, TipoTransacao
-from app.pix.schemas import PixCreateRequest
+from app.pix.schemas import PixCreateRequest, TipoChavePix
 from app.core.logger import logger, audit_log
 from app.core.security import mask_sensitive_data
 from app.boleto.models import TransacaoBoleto, StatusBoleto
+from app.auth.models import User
 
 
 def get_saldo(db: Session, user_id: str) -> float:
@@ -112,6 +114,42 @@ def criar_pix(
     )
 
     logger.info(f"PIX criado: id={pix.id}, valor={dados.valor}, tipo={tipo.value}, status={status_inicial.value}")
+
+    # Real-time Internal Transfer Logic
+    # If the destination key belongs to a local user, credit them immediately.
+    if tipo == TipoTransacao.ENVIADO and status_inicial != ModelStatusPix.AGENDADO:
+        recipient_user = None
+
+        # Search for recipient by Key
+        if dados.tipo_chave in [TipoChavePix.CPF, TipoChavePix.CNPJ]:
+            clean_key = re.sub(r'\D', '', dados.chave_pix)
+            recipient_user = db.query(User).filter(User.cpf_cnpj == clean_key).first()
+        elif dados.tipo_chave == TipoChavePix.EMAIL:
+            recipient_user = db.query(User).filter(User.email == dados.chave_pix).first()
+
+        if recipient_user:
+            # Create incoming transaction for recipient
+            pix_recebido = TransacaoPix(
+                id=str(uuid4()),
+                valor=dados.valor,
+                chave_pix=dados.chave_pix,
+                tipo_chave=dados.tipo_chave.value,
+                tipo=TipoTransacao.RECEBIDO,
+                status=ModelStatusPix.CONFIRMADO,
+                idempotency_key=f"internal-{idempotency_key}",
+                descricao=dados.descricao or "Transferência Recebida",
+                correlation_id=correlation_id,
+                user_id=recipient_user.id
+            )
+            db.add(pix_recebido)
+
+            # Apply Credit Limit Increase Rule (50% of received amount)
+            aumento_limite = dados.valor * 0.50
+            recipient_user.limite_credito += aumento_limite
+            db.add(recipient_user)
+
+            logger.info(f"Transferência interna realizada: {dados.valor} para {recipient_user.nome} (ID: {recipient_user.id})")
+            logger.info(f"Limite de crédito de {recipient_user.nome} aumentado em R$ {aumento_limite:.2f}")
 
     return pix
 

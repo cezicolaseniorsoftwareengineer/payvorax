@@ -30,7 +30,7 @@ class StatusPix(str, Enum):
 
 class PixCreateRequest(BaseModel):
     """PIX creation request payload."""
-    valor: float = Field(..., gt=0, le=100000, description="Transaction value (R$)")
+    valor: float = Field(..., gt=0, le=1000000000000, description="Transaction value (R$)")
     tipo_chave: TipoChavePix = Field(..., description="PIX Key Type")
     chave_pix: str = Field(..., min_length=1, max_length=200, description="Destination PIX Key")
     descricao: Optional[str] = Field(None, max_length=500, description="Transaction description")

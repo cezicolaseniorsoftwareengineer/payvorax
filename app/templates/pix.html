@@ -13,10 +13,52 @@
             class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-white text-purple-700 shadow-sm">
             Transferir
         </button>
+        <button onclick="switchTab('ler-qr')" id="tab-ler-qr"
+            class="flex-1 py-2 px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all">
+            Ler QR Code
+        </button>
         <button onclick="switchTab('cobrar')" id="tab-cobrar"
             class="flex-1 py-2 px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all">
             Receber (Depositar)
         </button>
+    </div>
+
+    <!-- Scan QR Code (Ler QR) -->
+    <div id="view-ler-qr" class="hidden bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Pagar com QR Code</h2>
+
+        <div class="space-y-6">
+            <!-- Camera Scanner -->
+            <div class="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center bg-gray-50">
+                <div id="reader" class="w-full max-w-sm mx-auto"></div>
+                <button id="startScanBtn" onclick="startScanner()"
+                    class="mt-4 px-6 py-2 bg-purple-600 text-white rounded-full text-sm font-medium hover:bg-purple-700 transition-colors">
+                    <i data-lucide="camera" class="w-4 h-4 inline mr-2"></i>
+                    Abrir Câmera
+                </button>
+                <p id="scanStatus" class="mt-2 text-xs text-gray-500">Aponte a câmera para um QR Code Pix</p>
+            </div>
+
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-gray-200"></div>
+                <span class="flex-shrink-0 mx-4 text-gray-400 text-xs">OU</span>
+                <div class="flex-grow border-t border-gray-200"></div>
+            </div>
+
+            <!-- Paste Code -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pix Copia e Cola</label>
+                <div class="flex gap-2">
+                    <input type="text" id="pasteCode"
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
+                        placeholder="Cole o código Pix aqui">
+                    <button onclick="processPasteCode()"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium text-sm">
+                        Continuar
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Send Pix Form (Pagar) -->
@@ -142,26 +184,102 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <script>
+    let html5QrcodeScanner = null;
+
     function switchTab(tab) {
         const viewPagar = document.getElementById('view-pagar');
         const viewCobrar = document.getElementById('view-cobrar');
+        const viewLerQr = document.getElementById('view-ler-qr');
+
         const tabPagar = document.getElementById('tab-pagar');
         const tabCobrar = document.getElementById('tab-cobrar');
+        const tabLerQr = document.getElementById('tab-ler-qr');
 
+        // Reset classes
+        [tabPagar, tabCobrar, tabLerQr].forEach(t => {
+            t.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all";
+        });
+
+        // Hide all views
+        [viewPagar, viewCobrar, viewLerQr].forEach(v => v.classList.add('hidden'));
+
+        // Activate selected
         if (tab === 'pagar') {
             viewPagar.classList.remove('hidden');
-            viewCobrar.classList.add('hidden');
-
             tabPagar.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-white text-purple-700 shadow-sm";
-            tabCobrar.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all";
-        } else {
-            viewPagar.classList.add('hidden');
+        } else if (tab === 'cobrar') {
             viewCobrar.classList.remove('hidden');
-
             tabCobrar.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-white text-purple-700 shadow-sm";
-            tabPagar.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all";
+        } else if (tab === 'ler-qr') {
+            viewLerQr.classList.remove('hidden');
+            tabLerQr.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-white text-purple-700 shadow-sm";
         }
+
+        // Stop scanner if leaving tab
+        if (tab !== 'ler-qr' && html5QrcodeScanner) {
+            html5QrcodeScanner.clear();
+        }
+    }
+
+    function startScanner() {
+        const status = document.getElementById('scanStatus');
+        status.innerText = "Solicitando permissão da câmera...";
+
+        html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: 250 }
+        );
+
+        html5QrcodeScanner.render((decodedText, decodedResult) => {
+            // Success callback
+            console.log(`Code scanned = ${decodedText}`, decodedResult);
+            handleScannedCode(decodedText);
+            html5QrcodeScanner.clear();
+            status.innerText = "Código lido com sucesso!";
+        }, (errorMessage) => {
+            // Error callback (ignore mostly)
+        });
+    }
+
+    function processPasteCode() {
+        const code = document.getElementById('pasteCode').value;
+        if (code) handleScannedCode(code);
+    }
+
+    function handleScannedCode(code) {
+        // Simulation: Parse our own generated URL format or Mock String
+        // Format: .../pix/pagar-qrcode?valor=100&desc=Test
+
+        let valor = 0;
+        let desc = "";
+
+        if (code.includes("valor=")) {
+            try {
+                const url = new URL(code);
+                valor = url.searchParams.get("valor");
+                desc = url.searchParams.get("desc");
+            } catch (e) {
+                // Fallback for raw string parsing if not full URL
+                const match = code.match(/valor=([\d\.]+)/);
+                if (match) valor = match[1];
+            }
+        } else if (code.includes("000201")) {
+            // Mock EMV parsing (very basic simulation)
+            // Extract value from our mock string format if possible, or just ask user
+            alert("Código Pix detectado! Por favor, confirme o valor na próxima tela.");
+            valor = ""; // Let user fill
+        }
+
+        // Switch to Transfer tab and fill data
+        switchTab('pagar');
+
+        if (valor) document.getElementById('valor').value = valor;
+        if (desc) document.getElementById('chave').value = "Chave do QR Code"; // In real app, extract key
+
+        // Highlight that it came from QR
+        document.getElementById('tipo').value = 'ALEATORIA';
+        alert(`Leitura realizada!\nValor: R$ ${valor || '?'}\nComplete os dados para finalizar.`);
     }
 
     function copyCode() {
