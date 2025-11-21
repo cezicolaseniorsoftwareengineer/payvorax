@@ -29,7 +29,7 @@ async def register_page(request: Request):
 
 @router.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Dashboard principal (Home)"""
+    """Main Dashboard (Home)"""
     extrato = listar_extrato(db, current_user.id)
     saldo = extrato["saldo"]
 
@@ -43,7 +43,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
 
 @router.get("/ui/pix", response_class=HTMLResponse)
 async def pix_ui(request: Request, current_user: User = Depends(get_current_user)):
-    """Interface de PIX"""
+    """PIX Interface"""
     return templates.TemplateResponse(
         "pix.html",
         {"request": request, "page": "pix", "user_name": current_user.nome}
@@ -52,7 +52,7 @@ async def pix_ui(request: Request, current_user: User = Depends(get_current_user
 
 @router.get("/ui/parcelamento", response_class=HTMLResponse)
 async def parcelamento_ui(request: Request, current_user: User = Depends(get_current_user)):
-    """Interface de Simulação"""
+    """Simulation Interface"""
     return templates.TemplateResponse(
         "parcelamento.html",
         {"request": request, "page": "parcelamento", "user_name": current_user.nome}
@@ -61,7 +61,7 @@ async def parcelamento_ui(request: Request, current_user: User = Depends(get_cur
 
 @router.get("/pix/pagar-qrcode", response_class=HTMLResponse)
 async def pix_payment_simulation(request: Request, current_user: User = Depends(get_current_user)):
-    """Página de simulação de pagamento via QR Code"""
+    """QR Code Payment Simulation Page"""
     return templates.TemplateResponse(
         "pix_payment.html",
         {"request": request, "page": "pix_payment", "user_name": current_user.nome}
@@ -70,5 +70,5 @@ async def pix_payment_simulation(request: Request, current_user: User = Depends(
 
 @router.get("/ui/extrato", response_class=HTMLResponse)
 async def extrato_ui(request: Request, current_user: User = Depends(get_current_user)):
-    """Interface de Extrato"""
+    """Statement Interface"""
     return templates.TemplateResponse("extrato.html", {"request": request, "page": "extrato", "user_name": current_user.nome})

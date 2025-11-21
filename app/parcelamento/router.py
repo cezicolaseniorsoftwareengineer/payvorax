@@ -48,7 +48,7 @@ def simular_parcelamento(
     logger = get_logger_with_correlation(correlation_id)
 
     try:
-        logger.info(f"Iniciando simulação: {dados.model_dump()}")
+        logger.info(f"Starting simulation: {dados.model_dump()}")
 
         # Installment calculation
         resultado: Dict[str, Any] = calcular_parcelas(dados)
@@ -66,12 +66,12 @@ def simular_parcelamento(
             criado_em=simulacao.criado_em
         )
 
-        logger.info(f"Simulação concluída com sucesso: id={simulacao.id}")
+        logger.info(f"Simulation completed successfully: id={simulacao.id}")
         return response
 
     except Exception as e:
-        logger.error(f"Erro na simulação: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Erro ao processar simulação: {str(e)}")
+        logger.error(f"Simulation error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing simulation: {str(e)}")
 
 
 @router.get("/historico/{simulacao_id}", response_model=SimulacaoResponse)
@@ -87,7 +87,7 @@ def buscar_simulacao(
     ).first()
 
     if not simulacao:
-        raise HTTPException(status_code=404, detail="Simulação não encontrada")
+        raise HTTPException(status_code=404, detail="Simulation not found")
 
     tabela_data: List[Dict[str, Any]] = json.loads(simulacao.tabela_amortizacao)
 

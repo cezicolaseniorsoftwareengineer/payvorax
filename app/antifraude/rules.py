@@ -111,7 +111,7 @@ class MotorAntifraude:
             if regra.avaliar(transacao):
                 score += regra.pontos
                 regras_ativadas.append(f"{regra.nome}: {regra.descricao}")
-                logger.info(f"Regra ativada: {regra.nome} (+{regra.pontos} pontos)")
+                logger.info(f"Rule triggered: {regra.nome} (+{regra.pontos} points)")
 
         # Cap score at 100
         score = min(score, 100)
@@ -121,13 +121,13 @@ class MotorAntifraude:
 
         # Determine risk level
         if score < 30:
-            nivel_risco = "BAIXO"
+            nivel_risco = "LOW"
             recomendacao = "Approve transaction"
         elif score < 60:
-            nivel_risco = "MEDIO"
+            nivel_risco = "MEDIUM"
             recomendacao = "Approve with monitoring"
         else:
-            nivel_risco = "ALTO"
+            nivel_risco = "HIGH"
             recomendacao = "Reject and notify user"
 
         # Define reason
@@ -145,7 +145,7 @@ class MotorAntifraude:
             "recomendacao": recomendacao
         }
 
-        logger.info(f"Análise antifraude concluída: score={score}, aprovado={aprovado}, nivel={nivel_risco}")
+        logger.info(f"Anti-fraud analysis completed: score={score}, approved={aprovado}, level={nivel_risco}")
 
         return resultado
 

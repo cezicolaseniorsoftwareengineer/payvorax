@@ -23,7 +23,7 @@ def mask_cpf_cnpj(doc: str) -> str:
 def format_brasilia_time(dt: datetime) -> str:
     """
     Converts UTC datetime to Brasília time (UTC-3) and formats it.
-    Format: DD/MM/YYYY às HH:mm:ss
+    Format: DD/MM/YYYY at HH:mm:ss
     """
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -32,4 +32,4 @@ def format_brasilia_time(dt: datetime) -> str:
     brasilia_tz = timezone(timedelta(hours=-3))
     dt_brasilia = dt.astimezone(brasilia_tz)
 
-    return dt_brasilia.strftime("%d/%m/%Y às %H:%M:%S")
+    return dt_brasilia.strftime("%d/%m/%Y at %H:%M:%S")

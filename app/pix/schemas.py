@@ -40,7 +40,7 @@ class PixCreateRequest(BaseModel):
     @classmethod
     def validar_data_agendamento(cls, v: Optional[datetime], info: ValidationInfo) -> Optional[datetime]:
         if v and v.date() < datetime.now().date():
-            raise ValueError('Data de agendamento não pode ser no passado')
+            raise ValueError('Scheduled date cannot be in the past')
         return v
 
     @field_validator('chave_pix')

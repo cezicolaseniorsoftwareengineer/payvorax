@@ -37,7 +37,7 @@ def analisar_transacao(
     logger = get_logger_with_correlation(correlation_id)
 
     logger.info(
-        "Iniciando análise antifraude: valor=%s, horario=%s",
+        "Starting anti-fraud analysis: value=%s, time=%s",
         transacao.valor,
         transacao.horario
     )

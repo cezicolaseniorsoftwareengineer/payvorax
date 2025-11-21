@@ -15,24 +15,24 @@ router = APIRouter()
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(response: Response, user: UserCreate, db: Session = Depends(get_db)):
     """
-    Registra um novo usuário com validações robustas e tratamento de erros.
+    Registers a new user with robust validation and error handling.
     """
     try:
-        logger.info(f"Iniciando registro para CPF/CNPJ: {user.cpf_cnpj}")
+        logger.info(f"Starting registration for CPF/CNPJ: {user.cpf_cnpj}")
 
-        # Verificar se usuário já existe
+        # Check if user already exists
         db_user = db.query(User).filter(
             (User.email == user.email) | (User.cpf_cnpj == user.cpf_cnpj)
         ).first()
 
         if db_user:
-            logger.warning(f"Tentativa de cadastro duplicado: {user.cpf_cnpj} ou {user.email}")
+            logger.warning(f"Duplicate registration attempt: {user.cpf_cnpj} or {user.email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email ou CPF/CNPJ já cadastrado no sistema."
+                detail="Email or CPF/CNPJ already registered in the system."
             )
 
-        # Criar novo usuário
+        # Create new user
         hashed_password = get_password_hash(user.password)
         new_user = User(
             nome=user.nome,
@@ -45,16 +45,16 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
         db.commit()
         db.refresh(new_user)
 
-        logger.info(f"Usuário criado com sucesso: ID {new_user.id}")
+        logger.info(f"User created successfully: ID {new_user.id}")
 
-        # Auto-login: Gerar token
+        # Auto-login: Generate token
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": new_user.cpf_cnpj, "nome": new_user.nome},
             expires_delta=access_token_expires
         )
 
-        # Configurar Cookie Seguro (HttpOnly)
+        # Configure Secure Cookie (HttpOnly)
         response.set_cookie(
             key="access_token",
             value=f"Bearer {access_token}",
@@ -69,40 +69,40 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
             "access_token": access_token,
             "token_type": "bearer",
             "nome": new_user.nome,
-            "message": "Cadastro realizado com sucesso."
+            "message": "Registration successful."
         }
 
     except IntegrityError as e:
         db.rollback()
-        logger.error(f"Erro de integridade no banco de dados: {str(e)}")
+        logger.error(f"Database integrity error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Erro ao processar dados. Verifique se os campos estão corretos."
+            detail="Error processing data. Check if fields are correct."
         )
     except Exception as e:
         db.rollback()
-        logger.error(f"Erro interno no registro: {str(e)}")
+        logger.error(f"Internal registration error: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Erro interno do servidor. Por favor, tente novamente mais tarde."
+            detail="Internal server error. Please try again later."
         )
 
 @router.post("/login")
 def login(response: Response, user_in: UserLogin, db: Session = Depends(get_db)):
     """
-    Autentica o usuário e define o cookie de sessão.
+    Authenticates user and sets session cookie.
     """
     try:
-        logger.info(f"Tentativa de login para CPF/CNPJ: {user_in.cpf_cnpj}")
+        logger.info(f"Login attempt for CPF/CNPJ: {user_in.cpf_cnpj}")
 
         user = db.query(User).filter(User.cpf_cnpj == user_in.cpf_cnpj).first()
 
         if not user or not verify_password(user_in.password, user.hashed_password):
-            logger.warning(f"Falha de login para {user_in.cpf_cnpj}: Credenciais inválidas")
+            logger.warning(f"Login failure for {user_in.cpf_cnpj}: Invalid credentials")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="CPF/CNPJ ou senha incorretos."
+                detail="Incorrect CPF/CNPJ or password."
             )
 
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -121,7 +121,7 @@ def login(response: Response, user_in: UserLogin, db: Session = Depends(get_db))
             expires=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
 
-        logger.info(f"Login bem-sucedido para {user.cpf_cnpj}")
+        logger.info(f"Login successful for {user.cpf_cnpj}")
 
         return {
             "access_token": access_token,
@@ -132,14 +132,14 @@ def login(response: Response, user_in: UserLogin, db: Session = Depends(get_db))
     except HTTPException as he:
         raise he
     except Exception as e:
-        logger.error(f"Erro interno no login: {str(e)}")
+        logger.error(f"Internal login error: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Erro ao realizar login."
+            detail="Error performing login."
         )
 
 @router.post("/logout")
 def logout(response: Response):
     response.delete_cookie("access_token")
-    return {"message": "Logout realizado com sucesso"}
+    return {"message": "Logout successful"}
