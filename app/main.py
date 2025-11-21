@@ -24,6 +24,7 @@ from app.auth.router import router as auth_router
 from app.boleto.router import router as boleto_router
 from fastapi.staticfiles import StaticFiles
 import os
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 
 @asynccontextmanager
@@ -50,6 +51,10 @@ app = FastAPI(
     ),
     lifespan=lifespan
 )
+
+# Trust X-Forwarded-Proto headers from Render's Load Balancer
+# This fixes the "http vs https" redirect mismatch for Google OAuth
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # Session Middleware (Required for OAuth2)
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)

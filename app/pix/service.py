@@ -15,24 +15,28 @@ from app.boleto.models import TransacaoBoleto, StatusBoleto
 
 def get_saldo(db: Session, user_id: str) -> float:
     """Calculates current account balance for a specific user."""
-    total_enviado = db.query(func.sum(TransacaoPix.valor)).filter(
-        TransacaoPix.status == ModelStatusPix.CONFIRMADO,
-        TransacaoPix.tipo == TipoTransacao.ENVIADO,
-        TransacaoPix.user_id == user_id
-    ).scalar() or 0
+    try:
+        total_enviado = db.query(func.sum(TransacaoPix.valor)).filter(
+            TransacaoPix.status == ModelStatusPix.CONFIRMADO,
+            TransacaoPix.tipo == TipoTransacao.ENVIADO,
+            TransacaoPix.user_id == user_id
+        ).scalar() or 0.0
 
-    total_recebido = db.query(func.sum(TransacaoPix.valor)).filter(
-        TransacaoPix.status == ModelStatusPix.CONFIRMADO,
-        TransacaoPix.tipo == TipoTransacao.RECEBIDO,
-        TransacaoPix.user_id == user_id
-    ).scalar() or 0
+        total_recebido = db.query(func.sum(TransacaoPix.valor)).filter(
+            TransacaoPix.status == ModelStatusPix.CONFIRMADO,
+            TransacaoPix.tipo == TipoTransacao.RECEBIDO,
+            TransacaoPix.user_id == user_id
+        ).scalar() or 0.0
 
-    total_pago_boleto = db.query(func.sum(TransacaoBoleto.valor)).filter(
-        TransacaoBoleto.status == StatusBoleto.PAGO,
-        TransacaoBoleto.user_id == user_id
-    ).scalar() or 0
+        total_pago_boleto = db.query(func.sum(TransacaoBoleto.valor)).filter(
+            TransacaoBoleto.status == StatusBoleto.PAGO,
+            TransacaoBoleto.user_id == user_id
+        ).scalar() or 0.0
 
-    return float(total_recebido - total_enviado - total_pago_boleto)
+        return float(total_recebido - total_enviado - total_pago_boleto)
+    except Exception as e:
+        logger.error(f"Erro ao calcular saldo para user {user_id}: {str(e)}")
+        return 0.0
 
 
 def criar_pix(
