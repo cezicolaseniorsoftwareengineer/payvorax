@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-md mx-auto">
+    <div class="mb-6">
+        <a href="/ui/cards" class="text-gray-500 hover:text-gray-900 flex items-center gap-2 mb-4">
+            <i data-lucide="arrow-left" class="w-5 h-5"></i>
+            Voltar
+        </a>
+        <h1 class="text-2xl font-bold text-gray-900">Criar cartão virtual</h1>
+        <p class="text-gray-500 mt-1">Escolha o tipo de cartão ideal para você.</p>
+    </div>
+
+    <div class="space-y-4">
+        <!-- Multiuso Option -->
+        <label class="block relative cursor-pointer group">
+            <input type="radio" name="card_type" value="VIRTUAL_MULTUSE" class="peer sr-only" checked>
+            <div
+                class="p-6 bg-white border-2 border-gray-200 rounded-xl hover:border-purple-500 peer-checked:border-purple-600 peer-checked:bg-purple-50 transition-all">
+                <div class="flex items-start gap-4">
+                    <div
+                        class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 text-purple-600">
+                        <i data-lucide="infinity" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-gray-900 mb-1">Cartão virtual multiuso</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">
+                            Ideal para cadastrar pagamento de assinaturas e cobranças mensais.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="absolute top-6 right-6 hidden peer-checked:block text-purple-600">
+                <i data-lucide="check-circle-2" class="w-6 h-6 fill-purple-100"></i>
+            </div>
+        </label>
+
+        <!-- Temporary Option -->
+        <label class="block relative cursor-pointer group">
+            <input type="radio" name="card_type" value="VIRTUAL_TEMP" class="peer sr-only">
+            <div
+                class="p-6 bg-white border-2 border-gray-200 rounded-xl hover:border-orange-500 peer-checked:border-orange-500 peer-checked:bg-orange-50 transition-all">
+                <div class="flex items-start gap-4">
+                    <div
+                        class="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0 text-orange-600">
+                        <i data-lucide="clock" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-gray-900 mb-1">Cartão virtual temporário</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">
+                            Cartão virtual que dura 24h - Use somente por um dia. Após o período, compras serão negadas.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="absolute top-6 right-6 hidden peer-checked:block text-orange-600">
+                <i data-lucide="check-circle-2" class="w-6 h-6 fill-orange-100"></i>
+            </div>
+        </label>
+    </div>
+
+    <div class="mt-8">
+        <button onclick="createCard()" id="createBtn"
+            class="w-full nu-purple text-white font-bold py-4 rounded-full hover:bg-purple-800 transition-all shadow-lg flex items-center justify-center gap-2">
+            <span>Criar cartão</span>
+            <i data-lucide="arrow-right" class="w-5 h-5"></i>
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function createCard() {
+        const btn = document.getElementById('createBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>';
+        btn.disabled = true;
+
+        const type = document.querySelector('input[name="card_type"]:checked').value;
+
+        try {
+            const response = await fetch('/cards/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: type })
+            });
+
+            if (response.ok) {
+                // Redirect to My Cards page to see the new card
+                window.location.href = '/ui/cards';
+            } else {
+                alert('Erro ao criar cartão. Tente novamente.');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Erro de conexão.');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

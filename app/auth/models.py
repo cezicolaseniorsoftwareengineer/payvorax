@@ -1,5 +1,5 @@
 from sqlalchemy import String, DateTime, Float
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime, timezone
 from uuid import uuid4
 from app.core.database import Base
@@ -15,3 +15,4 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column("hashed_password", String(255), nullable=False)
     credit_limit: Mapped[float] = mapped_column("limite_credito", Float, default=10000.00, nullable=False)
     created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=lambda: datetime.now(timezone.utc))
+    cards = relationship("CreditCard", back_populates="user")

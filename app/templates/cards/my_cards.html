@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900">Meus cartões</h1>
+    </div>
+
+    <!-- Cards List Container -->
+    <div id="cards-container" class="space-y-4">
+        <!-- Loading State -->
+        <div class="animate-pulse space-y-4">
+            <div class="h-48 bg-gray-200 rounded-xl"></div>
+        </div>
+    </div>
+
+    <!-- Actions Grid -->
+    <div class="grid grid-cols-4 gap-4 pt-4" id="actions-grid">
+        <!-- Default State: Create Card -->
+        <a href="/ui/cards/create" class="flex flex-col items-center gap-2 group" id="btn-create">
+            <div
+                class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-gray-200 transition-colors">
+                <i data-lucide="plus" class="w-6 h-6 text-gray-700"></i>
+            </div>
+            <span class="text-xs text-center font-medium text-gray-600">Criar cartão</span>
+        </a>
+
+        <!-- Context Action: Delete (Hidden by default) -->
+        <button onclick="deleteCard()" class="hidden flex-col items-center gap-2 group" id="btn-delete">
+            <div
+                class="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center group-hover:bg-red-200 transition-colors">
+                <i data-lucide="trash-2" class="w-6 h-6 text-red-600"></i>
+            </div>
+            <span class="text-xs text-center font-medium text-red-600">Excluir</span>
+        </button>
+
+        <button onclick="toggleBlockCard()" id="btn-block"
+            class="flex flex-col items-center gap-2 group opacity-50 cursor-not-allowed" disabled>
+            <div
+                class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-gray-200 transition-colors">
+                <i data-lucide="lock" class="w-6 h-6 text-gray-700" id="icon-block"></i>
+            </div>
+            <span class="text-xs text-center font-medium text-gray-600" id="text-block">Bloquear</span>
+        </button>
+
+        <button onclick="adjustLimit()" id="btn-limit"
+            class="flex flex-col items-center gap-2 group opacity-50 cursor-not-allowed" disabled>
+            <div
+                class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-gray-200 transition-colors">
+                <i data-lucide="sliders" class="w-6 h-6 text-gray-700"></i>
+            </div>
+            <span class="text-xs text-center font-medium text-gray-600">Ajustar limites</span>
+        </button>
+
+        <button onclick="addToWallet()" id="btn-wallet"
+            class="flex flex-col items-center gap-2 group opacity-50 cursor-not-allowed" disabled>
+            <div
+                class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-gray-200 transition-colors">
+                <i data-lucide="wallet" class="w-6 h-6 text-gray-700"></i>
+            </div>
+            <span class="text-xs text-center font-medium text-gray-600">Carteira</span>
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let selectedCardId = null;
+    let cardsData = [];
+
+    async function loadCards() {
+        const container = document.getElementById('cards-container');
+        try {
+            const response = await fetch('/cards/');
+            const cards = await response.json();
+            cardsData = cards;
+
+            container.innerHTML = '';
+
+            if (cards.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-10 bg-white rounded-xl border border-gray-100">
+                        <div class="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="credit-card" class="w-8 h-8 text-gray-400"></i>
+                        </div>
+                        <h3 class="text-gray-900 font-medium">Você ainda não tem cartões</h3>
+                        <p class="text-gray-500 text-sm mt-1">Crie um cartão virtual para começar.</p>
+                    </div>
+                `;
+            } else {
+                cards.forEach(card => {
+                    const isTemp = card.type === 'VIRTUAL_TEMP';
+                    const bgClass = isTemp ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gray-900';
+                    const blockedClass = card.is_blocked ? 'opacity-75 grayscale' : '';
+                    const borderClass = (selectedCardId === card.id) ? 'ring-4 ring-purple-500 ring-offset-2' : '';
+
+                    const html = `
+                        <div onclick="selectCard('${card.id}')"
+                             class="cursor-pointer ${bgClass} ${blockedClass} ${borderClass} text-white p-6 rounded-xl shadow-lg relative overflow-hidden transform transition-all hover:scale-[1.02] card-item"
+                             id="card-${card.id}">
+                            <!-- Background Pattern -->
+                            <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-xl"></div>
+
+                            ${card.is_blocked ? '<div class="absolute inset-0 flex items-center justify-center bg-black/40 z-10"><i data-lucide="lock" class="w-12 h-12 text-white"></i></div>' : ''}
+
+                            <div class="flex justify-between items-start mb-8 relative z-0">
+                                <div class="flex items-center gap-3">
+                                    <!-- Company Logo -->
+                                    <img src="/static/img/logo.png" alt="NewCredit" class="h-10 w-10 rounded-full object-cover shadow-sm border-2 border-white/20">
+                                    <div class="flex flex-col">
+                                        <span class="font-bold text-sm tracking-wide">NewCredit</span>
+                                        <span class="text-xs opacity-80">${isTemp ? 'Virtual Temporário' : 'Virtual Multiuso'}</span>
+                                    </div>
+                                </div>
+                                <!-- Visa Logo -->
+                                <div class="italic font-bold text-2xl opacity-90 tracking-tighter">VISA</div>
+                            </div>
+
+                            <div class="mb-6 relative z-0">
+                                <p class="text-sm opacity-70 mb-1">Número do cartão</p>
+                                <div class="flex items-center gap-3 font-mono text-xl tracking-wider">
+                                    <span class="sensitive-data">${formatCardNumber(card.card_number)}</span>
+                                    <button onclick="event.stopPropagation(); copyToClipboard('${card.card_number}')" class="p-1 hover:bg-white/20 rounded transition-colors">
+                                        <i data-lucide="copy" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between items-end relative z-0">
+                                <div>
+                                    <p class="text-xs opacity-70 mb-1">Nome</p>
+                                    <p class="font-medium tracking-wide">${card.card_holder_name}</p>
+                                </div>
+                                <div class="flex gap-6">
+                                    <div>
+                                        <p class="text-xs opacity-70 mb-1">Validade</p>
+                                        <p class="font-medium">${card.expiration_date}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs opacity-70 mb-1">CVV</p>
+                                        <p class="font-medium sensitive-data">${card.cvv}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += html;
+                });
+            }
+            lucide.createIcons();
+            if (typeof updateBalanceVisibility === 'function') {
+                updateBalanceVisibility();
+            }
+
+        } catch (error) {
+            console.error(error);
+            container.innerHTML = '<p class="text-red-500 text-center">Erro ao carregar cartões.</p>';
+        }
+    }
+
+    function selectCard(id) {
+        selectedCardId = id;
+
+        // Update UI selection
+        document.querySelectorAll('.card-item').forEach(el => {
+            el.classList.remove('ring-4', 'ring-purple-500', 'ring-offset-2');
+        });
+        const cardEl = document.getElementById(`card-${id}`);
+        if (cardEl) cardEl.classList.add('ring-4', 'ring-purple-500', 'ring-offset-2');
+
+        // Enable Buttons
+        document.getElementById('btn-block').disabled = false;
+        document.getElementById('btn-block').classList.remove('opacity-50', 'cursor-not-allowed');
+
+        document.getElementById('btn-limit').disabled = false;
+        document.getElementById('btn-limit').classList.remove('opacity-50', 'cursor-not-allowed');
+
+        document.getElementById('btn-wallet').disabled = false;
+        document.getElementById('btn-wallet').classList.remove('opacity-50', 'cursor-not-allowed');
+
+        // Show Delete, Hide Create (or keep both? Let's swap for better UX)
+        document.getElementById('btn-create').classList.add('hidden');
+        document.getElementById('btn-create').classList.remove('flex');
+
+        document.getElementById('btn-delete').classList.remove('hidden');
+        document.getElementById('btn-delete').classList.add('flex');
+
+        // Update Block Button Text/Icon based on state
+        const card = cardsData.find(c => c.id === id);
+        if (card) {
+            const blockText = document.getElementById('text-block');
+            const blockIcon = document.getElementById('icon-block');
+            if (card.is_blocked) {
+                blockText.innerText = "Desbloquear";
+                blockIcon.setAttribute('data-lucide', 'unlock');
+            } else {
+                blockText.innerText = "Bloquear";
+                blockIcon.setAttribute('data-lucide', 'lock');
+            }
+            lucide.createIcons();
+        }
+    }
+
+    async function deleteCard() {
+        if (!selectedCardId) return;
+        if (!confirm('Tem certeza que deseja excluir este cartão?')) return;
+
+        try {
+            const response = await fetch(`/cards/${selectedCardId}`, { method: 'DELETE' });
+            if (response.ok) {
+                selectedCardId = null;
+                resetActions();
+                loadCards();
+            } else {
+                alert('Erro ao excluir cartão');
+            }
+        } catch (e) {
+            alert('Erro de conexão');
+        }
+    }
+
+    async function toggleBlockCard() {
+        if (!selectedCardId) return;
+        try {
+            const response = await fetch(`/cards/${selectedCardId}/block`, { method: 'POST' });
+            if (response.ok) {
+                loadCards(); // Reload to update UI state
+                // Keep selection? Yes, but loadCards wipes DOM.
+                // Ideally we should update local state, but reloading is safer for sync.
+                // We need to re-select after reload.
+                setTimeout(() => selectCard(selectedCardId), 100);
+            } else {
+                alert('Erro ao alterar bloqueio');
+            }
+        } catch (e) {
+            alert('Erro de conexão');
+        }
+    }
+
+    async function adjustLimit() {
+        if (!selectedCardId) return;
+        const card = cardsData.find(c => c.id === selectedCardId);
+        const newLimit = prompt("Novo limite para este cartão:", card.limit);
+
+        if (newLimit && !isNaN(newLimit)) {
+            try {
+                const response = await fetch(`/cards/${selectedCardId}/limit`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ limit: parseFloat(newLimit) })
+                });
+                if (response.ok) {
+                    loadCards();
+                    setTimeout(() => selectCard(selectedCardId), 100);
+                } else {
+                    alert('Erro ao ajustar limite');
+                }
+            } catch (e) {
+                alert('Erro de conexão');
+            }
+        }
+    }
+
+    function addToWallet() {
+        if (!selectedCardId) return;
+        alert('Cartão adicionado à Carteira Digital com sucesso! (Simulação)');
+    }
+
+    function resetActions() {
+        document.getElementById('btn-create').classList.remove('hidden');
+        document.getElementById('btn-create').classList.add('flex');
+
+        document.getElementById('btn-delete').classList.add('hidden');
+        document.getElementById('btn-delete').classList.remove('flex');
+
+        ['btn-block', 'btn-limit', 'btn-wallet'].forEach(id => {
+            const el = document.getElementById(id);
+            el.disabled = true;
+            el.classList.add('opacity-50', 'cursor-not-allowed');
+        });
+    }
+
+    function formatCardNumber(number) {
+        return number.replace(/(\d{4})(?=\d)/g, '$1 ');
+    }
+
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            alert('Número copiado!');
+        });
+    }
+
+    loadCards();
+</script>
+{% endblock %}

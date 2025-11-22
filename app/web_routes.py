@@ -50,14 +50,21 @@ async def pix_ui(request: Request, current_user: User = Depends(get_current_user
     )
 
 
-@router.get("/ui/parcelamento", response_class=HTMLResponse)
-async def parcelamento_ui(request: Request, current_user: User = Depends(get_current_user)):
-    """Simulation Interface"""
+@router.get("/ui/cards", response_class=HTMLResponse)
+async def cards_ui(request: Request, current_user: User = Depends(get_current_user)):
+    """My Cards Interface"""
     return templates.TemplateResponse(
-        "parcelamento.html",
-        {"request": request, "page": "parcelamento", "user_name": current_user.name}
+        "cards/my_cards.html",
+        {"request": request, "page": "cards", "user_name": current_user.name}
     )
 
+@router.get("/ui/cards/create", response_class=HTMLResponse)
+async def create_card_ui(request: Request, current_user: User = Depends(get_current_user)):
+    """Create Card Interface"""
+    return templates.TemplateResponse(
+        "cards/create_card.html",
+        {"request": request, "page": "cards", "user_name": current_user.name}
+    )
 
 @router.get("/pix/pagar-qrcode", response_class=HTMLResponse)
 async def pix_payment_simulation(request: Request, current_user: User = Depends(get_current_user)):

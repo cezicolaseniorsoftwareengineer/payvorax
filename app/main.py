@@ -31,7 +31,7 @@ from uuid import uuid4
 from app.core.config import settings
 from app.core.database import init_db
 from app.core.logger import logger
-from app.parcelamento.router import router as parcelamento_router
+from app.cards.router import router as cards_router
 from app.pix.router import router as pix_router
 from app.antifraude.router import router as antifraude_router
 from app.web_routes import router as web_router
@@ -135,7 +135,7 @@ async def add_correlation_id(request: Request, call_next: Callable[[Request], Aw
 
 
 # Router Registration
-app.include_router(parcelamento_router, prefix="/installments", tags=["Installment"])
+app.include_router(cards_router, prefix="/cards", tags=["Cards"])
 app.include_router(pix_router, prefix="/pix", tags=["PIX"])
 app.include_router(antifraude_router, prefix="/antifraud", tags=["Anti-Fraud"])
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
@@ -161,7 +161,7 @@ def api_info() -> Dict[str, Any]:
         "status": "online",
         "endpoints": {
             "ui": "/",
-            "installments": "/installments/simulate",
+            "cards": "/cards",
             "pix_create": "/pix/create",
             "pix_confirm": "/pix/confirm",
             "pix_statement": "/pix/statement",
