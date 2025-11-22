@@ -35,14 +35,14 @@ def create_pix_transaction(
     data: PixCreateRequest,
     x_idempotency_key: str = Header(..., alias="X-Idempotency-Key"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_account),
+    current_user: User = Depends(get_current_user),
     x_correlation_id: str = Header(default=None)
 ) -> PixResponse:
     """
     **Challenge 2: PIX Transaction API**
 
     Creates a new transaction with idempotency support.
-    **Requires active account (at least one deposit made).**
+    **Requires active account (at least one deposit made) for outgoing transfers, except for self-deposits.**
 
     - **value**: Transaction value (R$)
     - **key_type**: Key Type (CPF, EMAIL, PHONE, RANDOM)
@@ -55,6 +55,24 @@ def create_pix_transaction(
     # Generate correlation_id for traceability
     correlation_id = x_correlation_id or str(uuid4())
     logger = get_logger_with_correlation(correlation_id)
+
+    # Enforce Active Account Policy manually, but allow Self-Deposit (Copia e Cola)
+    # This allows new users to fund their account via "Pix Copia e Cola" of their own charge.
+    has_deposit = db.query(PixTransaction).filter(
+        PixTransaction.user_id == current_user.id,
+        PixTransaction.type == TransactionType.RECEIVED,
+        PixTransaction.status == PixStatus.CONFIRMED
+    ).first()
+
+    if not has_deposit:
+        # If no deposit, only allow if it looks like a Copia e Cola (potential self-deposit)
+        # The service layer will validate if it is indeed a self-deposit and handle it.
+        # If it is NOT a self-deposit, the service will check balance (which is 0) and fail safely.
+        if not (data.key_type == PixKeyType.RANDOM and len(data.pix_key) > 36):
+             raise HTTPException(
+                status_code=403,
+                detail="Inactive account. Make a first deposit (Received PIX) to unlock all features."
+            )
 
     try:
         logger.info(f"Starting PIX creation: {data.model_dump()} for user {current_user.id}")

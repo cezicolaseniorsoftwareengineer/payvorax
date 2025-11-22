@@ -25,7 +25,7 @@ class PixCreateRequest(BaseModel):
     """PIX creation request payload."""
     value: float = Field(..., gt=0, le=1000000000000, description="Transaction value (R$)")
     key_type: PixKeyType = Field(..., description="PIX Key Type")
-    pix_key: str = Field(..., min_length=1, max_length=200, description="Destination PIX Key")
+    pix_key: str = Field(..., min_length=1, max_length=1000, description="Destination PIX Key")
     description: Optional[str] = Field(None, max_length=500, description="Transaction description")
     scheduled_date: Optional[datetime] = Field(default=None, description="Date for scheduled transfer")
 

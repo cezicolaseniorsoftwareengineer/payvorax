@@ -62,6 +62,47 @@ def create_pix(
         logger.info(f"Duplicate PIX detected (idempotency): key={idempotency_key}, id={existing_pix.id}")
         return existing_pix
 
+    # Check for "Copia e Cola" Self-Deposit (Deposit Simulation)
+    # This allows a user to "pay" their own charge to simulate a deposit without needing initial balance.
+    if data.key_type == PixKeyType.RANDOM and len(data.pix_key) > 36:
+        match = re.search(r'0136([0-9a-fA-F-]{36})', data.pix_key)
+        if match:
+            charge_id = match.group(1)
+            charge_transaction = db.query(PixTransaction).filter(
+                PixTransaction.id == charge_id,
+                PixTransaction.type == TransactionType.RECEIVED,
+                PixTransaction.status == PixStatus.CREATED
+            ).first()
+
+            if charge_transaction and charge_transaction.user_id == user_id:
+                logger.info(f"Self-Deposit detected for user {user_id}. Confirming charge {charge_id} without debit.")
+
+                # Confirm the charge
+                charge_transaction.status = PixStatus.CONFIRMED
+                charge_transaction.correlation_id = correlation_id
+
+                # Apply Credit Limit Increase
+                recipient_user = db.query(User).filter(User.id == user_id).first()
+                if recipient_user:
+                    limit_increase = charge_transaction.value * 0.50
+                    recipient_user.credit_limit += limit_increase
+                    db.add(recipient_user)
+
+                db.add(charge_transaction)
+                db.commit()
+                db.refresh(charge_transaction)
+
+                audit_log(
+                    action="pix_deposit_simulated",
+                    user=user_id,
+                    resource=f"pix_id={charge_transaction.id}",
+                    details={
+                        "value": charge_transaction.value,
+                        "correlation_id": correlation_id
+                    }
+                )
+                return charge_transaction
+
     # Balance Check for Outgoing Transactions
     if type == TransactionType.SENT:
         if data.scheduled_date:
@@ -120,45 +161,88 @@ def create_pix(
     # If the destination key belongs to a local user, credit them immediately.
     if type == TransactionType.SENT and initial_status != PixStatus.SCHEDULED:
         recipient_user = None
+        charge_transaction = None
 
-        # Search for recipient by Key
-        if data.key_type in [PixKeyType.CPF, PixKeyType.CNPJ]:
-            # Normalize key: remove non-digits
-            clean_key = re.sub(r'\D', '', data.pix_key)
-            logger.info(f"Searching for recipient with CPF/CNPJ: {clean_key}")
-            recipient_user = db.query(User).filter(User.cpf_cnpj == clean_key).first()
-        elif data.key_type == PixKeyType.EMAIL:
-            email_key = data.pix_key.strip().lower()
-            logger.info(f"Searching for recipient with Email: {email_key}")
-            recipient_user = db.query(User).filter(func.lower(User.email) == email_key).first()
+        # 1. Check if it's a "Copia e Cola" payment (Charge ID extraction)
+        if data.key_type == PixKeyType.RANDOM and len(data.pix_key) > 36:
+            # Regex to find UUID in the standard EMV payload (0136...)
+            match = re.search(r'0136([0-9a-fA-F-]{36})', data.pix_key)
+            if match:
+                charge_id = match.group(1)
+                logger.info(f"Detected Copia e Cola payment. Charge ID: {charge_id}")
 
-        if recipient_user:
-            logger.info(f"Recipient found: {recipient_user.name} (ID: {recipient_user.id})")
+                # Find the pending charge
+                charge_transaction = db.query(PixTransaction).filter(
+                    PixTransaction.id == charge_id,
+                    PixTransaction.type == TransactionType.RECEIVED,
+                    PixTransaction.status == PixStatus.CREATED
+                ).first()
 
-            # Create incoming transaction for recipient
-            received_pix = PixTransaction(
-                id=str(uuid4()),
-                value=data.value,
-                pix_key=data.pix_key,
-                key_type=data.key_type.value,
-                type=TransactionType.RECEIVED,
-                status=PixStatus.CONFIRMED,
-                idempotency_key=f"internal-{idempotency_key}",
-                description=data.description or "Transferência Recebida",
-                correlation_id=correlation_id,
-                user_id=recipient_user.id
-            )
-            db.add(received_pix)
+                if charge_transaction:
+                    recipient_user = db.query(User).filter(User.id == charge_transaction.user_id).first()
+                    if recipient_user:
+                        logger.info(f"Paying Charge for User: {recipient_user.name}")
 
-            # Apply Credit Limit Increase Rule (50% of received amount)
-            limit_increase = data.value * 0.50
-            recipient_user.credit_limit += limit_increase
-            db.add(recipient_user)
+                        # Confirm the existing charge transaction
+                        charge_transaction.status = PixStatus.CONFIRMED
+                        charge_transaction.correlation_id = correlation_id  # Link transactions
+                        # Optional: Update value if partial payment allowed (not implemented here)
 
-            logger.info(f"Internal transfer executed: {data.value} to {recipient_user.name} (ID: {recipient_user.id})")
-            logger.info(f"Credit limit for {recipient_user.name} increased by R$ {limit_increase:.2f}")
-        else:
-            logger.warning(f"Recipient NOT found for key: {data.pix_key} (Type: {data.key_type})")
+                        db.add(charge_transaction)
+
+                        # Apply Credit Limit Increase
+                        limit_increase = data.value * 0.50
+                        recipient_user.credit_limit += limit_increase
+                        db.add(recipient_user)
+
+                        logger.info(f"Charge {charge_id} confirmed. Credit limit increased.")
+                    else:
+                        logger.warning(f"Charge owner not found: {charge_transaction.user_id}")
+                else:
+                    logger.warning(f"Charge not found or already paid: {charge_id}")
+
+        # 2. If not a charge, search for recipient by Key (CPF/Email)
+        if not recipient_user:
+            if data.key_type in [PixKeyType.CPF, PixKeyType.CNPJ]:
+                # Normalize key: remove non-digits
+                clean_key = re.sub(r'\D', '', data.pix_key)
+                logger.info(f"Searching for recipient with CPF/CNPJ: {clean_key}")
+                recipient_user = db.query(User).filter(User.cpf_cnpj == clean_key).first()
+            elif data.key_type == PixKeyType.EMAIL:
+                email_key = data.pix_key.strip().lower()
+                logger.info(f"Searching for recipient with Email: {email_key}")
+                recipient_user = db.query(User).filter(func.lower(User.email) == email_key).first()
+
+            # If recipient found via Key, create the RECEIVED transaction
+            if recipient_user:
+                logger.info(f"Recipient found: {recipient_user.name} (ID: {recipient_user.id})")
+
+                # Create incoming transaction for recipient
+                received_pix = PixTransaction(
+                    id=str(uuid4()),
+                    value=data.value,
+                    pix_key=data.pix_key,
+                    key_type=data.key_type.value,
+                    type=TransactionType.RECEIVED,
+                    status=PixStatus.CONFIRMED,
+                    idempotency_key=f"internal-{idempotency_key}",
+                    description=data.description or "Transferência Recebida",
+                    correlation_id=correlation_id,
+                    user_id=recipient_user.id
+                )
+                db.add(received_pix)
+
+                # Apply Credit Limit Increase Rule (50% of received amount)
+                limit_increase = data.value * 0.50
+                recipient_user.credit_limit += limit_increase
+                db.add(recipient_user)
+
+                logger.info(f"Internal transfer executed: {data.value} to {recipient_user.name} (ID: {recipient_user.id})")
+                logger.info(f"Credit limit for {recipient_user.name} increased by R$ {limit_increase:.2f}")
+            else:
+                # Only log warning if it wasn't a charge attempt (which logs its own warning)
+                if not (data.key_type == PixKeyType.RANDOM and len(data.pix_key) > 36):
+                    logger.warning(f"Recipient NOT found for key: {data.pix_key} (Type: {data.key_type})")
 
     try:
         db.commit()

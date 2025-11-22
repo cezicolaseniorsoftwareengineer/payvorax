@@ -151,6 +151,7 @@
 
         <!-- QR Code Result -->
         <div id="qrResult" class="hidden mt-6 text-center border-t border-gray-100 pt-6">
+            <input type="hidden" id="currentChargeId">
             <div class="bg-white p-4 rounded-xl border-2 border-purple-100 inline-block mb-4">
                 <img id="qrImage" src="" alt="QR Code Pix" class="w-48 h-48">
             </div>
@@ -296,9 +297,17 @@
         btn.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>';
         btn.disabled = true;
 
+        const chargeId = document.getElementById('currentChargeId').value;
+
+        if (!chargeId) {
+            alert('Erro: ID da cobrança não encontrado.');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            return;
+        }
+
         const data = {
-            value: parseFloat(document.getElementById('valorReceber').value),
-            description: document.getElementById('descricaoReceber').value
+            charge_id: chargeId
         };
 
         try {
@@ -451,6 +460,7 @@
                 document.getElementById('qrResult').classList.remove('hidden');
                 document.getElementById('qrImage').src = result.qr_code_url;
                 document.getElementById('copyPasteCode').value = result.copy_and_paste;
+                document.getElementById('currentChargeId').value = result.charge_id;
             }
 
         } catch (error) {
