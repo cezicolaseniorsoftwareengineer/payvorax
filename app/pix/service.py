@@ -72,7 +72,7 @@ def create_pix(
             current_balance = get_balance(db, user_id)
             if data.value > current_balance:
                 raise ValueError("Insufficient balance")
-            initial_status = PixStatus.CREATED
+            initial_status = PixStatus.CONFIRMED
     else:
         # Incoming transaction (Deposit)
         initial_status = PixStatus.CREATED

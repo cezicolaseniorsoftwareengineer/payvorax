@@ -26,11 +26,11 @@
 <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
     <button onclick="filterExtrato('todos')"
         class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium whitespace-nowrap">Todos</button>
-    <button onclick="filterExtrato('CREATED')"
+    <button onclick="filterExtrato('CRIADO')"
         class="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-gray-50">Pendentes</button>
-    <button onclick="filterExtrato('CONFIRMED')"
+    <button onclick="filterExtrato('CONFIRMADO')"
         class="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-gray-50">Confirmados</button>
-    <button onclick="filterExtrato('SCHEDULED')"
+    <button onclick="filterExtrato('AGENDADO')"
         class="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-gray-50">Agendados</button>
 </div>
 
@@ -150,8 +150,8 @@
             allTransactions = data.transactions;
 
             allTransactions.forEach(t => {
-                if (t.type === 'RECEIVED' && t.status === 'CONFIRMED') entradas += t.value;
-                if (t.type === 'SENT' && t.status === 'CONFIRMED') saidas += t.value;
+                if (t.type === 'RECEBIDO' && t.status === 'CONFIRMADO') entradas += t.value;
+                if (t.type === 'ENVIADO' && t.status === 'CONFIRMADO') saidas += t.value;
             });
 
             document.getElementById('total-entradas').innerText = formatCurrency(entradas);
@@ -184,7 +184,7 @@
         transactions.forEach(t => {
             // 1. Determine Counterparty Name (The "Title")
             let counterpartyName = 'Desconhecido';
-            if (t.type === 'SENT') {
+            if (t.type === 'ENVIADO') {
                 counterpartyName = t.receiver_name || 'Destinatário Desconhecido';
             } else {
                 counterpartyName = t.sender_name || 'Remetente Desconhecido';
@@ -196,7 +196,7 @@
                 transactionType = 'Pagamento de Boleto';
             } else if (t.description && t.description.toLowerCase().includes('depósito')) {
                 transactionType = 'Depósito';
-            } else if (t.type === 'RECEIVED' && t.pix_key === 'SIMULACAO_QR_CODE') {
+            } else if (t.type === 'RECEBIDO' && t.pix_key === 'SIMULACAO_QR_CODE') {
                 transactionType = 'Depósito via QR Code';
             }
 
@@ -225,7 +225,7 @@
             // Nubank Style Subtitle: "HH:mm - Tipo"
             const subtitleText = `${timeDisplay} - ${transactionType}`;
 
-            const isNegative = t.type === 'SENT';
+            const isNegative = t.type === 'ENVIADO';
             const colorClass = isNegative ? 'text-gray-900' : 'text-green-600'; // Nubank uses black for sent, green for received usually, or just black/gray. Let's stick to user request or standard. User asked for "ícone de enviado".
             // Actually Nubank uses black for value usually, but let's keep green/red for clarity or adapt.
             // User didn't specify value color, but "ícone de enviado".
@@ -239,13 +239,13 @@
             let statusBadge = '';
             let actions = '';
 
-            if (t.status === 'CONFIRMED') {
+            if (t.status === 'CONFIRMADO') {
                 // Nubank doesn't show "Confirmado" badge in the list usually, just the item.
                 // But we'll keep a small indicator or just hide it for confirmed to be cleaner.
                 // Let's keep it minimal.
                 statusBadge = '';
             }
-            else if (t.status === 'SCHEDULED') {
+            else if (t.status === 'AGENDADO') {
                 statusBadge = '<span class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs font-medium">Agendado</span>';
                 actions = `
                     <button onclick="cancelarAgendamento('${t.id}')" class="p-1 text-red-500 hover:bg-red-50 rounded transition-colors" title="Cancelar">
@@ -253,8 +253,8 @@
                     </button>
                 `;
             }
-            else if (t.status === 'FAILED') statusBadge = '<span class="px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs font-medium">Falha</span>';
-            else if (t.status === 'CANCELED') statusBadge = '<span class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-medium line-through">Cancelado</span>';
+            else if (t.status === 'FALHOU') statusBadge = '<span class="px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs font-medium">Falha</span>';
+            else if (t.status === 'CANCELADO') statusBadge = '<span class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-medium line-through">Cancelado</span>';
             else statusBadge = `<span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">${t.status}</span>`;
 
             // Add Receipt Button (Subtle)
@@ -285,7 +285,7 @@
                     <td class="p-4">
                         ${statusBadge}
                     </td>
-                    <td class="p-4 text-sm font-bold text-right ${t.type === 'SENT' ? 'text-gray-900' : 'text-green-600'}">
+                    <td class="p-4 text-sm font-bold text-right ${t.type === 'ENVIADO' ? 'text-gray-900' : 'text-green-600'}">
                         ${sign} ${formatCurrency(t.value)}
                     </td>
                 </tr>
@@ -310,7 +310,7 @@
                         </div>
                     </div>
                     <div class="text-right">
-                        <p class="text-base font-bold ${t.type === 'SENT' ? 'text-gray-900' : 'text-green-600'}">
+                        <p class="text-base font-bold ${t.type === 'ENVIADO' ? 'text-gray-900' : 'text-green-600'}">
                             ${sign} ${formatCurrency(t.value)}
                         </p>
                         ${actions ? `<div class="mt-2 flex justify-end" onclick="event.stopPropagation()">${actions}</div>` : ''}
@@ -376,8 +376,8 @@
 
         // Status Badge in Modal
         const statusEl = document.getElementById('receipt-status');
-        if (t.status === 'CONFIRMED') statusEl.innerHTML = '<span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">Confirmado</span>';
-        else if (t.status === 'SCHEDULED') statusEl.innerHTML = '<span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">Agendado</span>';
+        if (t.status === 'CONFIRMADO') statusEl.innerHTML = '<span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">Confirmado</span>';
+        else if (t.status === 'AGENDADO') statusEl.innerHTML = '<span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">Agendado</span>';
         else statusEl.innerHTML = `<span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">${t.status}</span>`;
 
         // Show Modal
