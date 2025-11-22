@@ -92,7 +92,7 @@
             } else {
                 cards.forEach(card => {
                     const isTemp = card.type === 'VIRTUAL_TEMP';
-                    const bgClass = isTemp ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gray-900';
+                    const bgClass = isTemp ? 'bg-[#820AD1]' : 'bg-gray-900';
                     const blockedClass = card.is_blocked ? 'opacity-75 grayscale' : '';
                     const borderClass = (selectedCardId === card.id) ? 'ring-4 ring-purple-500 ring-offset-2' : '';
 

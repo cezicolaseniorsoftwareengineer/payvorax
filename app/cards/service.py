@@ -50,11 +50,24 @@ def create_card(db: Session, user: User, data: CardCreateRequest) -> CreditCard:
     db.refresh(card)
     return card
 
+from sqlalchemy import or_
+
 def list_cards(db: Session, user_id: str):
-    return db.query(CreditCard).filter(CreditCard.user_id == user_id).all()
+    # Filter out expired cards (where expires_at is in the past)
+    # Keep cards where expires_at is NULL (permanent) or expires_at > now
+    now = datetime.utcnow()
+    return db.query(CreditCard).filter(
+        CreditCard.user_id == user_id,
+        or_(CreditCard.expires_at == None, CreditCard.expires_at > now)
+    ).all()
 
 def get_card(db: Session, card_id: str, user_id: str) -> CreditCard:
-    return db.query(CreditCard).filter(CreditCard.id == card_id, CreditCard.user_id == user_id).first()
+    now = datetime.utcnow()
+    return db.query(CreditCard).filter(
+        CreditCard.id == card_id,
+        CreditCard.user_id == user_id,
+        or_(CreditCard.expires_at == None, CreditCard.expires_at > now)
+    ).first()
 
 def delete_card(db: Session, card_id: str, user_id: str):
     card = get_card(db, card_id, user_id)
