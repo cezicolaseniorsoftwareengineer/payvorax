@@ -93,8 +93,9 @@ def create_pix(
     )
 
     db.add(pix)
-    db.commit()
-    db.refresh(pix)
+    # REMOVED INTERMEDIATE COMMIT to ensure atomicity
+    # db.commit()
+    # db.refresh(pix)
 
     # Mask sensitive data in logs
     masked_key = mask_sensitive_data(data.pix_key)
@@ -113,7 +114,7 @@ def create_pix(
         }
     )
 
-    logger.info(f"PIX created: id={pix.id}, value={data.value}, type={type.value}, status={initial_status.value}")
+    logger.info(f"PIX created (pending commit): id={pix.id}, value={data.value}, type={type.value}, status={initial_status.value}")
 
     # Real-time Internal Transfer Logic
     # If the destination key belongs to a local user, credit them immediately.
@@ -158,6 +159,14 @@ def create_pix(
             logger.info(f"Credit limit for {recipient_user.name} increased by R$ {limit_increase:.2f}")
         else:
             logger.warning(f"Recipient NOT found for key: {data.pix_key} (Type: {data.key_type})")
+
+    try:
+        db.commit()
+        db.refresh(pix)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Transaction failed, rolled back: {str(e)}")
+        raise e
 
     return pix
 
