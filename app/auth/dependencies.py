@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.auth.models import User
-from app.pix.models import TransacaoPix, StatusPix, TipoTransacao
+from app.pix.models import PixTransaction, PixStatus, TransactionType
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
@@ -55,16 +55,16 @@ def require_active_account(
     Verifies if the user has made at least one deposit (Incoming PIX).
     Blocks access to critical features if the account is not active.
     """
-    has_deposit = db.query(TransacaoPix).filter(
-        TransacaoPix.user_id == user.id,
-        TransacaoPix.tipo == TipoTransacao.RECEBIDO,
-        TransacaoPix.status == StatusPix.CONFIRMADO
+    has_deposit = db.query(PixTransaction).filter(
+        PixTransaction.user_id == user.id,
+        PixTransaction.type == TransactionType.RECEIVED,
+        PixTransaction.status == PixStatus.CONFIRMED
     ).first()
 
     if not has_deposit:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Conta inativa. Realize um primeiro depósito (PIX Recebido) para desbloquear todas as funcionalidades."
+            detail="Inactive account. Make a first deposit (Received PIX) to unlock all features."
         )
 
     return user

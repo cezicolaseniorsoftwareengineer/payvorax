@@ -26,11 +26,11 @@
 <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
     <button onclick="filterExtrato('todos')"
         class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium whitespace-nowrap">Todos</button>
-    <button onclick="filterExtrato('CRIADO')"
+    <button onclick="filterExtrato('CREATED')"
         class="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-gray-50">Pendentes</button>
-    <button onclick="filterExtrato('CONFIRMADO')"
+    <button onclick="filterExtrato('CONFIRMED')"
         class="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-gray-50">Confirmados</button>
-    <button onclick="filterExtrato('AGENDADO')"
+    <button onclick="filterExtrato('SCHEDULED')"
         class="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-gray-50">Agendados</button>
 </div>
 
@@ -141,17 +141,17 @@
             const data = await response.json();
 
             // Update Summary
-            document.getElementById('saldo-atual').innerText = formatCurrency(data.saldo);
+            document.getElementById('saldo-atual').innerText = formatCurrency(data.balance);
 
             // Calculate totals locally for simplicity (or backend could provide)
             let entradas = 0;
             let saidas = 0;
 
-            allTransactions = data.transacoes;
+            allTransactions = data.transactions;
 
             allTransactions.forEach(t => {
-                if (t.tipo === 'RECEBIDO' && t.status === 'CONFIRMADO') entradas += t.valor;
-                if (t.tipo === 'ENVIADO' && t.status === 'CONFIRMADO') saidas += t.valor;
+                if (t.type === 'RECEIVED' && t.status === 'CONFIRMED') entradas += t.value;
+                if (t.type === 'SENT' && t.status === 'CONFIRMED') saidas += t.value;
             });
 
             document.getElementById('total-entradas').innerText = formatCurrency(entradas);
@@ -184,7 +184,7 @@
         transactions.forEach(t => {
             // 1. Determine Counterparty Name (The "Title")
             let counterpartyName = 'Desconhecido';
-            if (t.tipo === 'ENVIADO') {
+            if (t.type === 'SENT') {
                 counterpartyName = t.receiver_name || 'Destinatário Desconhecido';
             } else {
                 counterpartyName = t.sender_name || 'Remetente Desconhecido';
@@ -192,11 +192,11 @@
 
             // 2. Determine Transaction Type (The "Type")
             let transactionType = 'Transferência Pix';
-            if (t.descricao && t.descricao.toLowerCase().includes('boleto')) {
+            if (t.description && t.description.toLowerCase().includes('boleto')) {
                 transactionType = 'Pagamento de Boleto';
-            } else if (t.descricao && t.descricao.toLowerCase().includes('depósito')) {
+            } else if (t.description && t.description.toLowerCase().includes('depósito')) {
                 transactionType = 'Depósito';
-            } else if (t.tipo === 'RECEBIDO' && t.chave_pix === 'SIMULACAO_QR_CODE') {
+            } else if (t.type === 'RECEIVED' && t.pix_key === 'SIMULACAO_QR_CODE') {
                 transactionType = 'Depósito via QR Code';
             }
 
@@ -217,7 +217,7 @@
                     fullDateDisplay = t.formatted_time;
                 }
             } else {
-                const d = new Date(t.criado_em || t.data_criacao);
+                const d = new Date(t.created_at || t.created_at);
                 timeDisplay = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
                 fullDateDisplay = d.toLocaleDateString('pt-BR') + ' ' + timeDisplay;
             }
@@ -225,7 +225,7 @@
             // Nubank Style Subtitle: "HH:mm - Tipo"
             const subtitleText = `${timeDisplay} - ${transactionType}`;
 
-            const isNegative = t.tipo === 'ENVIADO';
+            const isNegative = t.type === 'SENT';
             const colorClass = isNegative ? 'text-gray-900' : 'text-green-600'; // Nubank uses black for sent, green for received usually, or just black/gray. Let's stick to user request or standard. User asked for "ícone de enviado".
             // Actually Nubank uses black for value usually, but let's keep green/red for clarity or adapt.
             // User didn't specify value color, but "ícone de enviado".
@@ -239,13 +239,13 @@
             let statusBadge = '';
             let actions = '';
 
-            if (t.status === 'CONFIRMADO') {
+            if (t.status === 'CONFIRMED') {
                 // Nubank doesn't show "Confirmado" badge in the list usually, just the item.
                 // But we'll keep a small indicator or just hide it for confirmed to be cleaner.
                 // Let's keep it minimal.
                 statusBadge = '';
             }
-            else if (t.status === 'AGENDADO') {
+            else if (t.status === 'SCHEDULED') {
                 statusBadge = '<span class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs font-medium">Agendado</span>';
                 actions = `
                     <button onclick="cancelarAgendamento('${t.id}')" class="p-1 text-red-500 hover:bg-red-50 rounded transition-colors" title="Cancelar">
@@ -253,8 +253,8 @@
                     </button>
                 `;
             }
-            else if (t.status === 'FALHA') statusBadge = '<span class="px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs font-medium">Falha</span>';
-            else if (t.status === 'CANCELADO') statusBadge = '<span class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-medium line-through">Cancelado</span>';
+            else if (t.status === 'FAILED') statusBadge = '<span class="px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs font-medium">Falha</span>';
+            else if (t.status === 'CANCELED') statusBadge = '<span class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-medium line-through">Cancelado</span>';
             else statusBadge = `<span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">${t.status}</span>`;
 
             // Add Receipt Button (Subtle)
@@ -285,8 +285,8 @@
                     <td class="p-4">
                         ${statusBadge}
                     </td>
-                    <td class="p-4 text-sm font-bold text-right ${t.tipo === 'ENVIADO' ? 'text-gray-900' : 'text-green-600'}">
-                        ${sign} ${formatCurrency(t.valor)}
+                    <td class="p-4 text-sm font-bold text-right ${t.type === 'SENT' ? 'text-gray-900' : 'text-green-600'}">
+                        ${sign} ${formatCurrency(t.value)}
                     </td>
                 </tr>
             `;
@@ -310,8 +310,8 @@
                         </div>
                     </div>
                     <div class="text-right">
-                        <p class="text-base font-bold ${t.tipo === 'ENVIADO' ? 'text-gray-900' : 'text-green-600'}">
-                            ${sign} ${formatCurrency(t.valor)}
+                        <p class="text-base font-bold ${t.type === 'SENT' ? 'text-gray-900' : 'text-green-600'}">
+                            ${sign} ${formatCurrency(t.value)}
                         </p>
                         ${actions ? `<div class="mt-2 flex justify-end" onclick="event.stopPropagation()">${actions}</div>` : ''}
                     </div>
@@ -361,9 +361,9 @@
         const t = allTransactions.find(tx => tx.id === id);
         if (!t) return;
 
-        document.getElementById('receipt-value').innerText = formatCurrency(t.valor);
-        document.getElementById('receipt-date').innerText = t.formatted_time || new Date(t.criado_em).toLocaleString('pt-BR');
-        document.getElementById('receipt-desc').innerText = t.descricao || '-';
+        document.getElementById('receipt-value').innerText = formatCurrency(t.value);
+        document.getElementById('receipt-date').innerText = t.formatted_time || new Date(t.created_at).toLocaleString('pt-BR');
+        document.getElementById('receipt-desc').innerText = t.description || '-';
         document.getElementById('receipt-id').innerText = t.id;
 
         // Sender
@@ -376,8 +376,8 @@
 
         // Status Badge in Modal
         const statusEl = document.getElementById('receipt-status');
-        if (t.status === 'CONFIRMADO') statusEl.innerHTML = '<span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">Confirmado</span>';
-        else if (t.status === 'AGENDADO') statusEl.innerHTML = '<span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">Agendado</span>';
+        if (t.status === 'CONFIRMED') statusEl.innerHTML = '<span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">Confirmado</span>';
+        else if (t.status === 'SCHEDULED') statusEl.innerHTML = '<span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">Agendado</span>';
         else statusEl.innerHTML = `<span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">${t.status}</span>`;
 
         // Show Modal

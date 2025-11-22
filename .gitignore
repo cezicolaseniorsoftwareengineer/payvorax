@@ -35,3 +35,6 @@ ObjetivoProjeto.txt
 *.sqlite3
 *.db-shm
 *.db-wal
+
+# Agent Configuration
+CeziColaSSE.md

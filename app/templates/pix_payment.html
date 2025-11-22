@@ -60,8 +60,16 @@
 <script>
     // Parse URL params
     const urlParams = new URLSearchParams(window.location.search);
-    const valor = parseFloat(urlParams.get('valor') || 0);
-    const desc = urlParams.get('desc') || 'Transferência Pix';
+    const chargeId = urlParams.get('id');
+
+    // If we have an ID, we should fetch details (in a real app).
+    // For now, we rely on the user trusting the link or we could fetch /transacoes/{id} if it was public.
+    // But since we changed the URL structure, we need to handle the display.
+    // NOTE: In this simplified version, we might not have value/desc in URL anymore if we use ID.
+    // Let's try to fetch the transaction details if ID is present.
+
+    const valorParam = parseFloat(urlParams.get('valor') || 0);
+    const descParam = urlParams.get('desc') || 'Transferência Pix';
 
     // Format currency
     const formatter = new Intl.NumberFormat('pt-BR', {
@@ -69,43 +77,71 @@
         currency: 'BRL'
     });
 
-    // Set values
-    document.getElementById('displayValor').textContent = formatter.format(valor);
-    document.getElementById('displayDesc').textContent = desc;
+    // Initial render (might be empty if using ID)
+    document.getElementById('displayValor').textContent = formatter.format(valorParam);
+    document.getElementById('displayDesc').textContent = descParam;
     document.getElementById('currentDate').textContent = new Date().toLocaleDateString('pt-BR');
+
+    // If we have an ID, let's try to fetch the transaction to show real data
+    if (chargeId) {
+        fetch(`/pix/transacoes/${chargeId}`)
+            .then(res => {
+                if (res.ok) return res.json();
+                throw new Error('Not found');
+            })
+            .then(data => {
+                document.getElementById('displayValor').textContent = formatter.format(data.value);
+                document.getElementById('displayDesc').textContent = data.description || 'Cobrança Pix';
+
+                if (data.status === 'CONFIRMADO') {
+                    document.getElementById('btnConfirm').classList.add('hidden');
+                    document.getElementById('successState').classList.remove('hidden');
+                    document.querySelector('#successState h3').textContent = 'Esta cobrança já foi paga!';
+                    document.querySelector('#successState p').textContent = 'Não é possível pagar novamente.';
+                }
+            })
+            .catch(err => console.log('Could not fetch details, using params or defaults'));
+    }
 
     async function confirmPayment() {
         const btn = document.getElementById('btnConfirm');
         const success = document.getElementById('successState');
+
+        if (!chargeId && !valorParam) {
+            alert('Dados de pagamento inválidos.');
+            return;
+        }
 
         // Simulate processing
         btn.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> Processando...';
         btn.disabled = true;
 
         try {
-            const response = await fetch('/pix/receber/confirmar', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    valor: valor,
-                    descricao: desc
-                })
-            });
+            // If we have a chargeId, we use the new secure endpoint
+            let response;
+            if (chargeId) {
+                response = await fetch('/pix/receber/confirmar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ charge_id: chargeId })
+                });
+            } else {
+                // Fallback for old links (should not happen with new code)
+                alert('Link inválido ou expirado (formato antigo). Gere um novo QR Code.');
+                btn.disabled = false;
+                btn.innerHTML = 'Confirmar Pagamento';
+                return;
+            }
 
             if (response.ok) {
                 setTimeout(() => {
                     btn.classList.add('hidden');
                     success.classList.remove('hidden');
-
-                    // Trigger confetti if available or just simple animation
-                    if (window.lucide) {
-                        lucide.createIcons();
-                    }
+                    if (window.lucide) lucide.createIcons();
                 }, 1000);
             } else {
-                alert('Erro ao processar pagamento. Tente novamente.');
+                const err = await response.json();
+                alert('Erro: ' + (err.detail || 'Erro ao processar pagamento.'));
                 btn.innerHTML = 'Tentar Novamente';
                 btn.disabled = false;
             }

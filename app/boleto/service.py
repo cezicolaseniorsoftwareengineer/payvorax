@@ -1,47 +1,47 @@
 from uuid import uuid4
 from sqlalchemy.orm import Session
-from app.boleto.models import TransacaoBoleto, StatusBoleto
-from app.boleto.schemas import PagamentoBoletoRequest, BoletoDetalhes
-from app.pix.service import get_saldo
+from app.boleto.models import BoletoTransaction, BoletoStatus
+from app.boleto.schemas import BoletoPaymentRequest, BoletoDetails
+from app.pix.service import get_balance
 from app.core.logger import logger, audit_log
 from datetime import date, timedelta
 import secrets
 
 
-def consultar_boleto(codigo_barras: str) -> BoletoDetalhes:
+def query_boleto(barcode: str) -> BoletoDetails:
     # Mock validation
-    if not codigo_barras.isdigit() or len(codigo_barras) < 44:
-        raise ValueError("Código de barras inválido")
+    if not barcode.isdigit() or len(barcode) < 44:
+        raise ValueError("Invalid barcode")
 
-    if codigo_barras.endswith("0000"):
-        raise ValueError("Boleto vencido ou não encontrado")
+    if barcode.endswith("0000"):
+        raise ValueError("Boleto expired or not found")
 
     # Mock details
-    return BoletoDetalhes(
-        codigo_barras=codigo_barras,
-        beneficiario=f"Empresa Mock {secrets.randbelow(100) + 1} LTDA",
-        valor=float(f"{secrets.randbelow(491) + 10}.{secrets.randbelow(100)}"),
-        vencimento=date.today() + timedelta(days=secrets.randbelow(10) + 1)
+    return BoletoDetails(
+        barcode=barcode,
+        beneficiary=f"Mock Company {secrets.randbelow(100) + 1} LTDA",
+        value=float(f"{secrets.randbelow(491) + 10}.{secrets.randbelow(100)}"),
+        due_date=date.today() + timedelta(days=secrets.randbelow(10) + 1)
     )
 
 
-def processar_pagamento(
+def process_payment(
     db: Session,
-    dados: PagamentoBoletoRequest,
+    data: BoletoPaymentRequest,
     user_id: str,
     correlation_id: str
-) -> TransacaoBoleto:
+) -> BoletoTransaction:
 
-    saldo = get_saldo(db, user_id)
-    if saldo < dados.valor:
-        raise ValueError("Saldo insuficiente")
+    balance = get_balance(db, user_id)
+    if balance < data.value:
+        raise ValueError("Insufficient balance")
 
-    boleto = TransacaoBoleto(
+    boleto = BoletoTransaction(
         id=str(uuid4()),
-        valor=dados.valor,
-        codigo_barras=dados.codigo_barras,
-        descricao=dados.descricao,
-        status=StatusBoleto.PAGO,
+        value=data.value,
+        barcode=data.barcode,
+        description=data.description,
+        status=BoletoStatus.PAID,
         user_id=user_id,
         correlation_id=correlation_id
     )
@@ -51,15 +51,15 @@ def processar_pagamento(
     db.refresh(boleto)
 
     audit_log(
-        action="boleto_pago",
+        action="boleto_paid",
         user=user_id,
         resource=f"boleto_id={boleto.id}",
         details={
             "correlation_id": correlation_id,
-            "valor": dados.valor,
-            "codigo_barras": dados.codigo_barras
+            "value": data.value,
+            "barcode": data.barcode
         }
     )
 
-    logger.info(f"Boleto pago: id={boleto.id}, valor={dados.valor}")
+    logger.info(f"Boleto paid: id={boleto.id}, value={data.value}")
     return boleto

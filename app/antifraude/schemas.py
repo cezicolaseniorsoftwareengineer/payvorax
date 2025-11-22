@@ -6,17 +6,17 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
-class TransacaoAntifraude(BaseModel):
+class AntifraudTransaction(BaseModel):
     """Fraud analysis request payload."""
-    valor: float = Field(..., gt=0, description="Transaction value (R$)")
-    horario: str = Field(..., description="Transaction time (HH:MM)")
-    tentativas_ultimas_24h: int = Field(..., ge=0, description="Attempts in last 24h")
-    tipo_transacao: str = Field(default="PIX", description="Transaction type")
-    origem: Optional[str] = Field(None, description="Transaction origin")
+    value: float = Field(..., gt=0, description="Transaction value (R$)")
+    time: str = Field(..., description="Transaction time (HH:MM)")
+    attempts_last_24h: int = Field(..., ge=0, description="Attempts in last 24h")
+    transaction_type: str = Field(default="PIX", description="Transaction type")
+    origin: Optional[str] = Field(None, description="Transaction origin")
 
-    @field_validator('horario')
+    @field_validator('time')
     @classmethod
-    def validar_horario(cls, v: str) -> str:
+    def validate_time(cls, v: str) -> str:
         """Validates time format (HH:MM) and logical constraints."""
         try:
             hour, minute = map(int, v.split(':'))
@@ -26,20 +26,20 @@ class TransacaoAntifraude(BaseModel):
         except Exception:
             raise ValueError('Invalid time format. Use HH:MM')
 
-    @field_validator('tentativas_ultimas_24h')
+    @field_validator('attempts_last_24h')
     @classmethod
-    def validar_tentativas(cls, v: int) -> int:
+    def validate_attempts(cls, v: int) -> int:
         """Sanity check for attempt counters to prevent integer overflow or DoS."""
         if v > 100:
             raise ValueError('Number of attempts exceeds reasonable limit')
         return v
 
 
-class ResultadoAntifraude(BaseModel):
+class AntifraudResult(BaseModel):
     """Fraud analysis result payload."""
     score: int = Field(..., ge=0, le=100, description="Risk Score (0-100)")
-    aprovado: bool = Field(..., description="Approval status")
-    motivo: str = Field(..., description="Decision reason")
-    regras_ativadas: List[str] = Field(..., description="Rules contributing to score")
-    nivel_risco: str = Field(..., description="Risk Level: BAIXO, MEDIO, ALTO")
-    recomendacao: str = Field(..., description="Action recommendation")
+    approved: bool = Field(..., description="Approval status")
+    reason: str = Field(..., description="Decision reason")
+    triggered_rules: List[str] = Field(..., description="Rules contributing to score")
+    risk_level: str = Field(..., description="Risk Level: LOW, MEDIUM, HIGH")
+    recommendation: str = Field(..., description="Action recommendation")

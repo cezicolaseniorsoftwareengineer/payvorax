@@ -2,6 +2,7 @@
 Database connection management and ORM session factory.
 Supports dialect abstraction for SQLite and PostgreSQL.
 """
+from typing import Any
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -17,7 +18,7 @@ engine = create_engine(
 # Enable Write-Ahead Logging (WAL) for SQLite to handle concurrency better
 if "sqlite" in settings.DATABASE_URL:
     @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, connection_record):
+    def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA synchronous=NORMAL")

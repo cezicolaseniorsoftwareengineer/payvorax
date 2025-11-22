@@ -27,6 +27,10 @@ def main():
     print("Documentation: http://localhost:8000/docs")
     print("Health check:  http://localhost:8000/health\n")
 
+    # Set flag to allow application startup
+    import os
+    os.environ["NEWCREDIT_ALLOWED_START"] = "1"
+
     try:
         subprocess.run(
             [sys.executable, "-m", "uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],

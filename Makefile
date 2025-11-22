@@ -19,7 +19,7 @@ format: ## Auto-format code
 	poetry run isort .
 
 run: ## Start local development server
-	poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	python start.py
 
 docker-up: ## Start containers in detached mode
 	docker-compose up -d --build

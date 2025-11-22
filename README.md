@@ -429,20 +429,6 @@ git commit -m "feat: implement complete fintech project with 3 challenges
 
 ---
 
-## Author
-
-Developed for the **Fintech Mais Todos Tech Challenge**
-
-Demonstration of:
-
-- Professional Architecture
-- Software Engineering Best Practices
-- Clean and Documented Code
-- Security and Observability
-- Tests and Quality
-
----
-
 ## License
 
 This project was developed for educational and technical demonstration purposes.

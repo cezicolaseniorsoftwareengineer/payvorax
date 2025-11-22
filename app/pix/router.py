@@ -8,7 +8,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session
 
-from app.pix.models import TipoTransacao, TransacaoPix
+from app.pix.models import TransactionType, PixTransaction
 from app.pix.schemas import (
     PixCreateRequest,
     PixConfirmRequest,
@@ -16,23 +16,23 @@ from app.pix.schemas import (
     PixStatementResponse,
     PixChargeRequest,
     PixChargeResponse,
-    StatusPix,
-    TipoChavePix
+    PixChargeConfirmRequest,
+    PixStatus,
+    PixKeyType
 )
-from app.pix.service import criar_pix, confirmar_pix, buscar_pix, listar_extrato, cancelar_pix
+from app.pix.service import create_pix, confirm_pix, get_pix, list_statement, cancel_pix
 from app.core.database import get_db
 from app.core.logger import get_logger_with_correlation
 from app.auth.dependencies import get_current_user, require_active_account
 from app.auth.models import User
 from app.core.utils import mask_cpf_cnpj, format_brasilia_time
-import re
 
 router = APIRouter(tags=["PIX"])
 
 
 @router.post("/transacoes", response_model=PixResponse, status_code=201)
-def criar_transacao_pix(
-    dados: PixCreateRequest,
+def create_pix_transaction(
+    data: PixCreateRequest,
     x_idempotency_key: str = Header(..., alias="X-Idempotency-Key"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_active_account),
@@ -44,9 +44,9 @@ def criar_transacao_pix(
     Creates a new transaction with idempotency support.
     **Requires active account (at least one deposit made).**
 
-    - **valor**: Transaction value (R$)
-    - **tipo_chave**: Key Type (CPF, EMAIL, TELEFONE, ALEATORIA)
-    - **chave_pix**: Valid destination key
+    - **value**: Transaction value (R$)
+    - **key_type**: Key Type (CPF, EMAIL, PHONE, RANDOM)
+    - **pix_key**: Valid destination key
     - **X-Idempotency-Key**: Mandatory header to ensure uniqueness
 
     **Returns:**
@@ -57,20 +57,20 @@ def criar_transacao_pix(
     logger = get_logger_with_correlation(correlation_id)
 
     try:
-        logger.info(f"Starting PIX creation: {dados.model_dump()} for user {current_user.id}")
+        logger.info(f"Starting PIX creation: {data.model_dump()} for user {current_user.id}")
 
-        pix = criar_pix(
+        pix = create_pix(
             db,
-            dados,
+            data,
             x_idempotency_key,
             correlation_id,
             user_id=current_user.id,
-            tipo=TipoTransacao.ENVIADO
+            type=TransactionType.SENT
         )
 
         # Auto-confirm immediate transactions (Simulating instant payment)
-        if pix.status == StatusPix.CRIADO and pix.tipo == TipoTransacao.ENVIADO:
-            confirmed_pix = confirmar_pix(db, pix.id, correlation_id)
+        if pix.status == PixStatus.CREATED and pix.type == TransactionType.SENT:
+            confirmed_pix = confirm_pix(db, pix.id, correlation_id)
             if confirmed_pix:
                 pix = confirmed_pix
 
@@ -85,8 +85,8 @@ def criar_transacao_pix(
 
 
 @router.post("/transacoes/confirmar", response_model=PixResponse)
-def confirmar_transacao_pix(
-    dados: PixConfirmRequest,
+def confirm_pix_transaction(
+    data: PixConfirmRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     x_correlation_id: str = Header(default=None)
@@ -99,12 +99,12 @@ def confirmar_transacao_pix(
     logger = get_logger_with_correlation(correlation_id)
 
     try:
-        logger.info(f"Confirming PIX: {dados.pix_id}")
+        logger.info(f"Confirming PIX: {data.pix_id}")
 
         # Note: In a real scenario, confirmation might come from a webhook without user context,
         # but for this simulation, we assume the user triggers it or we validate ownership.
         # For now, we just confirm.
-        pix = confirmar_pix(db, dados.pix_id, correlation_id)
+        pix = confirm_pix(db, data.pix_id, correlation_id)
 
         if not pix:
             raise HTTPException(status_code=404, detail="Transaction not found")
@@ -119,7 +119,7 @@ def confirmar_transacao_pix(
 
 
 @router.get("/transacoes/{pix_id}", response_model=PixResponse)
-def consultar_pix(
+def get_pix_transaction(
     pix_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -127,7 +127,7 @@ def consultar_pix(
     """
     Retrieves transaction details by ID.
     """
-    pix = buscar_pix(db, pix_id, current_user.id)
+    pix = get_pix(db, pix_id, current_user.id)
 
     if not pix:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -136,7 +136,7 @@ def consultar_pix(
 
 
 @router.delete("/transacoes/{pix_id}", response_model=PixResponse)
-def cancelar_agendamento_pix(
+def cancel_pix_scheduling(
     pix_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -151,7 +151,7 @@ def cancelar_agendamento_pix(
     try:
         logger.info(f"PIX cancellation request: {pix_id} user={current_user.id}")
 
-        pix = cancelar_pix(db, pix_id, current_user.id, correlation_id)
+        pix = cancel_pix(db, pix_id, current_user.id, correlation_id)
 
         if not pix:
             raise HTTPException(status_code=404, detail="Transaction not found or does not belong to user")
@@ -166,110 +166,150 @@ def cancelar_agendamento_pix(
 
 
 @router.get("/extrato", response_model=PixStatementResponse)
-def consultar_extrato(
-    status: Optional[StatusPix] = None,
-    limite: int = 50,
+def get_statement(
+    status: Optional[PixStatus] = None,
+    limit: int = 50,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> PixStatementResponse:
     """
     Retrieves transaction ledger with optional status filtering.
     """
-    resultado: Dict[str, Any] = listar_extrato(db, current_user.id, limite, status.value if status else None)
+    result: Dict[str, Any] = list_statement(db, current_user.id, limit, status.value if status else None)
 
     return PixStatementResponse(
-        total_transacoes=resultado["total_transacoes"],
-        total_valor=resultado["total_valor"],
-        saldo=resultado["saldo"],
-        transacoes=[build_pix_response(t, db) for t in resultado["transacoes"]]
+        total_transactions=result["total_transactions"],
+        total_value=result["total_value"],
+        balance=result["balance"],
+        transactions=[build_pix_response(t, db) for t in result["transactions"]]
     )
 
 
 @router.post("/cobrar", response_model=PixChargeResponse)
-def gerar_cobranca_pix(
-    dados: PixChargeRequest,
+def generate_pix_charge(
+    data: PixChargeRequest,
     request: Request,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     x_correlation_id: str = Header(default=None)
 ) -> PixChargeResponse:
     """
     Generates a PIX Charge (Receive Money).
-    Returns a simulated Copy & Paste code and QR Code URL.
+    Creates a pending transaction that expires after one use.
     """
     correlation_id = x_correlation_id or str(uuid4())
     logger = get_logger_with_correlation(correlation_id)
 
-    logger.info(f"Generating PIX charge: value={dados.valor} for user {current_user.id}")
+    logger.info(f"Generating PIX charge: value={data.value} for user {current_user.id}")
 
-    # Simulate a Pix Copy & Paste string (EMV standard-ish mock)
-    # In a real app, this would be generated by a library like 'pix-qrcode'
-    mock_payload = (
-        f"00020126580014BR.GOV.BCB.PIX0136123e4567-e89b-12d3-a456-426614174000520400005303986540"
-        f"{str(dados.valor).replace('.', '')}5802BR5913NewCredit User6008BRASILIA62070503***6304"
+    # Create a pending transaction for this charge
+    # This ensures the charge is stateful and can be expired/validated
+    charge_id = str(uuid4())
+
+    pix_data = PixCreateRequest(
+        value=data.value,
+        pix_key="DYNAMIC_QR_CODE",
+        key_type=PixKeyType.RANDOM,
+        description=data.description or "Cobrança via QR Code"
     )
 
-    # Generate simulation URL for the QR Code
-    # This allows the user to scan the QR code with a camera and open the simulation page
-    base_url = str(request.base_url).rstrip('/')
-    simulation_url = f"{base_url}/pix/pagar-qrcode?valor={dados.valor}&desc={dados.descricao or ''}"
+    # Create transaction with CREATED status (Pending Payment)
+    # We use the charge_id as the transaction ID
+    pix = PixTransaction(
+        id=charge_id,
+        value=data.value,
+        pix_key=pix_data.pix_key,
+        key_type=pix_data.key_type.value,
+        type=TransactionType.RECEIVED,
+        status=PixStatus.CREATED,
+        idempotency_key=f"charge-{charge_id}",
+        description=pix_data.description,
+        correlation_id=correlation_id,
+        user_id=current_user.id
+    )
 
-    # Using a public API to generate QR Code image that points to the simulation URL
+    db.add(pix)
+    db.commit()
+    db.refresh(pix)
+
+    # Simulate a Pix Copy & Paste string
+    mock_payload = (
+        f"00020126580014BR.GOV.BCB.PIX0136{charge_id}520400005303986540"
+        f"{str(data.value).replace('.', '')}5802BR5913NewCredit User6008BRASILIA62070503***6304"
+    )
+
+    # Generate simulation URL with the CHARGE ID
+    base_url = str(request.base_url).rstrip('/')
+    simulation_url = f"{base_url}/pix/pagar-qrcode?id={charge_id}"
+
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={simulation_url}"
 
     return PixChargeResponse(
-        valor=dados.valor,
-        descricao=dados.descricao,
-        copia_e_cola=mock_payload,
+        charge_id=charge_id,
+        value=data.value,
+        description=data.description,
+        copy_and_paste=mock_payload,
         qr_code_url=qr_url
     )
 
 
 @router.post("/receber/confirmar", response_model=PixResponse)
-def processar_recebimento_pix(
-    dados: PixChargeRequest,
+def process_pix_receipt(
+    data: PixChargeConfirmRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     x_correlation_id: str = Header(default=None)
 ) -> PixResponse:
     """
-    Processes a received PIX (Deposit).
-    Called by the simulation page when the user confirms payment.
+    Processes a received PIX (Deposit) for a specific Charge ID.
+    Enforces One-Time Use: If charge is already paid, rejects.
     """
     correlation_id = x_correlation_id or str(uuid4())
     logger = get_logger_with_correlation(correlation_id)
 
-    logger.info(f"Processing PIX receipt: value={dados.valor} for user {current_user.id}")
+    logger.info(f"Processing PIX receipt for charge: {data.charge_id}")
 
-    # Create a transaction representing the deposit
-    # We use a dummy key for the sender since it's a simulation
-    pix_dados = PixCreateRequest(
-        valor=dados.valor,
-        chave_pix="SIMULACAO_QR_CODE",
-        tipo_chave=TipoChavePix.ALEATORIA,
-        descricao=dados.descricao or "Deposit via QR Code"
-    )
+    # Find the charge transaction
+    # Note: In a real scenario, we would verify if the payer is paying the right person.
+    # Here, we assume the current_user is the one triggering the simulation (the payer/payee context is simplified).
+    # Actually, usually the PAYER triggers this. But in this simulation, the RECEIVER (User) might be opening the link?
+    # No, the link is opened by the Payer.
+    # Let's assume the transaction exists in the DB.
 
-    # Generate a unique idempotency key
-    idempotency_key = f"deposito-{uuid4()}"
+    pix = db.query(PixTransaction).filter(PixTransaction.id == data.charge_id).first()
+
+    if not pix:
+        raise HTTPException(status_code=404, detail="Cobrança não encontrada.")
+
+    # CRITICAL: One-Time Use Check
+    if pix.status == PixStatus.CONFIRMED:
+        logger.warning(f"Attempt to reuse paid charge: {data.charge_id}")
+        raise HTTPException(status_code=409, detail="Esta cobrança já foi paga e não pode ser utilizada novamente.")
+
+    if pix.status != PixStatus.CREATED:
+        raise HTTPException(status_code=400, detail=f"Status da cobrança inválido: {pix.status}")
 
     try:
-        pix = criar_pix(db, pix_dados, idempotency_key, correlation_id, user_id=current_user.id, tipo=TipoTransacao.RECEBIDO)
+        # Confirm the transaction
+        pix.status = PixStatus.CONFIRMED
+        db.add(pix)
 
-        # Auto-confirm since it's a simulation
-        confirmar_pix(db, pix.id, correlation_id)
+        # Credit the receiver (User who created the charge)
+        receiver_user = db.query(User).filter(User.id == pix.user_id).first()
+        if receiver_user:
+            # Increase credit limit logic
+            limit_increase = pix.value * 0.50
+            receiver_user.credit_limit += limit_increase
+            db.add(receiver_user)
+            logger.info(f"Credit limit increased by R$ {limit_increase:.2f} for user {receiver_user.id}")
 
-        # Increase credit limit by 50% of the deposited amount
-        aumento_limite = dados.valor * 0.50
-        current_user.limite_credito += aumento_limite
-        db.add(current_user)
         db.commit()
-        db.refresh(current_user)
-
-        logger.info(f"Credit limit increased by R$ {aumento_limite:.2f} for user {current_user.id}")
+        db.refresh(pix)
 
         return build_pix_response(pix, db)
 
     except Exception as e:
+        db.rollback()
         logger.error(f"Error processing receipt: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error processing deposit")
 
@@ -278,21 +318,6 @@ def build_pix_response(pix: Any, db: Session) -> PixResponse:
     """
     Constructs a PixResponse with enriched data (names, masked docs, formatted time).
     """
-    # 1. Basic fields
-    response_data = {
-        "id": pix.id,
-        "valor": pix.valor,
-        "chave_pix": pix.chave_pix,
-        "tipo_chave": pix.tipo_chave,
-        "tipo": pix.tipo,
-        "status": pix.status,
-        "descricao": pix.descricao,
-        "data_agendamento": pix.data_agendamento,
-        "criado_em": pix.criado_em,
-        "atualizado_em": pix.atualizado_em,
-        "formatted_time": format_brasilia_time(pix.criado_em)
-    }
-
     # 2. Identify Sender and Receiver
     # Default values
     sender_name = "Unknown"
@@ -303,60 +328,71 @@ def build_pix_response(pix: Any, db: Session) -> PixResponse:
     # Fetch the owner of this transaction record
     owner_user = db.query(User).filter(User.id == pix.user_id).first()
 
-    if pix.tipo == TipoTransacao.ENVIADO:
+    if pix.type == TransactionType.SENT:
         # The owner is the sender
         if owner_user:
-            sender_name = owner_user.nome
+            sender_name = owner_user.name
             sender_doc = mask_cpf_cnpj(owner_user.cpf_cnpj)
 
         # Try to find the receiver via correlation_id (Internal Transfer)
-        # Look for a RECEBIDO transaction with same correlation_id
-        receiver_tx = db.query(TransacaoPix).filter(
-            TransacaoPix.correlation_id == pix.correlation_id,
-            TransacaoPix.tipo == TipoTransacao.RECEBIDO
+        # Look for a RECEIVED transaction with same correlation_id
+        receiver_tx = db.query(PixTransaction).filter(
+            PixTransaction.correlation_id == pix.correlation_id,
+            PixTransaction.type == TransactionType.RECEIVED
         ).first()
 
         if receiver_tx:
             receiver_user = db.query(User).filter(User.id == receiver_tx.user_id).first()
             if receiver_user:
-                receiver_name = receiver_user.nome
+                receiver_name = receiver_user.name
                 receiver_doc = mask_cpf_cnpj(receiver_user.cpf_cnpj)
         else:
             # External or not found - Try to resolve from Key
             # If key is CPF/CNPJ, we might mask it. If it's email, show it.
             receiver_name = "External Receiver"
-            receiver_doc = mask_cpf_cnpj(pix.chave_pix) # Best effort
+            receiver_doc = mask_cpf_cnpj(pix.pix_key) # Best effort
 
-    elif pix.tipo == TipoTransacao.RECEBIDO:
+    elif pix.type == TransactionType.RECEIVED:
         # The owner is the receiver
         if owner_user:
-            receiver_name = owner_user.nome
+            receiver_name = owner_user.name
             receiver_doc = mask_cpf_cnpj(owner_user.cpf_cnpj)
 
         # Try to find the sender via correlation_id (Internal Transfer)
-        # Look for an ENVIADO transaction with same correlation_id
-        sender_tx = db.query(TransacaoPix).filter(
-            TransacaoPix.correlation_id == pix.correlation_id,
-            TransacaoPix.tipo == TipoTransacao.ENVIADO
+        # Look for an SENT transaction with same correlation_id
+        sender_tx = db.query(PixTransaction).filter(
+            PixTransaction.correlation_id == pix.correlation_id,
+            PixTransaction.type == TransactionType.SENT
         ).first()
 
         if sender_tx:
             sender_user = db.query(User).filter(User.id == sender_tx.user_id).first()
             if sender_user:
-                sender_name = sender_user.nome
+                sender_name = sender_user.name
                 sender_doc = mask_cpf_cnpj(sender_user.cpf_cnpj)
         else:
             # Deposit or External
-            if "SIMULACAO" in pix.chave_pix or "Depósito" in (pix.descricao or ""):
+            if "SIMULACAO" in pix.pix_key or "Deposit" in (pix.description or ""):
                 sender_name = "Deposit via QR Code"
                 sender_doc = "Financial Institution"
             else:
                 sender_name = "External Sender"
                 sender_doc = "***"
 
-    response_data["sender_name"] = sender_name
-    response_data["sender_doc"] = sender_doc
-    response_data["receiver_name"] = receiver_name
-    response_data["receiver_doc"] = receiver_doc
-
-    return PixResponse(**response_data)
+    return PixResponse(
+        id=pix.id,
+        value=pix.value,
+        pix_key=pix.pix_key,
+        key_type=pix.key_type,
+        type=pix.type,
+        status=pix.status,
+        description=pix.description,
+        scheduled_date=pix.scheduled_date,
+        created_at=pix.created_at,
+        updated_at=pix.updated_at,
+        formatted_time=format_brasilia_time(pix.created_at),
+        sender_name=sender_name,
+        sender_doc=sender_doc,
+        receiver_name=receiver_name,
+        receiver_doc=receiver_doc
+    )

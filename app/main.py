@@ -3,7 +3,23 @@ Fintech Tech Challenge - Enterprise FastAPI Application.
 Implements Domain-Driven Design (DDD) and Hexagonal Architecture.
 Features strict input validation, audit logging, and distributed tracing.
 """
+import os
+import sys
 from typing import Callable, Awaitable, Dict, Any
+
+# STRICT STARTUP ENFORCEMENT
+# The application must be started via `python start.py`
+if not os.environ.get("NEWCREDIT_ALLOWED_START") and "pytest" not in sys.modules:
+    # Allow production environments (Render/PythonAnywhere) to bypass if needed,
+    # but for local dev, enforce start.py.
+    # Checking for common production env vars or if explicitly disabled.
+    if not os.environ.get("RENDER") and not os.environ.get("PYTHONANYWHERE_DOMAIN"):
+        print("\n\033[91mCRITICAL ERROR: Forbidden Startup Method.\033[0m")
+        print("You must use the standardized entry point:")
+        print("   > python start.py")
+        print("\nDirect execution via uvicorn or other methods is prohibited to ensure environment consistency.\n")
+        sys.exit(1)
+
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +38,6 @@ from app.web_routes import router as web_router
 from app.auth.router import router as auth_router
 from app.boleto.router import router as boleto_router
 from fastapi.staticfiles import StaticFiles
-import os
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 
@@ -119,9 +134,9 @@ async def add_correlation_id(request: Request, call_next: Callable[[Request], Aw
 
 
 # Router Registration
-app.include_router(parcelamento_router, prefix="/parcelamento", tags=["Installment"])
+app.include_router(parcelamento_router, prefix="/installments", tags=["Installment"])
 app.include_router(pix_router, prefix="/pix", tags=["PIX"])
-app.include_router(antifraude_router, prefix="/antifraude", tags=["Anti-Fraud"])
+app.include_router(antifraude_router, prefix="/antifraud", tags=["Anti-Fraud"])
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(boleto_router, tags=["Boleto"])
 
@@ -145,11 +160,11 @@ def api_info() -> Dict[str, Any]:
         "status": "online",
         "endpoints": {
             "ui": "/",
-            "parcelamento": "/parcelamento/simular",
+            "installments": "/installments/simulate",
             "pix_create": "/pix/create",
             "pix_confirm": "/pix/confirm",
             "pix_statement": "/pix/statement",
-            "antifraude": "/antifraude/analisar",
+            "antifraud": "/antifraud/analyze",
             "docs": "/docs",
             "redoc": "/redoc"
         }
@@ -217,11 +232,4 @@ async def global_exception_handler(request: Request, exc: Exception):
             "correlation_id": correlation_id
         }
     )
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",  # nosec
-        port=8000,
-        reload=settings.DEBUG
-    )
+

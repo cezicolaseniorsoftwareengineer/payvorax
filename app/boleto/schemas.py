@@ -3,26 +3,26 @@ from typing import Optional
 from datetime import date
 
 
-class BoletoConsulta(BaseModel):
-    codigo_barras: str = Field(..., min_length=44, max_length=48, description="Código de barras ou linha digitável")
+class BoletoQuery(BaseModel):
+    barcode: str = Field(..., min_length=44, max_length=48, description="Barcode or typeable line")
 
 
-class BoletoDetalhes(BaseModel):
-    codigo_barras: str
-    beneficiario: str
-    valor: float
-    vencimento: date
-    status: str = "PENDENTE"
+class BoletoDetails(BaseModel):
+    barcode: str
+    beneficiary: str
+    value: float
+    due_date: date
+    status: str = "PENDING"
 
 
-class PagamentoBoletoRequest(BaseModel):
-    codigo_barras: str
-    valor: float
-    descricao: Optional[str] = "Pagamento de Boleto"
+class BoletoPaymentRequest(BaseModel):
+    barcode: str
+    value: float
+    description: Optional[str] = "Boleto Payment"
 
 
-class PagamentoResponse(BaseModel):
+class PaymentResponse(BaseModel):
     id: str
     status: str
-    mensagem: str
-    comprovante: str
+    message: str
+    receipt: str

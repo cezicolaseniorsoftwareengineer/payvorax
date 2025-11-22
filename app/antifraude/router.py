@@ -7,26 +7,26 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Header
 
-from app.antifraude.rules import motor_antifraude
-from app.antifraude.schemas import ResultadoAntifraude, TransacaoAntifraude
+from app.antifraude.rules import antifraud_engine
+from app.antifraude.schemas import AntifraudResult, AntifraudTransaction
 from app.core.logger import audit_log, get_logger_with_correlation
 
-router = APIRouter(tags=["Antifraude"])
+router = APIRouter(tags=["Antifraud"])
 
 
-@router.post("/analisar", response_model=ResultadoAntifraude)
-def analisar_transacao(
-    transacao: TransacaoAntifraude,
+@router.post("/analyze", response_model=AntifraudResult)
+def analyze_transaction(
+    transaction: AntifraudTransaction,
     x_correlation_id: Annotated[Optional[str], Header()] = None
-) -> ResultadoAntifraude:
+) -> AntifraudResult:
     """
     **Challenge 3: Simplified Anti-Fraud Engine**
 
     Performs real-time risk scoring.
 
-    - **valor**: Transaction value (R$)
-    - **horario**: Transaction time (HH:MM)
-    - **tentativas_ultimas_24h**: Velocity check
+    - **value**: Transaction value (R$)
+    - **time**: Transaction time (HH:MM)
+    - **attempts_last_24h**: Velocity check
 
     **Returns:**
     - Approval decision
@@ -38,53 +38,53 @@ def analisar_transacao(
 
     logger.info(
         "Starting anti-fraud analysis: value=%s, time=%s",
-        transacao.valor,
-        transacao.horario
+        transaction.value,
+        transaction.time
     )
 
     # Execute analysis
-    resultado = motor_antifraude.analisar(transacao)
+    result = antifraud_engine.analyze(transaction)
 
     # Audit
     audit_log(
-        action="analise_antifraude",
-        user="sistema",
-        resource="transacao",
+        action="antifraud_analysis",
+        user="system",
+        resource="transaction",
         details={
             "correlation_id": correlation_id,
-            "valor": transacao.valor,
-            "score": resultado["score"],
-            "aprovado": resultado["aprovado"],
-            "nivel_risco": resultado["nivel_risco"]
+            "value": transaction.value,
+            "score": result["score"],
+            "approved": result["approved"],
+            "risk_level": result["risk_level"]
         }
     )
 
-    return ResultadoAntifraude(
-        score=resultado["score"],
-        aprovado=resultado["aprovado"],
-        motivo=resultado["motivo"],
-        regras_ativadas=resultado["regras_ativadas"],
-        nivel_risco=resultado["nivel_risco"],
-        recomendacao=resultado["recomendacao"]
+    return AntifraudResult(
+        score=result["score"],
+        approved=result["approved"],
+        reason=result["reason"],
+        triggered_rules=result["triggered_rules"],
+        risk_level=result["risk_level"],
+        recommendation=result["recommendation"]
     )
 
 
-@router.get("/regras", response_model=dict[str, Any])
-def listar_regras() -> dict[str, Any]:
+@router.get("/rules", response_model=dict[str, Any])
+def list_rules() -> dict[str, Any]:
     """
     Exposes the active rule configuration for transparency and auditability.
     """
-    regras: list[dict[str, Any]] = [
+    rules: list[dict[str, Any]] = [
         {
-            "nome": regra.nome,
-            "pontos": regra.pontos,
-            "descricao": regra.descricao
+            "name": rule.name,
+            "points": rule.points,
+            "description": rule.description
         }
-        for regra in motor_antifraude.regras
+        for rule in antifraud_engine.rules
     ]
 
     return {
-        "total_regras": len(regras),
-        "limite_aprovacao": motor_antifraude.limite_aprovacao,
-        "regras": regras
+        "total_rules": len(rules),
+        "approval_limit": antifraud_engine.approval_limit,
+        "rules": rules
     }

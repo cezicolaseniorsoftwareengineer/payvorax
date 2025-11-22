@@ -92,7 +92,7 @@
             btn.innerHTML = 'Cadastrando...';
 
             const data = {
-                nome: document.getElementById('nome').value,
+                name: document.getElementById('nome').value,
                 cpf_cnpj: document.getElementById('cpf_cnpj').value,
                 email: document.getElementById('email').value,
                 password: document.getElementById('password').value
@@ -108,7 +108,7 @@
                 if (response.ok) {
                     const result = await response.json();
                     // Auto-login successful
-                    localStorage.setItem('user_name', result.nome);
+                    localStorage.setItem('user_name', result.name);
                     localStorage.setItem('access_token', result.access_token); // Persistência extra
                     alert('Cadastro realizado com sucesso! Você já está logado.');
                     window.location.href = '/';

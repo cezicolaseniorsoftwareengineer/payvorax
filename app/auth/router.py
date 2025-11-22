@@ -35,7 +35,7 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
         # Create new user
         hashed_password = get_password_hash(user.password)
         new_user = User(
-            nome=user.nome,
+            name=user.name,
             email=user.email,
             cpf_cnpj=user.cpf_cnpj,
             hashed_password=hashed_password
@@ -50,7 +50,7 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
         # Auto-login: Generate token
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": new_user.cpf_cnpj, "nome": new_user.nome},
+            data={"sub": new_user.cpf_cnpj, "name": new_user.name},
             expires_delta=access_token_expires
         )
 
@@ -68,7 +68,7 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
         return {
             "access_token": access_token,
             "token_type": "bearer",
-            "nome": new_user.nome,
+            "name": new_user.name,
             "message": "Registration successful."
         }
 
@@ -107,7 +107,7 @@ def login(response: Response, user_in: UserLogin, db: Session = Depends(get_db))
 
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": user.cpf_cnpj, "nome": user.nome},
+            data={"sub": user.cpf_cnpj, "name": user.name},
             expires_delta=access_token_expires
         )
 
@@ -126,7 +126,7 @@ def login(response: Response, user_in: UserLogin, db: Session = Depends(get_db))
         return {
             "access_token": access_token,
             "token_type": "bearer",
-            "nome": user.nome
+            "name": user.name
         }
 
     except HTTPException as he:

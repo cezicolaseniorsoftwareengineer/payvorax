@@ -3,85 +3,85 @@ Anti-Fraud Rule Engine.
 Implements a configurable risk scoring system based on heuristic analysis.
 """
 from typing import List, Dict, Any
-from app.antifraude.schemas import TransacaoAntifraude
+from app.antifraude.schemas import AntifraudTransaction
 from app.core.logger import logger
 
 
-class RegraAntifraude:
+class AntifraudRule:
     """Abstract base class for fraud detection rules. Enforces the Strategy Pattern."""
 
-    def __init__(self, nome: str, pontos: int, descricao: str):
-        self.nome = nome
-        self.pontos = pontos
-        self.descricao = descricao
+    def __init__(self, name: str, points: int, description: str):
+        self.name = name
+        self.points = points
+        self.description = description
 
-    def avaliar(self, transacao: TransacaoAntifraude) -> bool:
+    def evaluate(self, transaction: AntifraudTransaction) -> bool:
         """Evaluates the rule against the transaction context. Returns True if triggered."""
         raise NotImplementedError
 
 
-class RegraHorarioNoturno(RegraAntifraude):
+class NightTimeRule(AntifraudRule):
     """Heuristic: High-risk time window (22:00 - 06:00)."""
 
     def __init__(self):
         super().__init__(
-            nome="HORARIO_NOTURNO",
-            pontos=40,
-            descricao="Transaction performed during high-risk hours (22h-6h)"
+            name="NIGHT_TIME",
+            points=40,
+            description="Transaction performed during high-risk hours (22h-6h)"
         )
 
-    def avaliar(self, transacao: TransacaoAntifraude) -> bool:
-        hora = int(transacao.horario.split(':')[0])
+    def evaluate(self, transaction: AntifraudTransaction) -> bool:
+        hour = int(transaction.time.split(':')[0])
         # Night time: 22:00 inclusive to 06:00 exclusive
-        return hora >= 22 or hora < 6
+        return hour >= 22 or hour < 6
 
 
-class RegraValorAlto(RegraAntifraude):
+class HighValueRule(AntifraudRule):
     """Heuristic: Transaction value exceeds standard threshold."""
 
-    def __init__(self, limite: float = 300.0):
+    def __init__(self, limit: float = 300.0):
         super().__init__(
-            nome="VALOR_ALTO",
-            pontos=30,
-            descricao=f"Transaction value exceeds R$ {limite}"
+            name="HIGH_VALUE",
+            points=30,
+            description=f"Transaction value exceeds R$ {limit}"
         )
-        self.limite = limite
+        self.limit = limit
 
-    def avaliar(self, transacao: TransacaoAntifraude) -> bool:
-        return transacao.valor > self.limite
+    def evaluate(self, transaction: AntifraudTransaction) -> bool:
+        return transaction.value > self.limit
 
 
-class RegraTentativasExcessivas(RegraAntifraude):
+class ExcessiveAttemptsRule(AntifraudRule):
     """Heuristic: Velocity check (excessive attempts in 24h window)."""
 
-    def __init__(self, limite: int = 3):
+    def __init__(self, limit: int = 3):
         super().__init__(
-            nome="TENTATIVAS_EXCESSIVAS",
-            pontos=50,
-            descricao=f"More than {limite} attempts in the last 24h"
+            name="EXCESSIVE_ATTEMPTS",
+            points=50,
+            description=f"More than {limit} attempts in the last 24h"
         )
-        self.limite = limite
+        self.limit = limit
 
-    def avaliar(self, transacao: TransacaoAntifraude) -> bool:
-        return transacao.tentativas_ultimas_24h > self.limite
+    def evaluate(self, transaction: AntifraudTransaction) -> bool:
+        return transaction.attempts_last_24h > self.limit
 
 
-class RegraValorMuitoAlto(RegraAntifraude):
+class ExtremeValueRule(AntifraudRule):
     """Heuristic: Extreme value anomaly detection."""
 
-    def __init__(self, limite: float = 1000.0):
+    def __init__(self, limit: float = 1000.0):
         super().__init__(
-            nome="VALOR_EXTREMO",
-            pontos=60,
-            descricao=f"Transaction value exceeds R$ {limite} (extreme)"
+            name="EXTREME_VALUE",
+            points=60,
+            description=f"Transaction value exceeds R$ {limit} (extreme)"
         )
-        self.limite = limite
+        self.limit = limit
 
-    def avaliar(self, transacao: TransacaoAntifraude) -> bool:
-        return transacao.valor > self.limite
+    def evaluate(self, transaction: AntifraudTransaction) -> bool:
+        return transaction.value > self.limit
 
 
-class MotorAntifraude:
+class AntifraudEngine:
     """
     Fraud Detection Engine.
     Aggregates risk scores from registered rules and determines transaction approval status.
@@ -90,65 +90,65 @@ class MotorAntifraude:
     """
 
     def __init__(self):
-        self.regras: List[RegraAntifraude] = [
-            RegraHorarioNoturno(),
-            RegraValorAlto(limite=300.0),
-            RegraTentativasExcessivas(limite=3),
-            RegraValorMuitoAlto(limite=1000.0)
+        self.rules: List[AntifraudRule] = [
+            NightTimeRule(),
+            HighValueRule(limit=300.0),
+            ExcessiveAttemptsRule(limit=3),
+            ExtremeValueRule(limit=1000.0)
         ]
-        self.limite_aprovacao = 60
+        self.approval_limit = 60
 
-    def analisar(self, transacao: TransacaoAntifraude) -> Dict[str, Any]:
+    def analyze(self, transaction: AntifraudTransaction) -> Dict[str, Any]:
         """
         Executes the rule chain against the transaction context.
         Returns a comprehensive risk assessment including score, decision, and triggered rules.
         """
         score = 0
-        regras_ativadas: List[str] = []
+        triggered_rules: List[str] = []
 
         # Evaluate each rule
-        for regra in self.regras:
-            if regra.avaliar(transacao):
-                score += regra.pontos
-                regras_ativadas.append(f"{regra.nome}: {regra.descricao}")
-                logger.info(f"Rule triggered: {regra.nome} (+{regra.pontos} points)")
+        for rule in self.rules:
+            if rule.evaluate(transaction):
+                score += rule.points
+                triggered_rules.append(f"{rule.name}: {rule.description}")
+                logger.info(f"Rule triggered: {rule.name} (+{rule.points} points)")
 
         # Cap score at 100
         score = min(score, 100)
 
         # Determine approval status
-        aprovado = score < self.limite_aprovacao
+        approved = score < self.approval_limit
 
         # Determine risk level
         if score < 30:
-            nivel_risco = "LOW"
-            recomendacao = "Approve transaction"
+            risk_level = "LOW"
+            recommendation = "Approve transaction"
         elif score < 60:
-            nivel_risco = "MEDIUM"
-            recomendacao = "Approve with monitoring"
+            risk_level = "MEDIUM"
+            recommendation = "Approve with monitoring"
         else:
-            nivel_risco = "HIGH"
-            recomendacao = "Reject and notify user"
+            risk_level = "HIGH"
+            recommendation = "Reject and notify user"
 
         # Define reason
-        if aprovado:
-            motivo = "Transaction approved - acceptable risk"
+        if approved:
+            reason = "Transaction approved - acceptable risk"
         else:
-            motivo = f"Transaction rejected - {nivel_risco.lower()} risk detected"
+            reason = f"Transaction rejected - {risk_level.lower()} risk detected"
 
-        resultado: Dict[str, Any] = {
+        result: Dict[str, Any] = {
             "score": score,
-            "aprovado": aprovado,
-            "motivo": motivo,
-            "regras_ativadas": regras_ativadas if regras_ativadas else ["No rules triggered"],
-            "nivel_risco": nivel_risco,
-            "recomendacao": recomendacao
+            "approved": approved,
+            "reason": reason,
+            "triggered_rules": triggered_rules if triggered_rules else ["No rules triggered"],
+            "risk_level": risk_level,
+            "recommendation": recommendation
         }
 
-        logger.info(f"Anti-fraud analysis completed: score={score}, approved={aprovado}, level={nivel_risco}")
+        logger.info(f"Anti-fraud analysis completed: score={score}, approved={approved}, level={risk_level}")
 
-        return resultado
+        return result
 
 
 # Singleton engine instance
-motor_antifraude = MotorAntifraude()
+antifraud_engine = AntifraudEngine()

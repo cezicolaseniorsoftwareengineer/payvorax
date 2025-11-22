@@ -3,7 +3,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.pix.service import listar_extrato
+from app.pix.service import list_statement
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
 import os
@@ -30,14 +30,14 @@ async def register_page(request: Request):
 @router.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Main Dashboard (Home)"""
-    extrato = listar_extrato(db, current_user.id)
-    saldo = extrato["saldo"]
+    statement = list_statement(db, current_user.id)
+    balance = statement["balance"]
 
     return templates.TemplateResponse("index.html", {
         "request": request,
         "page": "home",
-        "saldo": saldo,
-        "user_name": current_user.nome
+        "balance": balance,
+        "user_name": current_user.name
     })
 
 
@@ -46,7 +46,7 @@ async def pix_ui(request: Request, current_user: User = Depends(get_current_user
     """PIX Interface"""
     return templates.TemplateResponse(
         "pix.html",
-        {"request": request, "page": "pix", "user_name": current_user.nome}
+        {"request": request, "page": "pix", "user_name": current_user.name}
     )
 
 
@@ -55,7 +55,7 @@ async def parcelamento_ui(request: Request, current_user: User = Depends(get_cur
     """Simulation Interface"""
     return templates.TemplateResponse(
         "parcelamento.html",
-        {"request": request, "page": "parcelamento", "user_name": current_user.nome}
+        {"request": request, "page": "parcelamento", "user_name": current_user.name}
     )
 
 
@@ -64,11 +64,11 @@ async def pix_payment_simulation(request: Request, current_user: User = Depends(
     """QR Code Payment Simulation Page"""
     return templates.TemplateResponse(
         "pix_payment.html",
-        {"request": request, "page": "pix_payment", "user_name": current_user.nome}
+        {"request": request, "page": "pix_payment", "user_name": current_user.name}
     )
 
 
 @router.get("/ui/extrato", response_class=HTMLResponse)
 async def extrato_ui(request: Request, current_user: User = Depends(get_current_user)):
     """Statement Interface"""
-    return templates.TemplateResponse("extrato.html", {"request": request, "page": "extrato", "user_name": current_user.nome})
+    return templates.TemplateResponse("extrato.html", {"request": request, "page": "extrato", "user_name": current_user.name})

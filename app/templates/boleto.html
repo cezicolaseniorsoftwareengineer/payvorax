@@ -85,19 +85,19 @@
         }
 
         try {
-            const res = await fetch('/api/boleto/consulta', {
+            const res = await fetch('/api/boleto/query', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ codigo_barras: codigo })
+                body: JSON.stringify({ barcode: codigo })
             });
 
             if (!res.ok) throw new Error((await res.json()).detail);
 
             boletoAtual = await res.json();
 
-            document.getElementById('modalBeneficiario').innerText = boletoAtual.beneficiario;
-            document.getElementById('modalVencimento').innerText = new Date(boletoAtual.vencimento).toLocaleDateString('pt-BR');
-            document.getElementById('modalValor').innerText = boletoAtual.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            document.getElementById('modalBeneficiario').innerText = boletoAtual.beneficiary;
+            document.getElementById('modalVencimento').innerText = new Date(boletoAtual.due_date).toLocaleDateString('pt-BR');
+            document.getElementById('modalValor').innerText = boletoAtual.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
             document.getElementById('confirmModal').classList.remove('hidden');
         } catch (e) {
@@ -114,20 +114,20 @@
         if (!boletoAtual) return;
 
         try {
-            const res = await fetch('/api/boleto/pagar', {
+            const res = await fetch('/api/boleto/pay', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    codigo_barras: boletoAtual.codigo_barras,
-                    valor: boletoAtual.valor,
-                    descricao: `Pagamento ${boletoAtual.beneficiario}`
+                    barcode: boletoAtual.barcode,
+                    value: boletoAtual.value,
+                    description: `Pagamento ${boletoAtual.beneficiary}`
                 })
             });
 
             if (!res.ok) throw new Error((await res.json()).detail);
 
             const data = await res.json();
-            alert('Pagamento realizado com sucesso!\nComprovante: ' + data.comprovante);
+            alert('Pagamento realizado com sucesso!\nComprovante: ' + data.receipt);
             window.location.href = '/ui/extrato';
         } catch (e) {
             alert('Erro ao pagar: ' + e.message);

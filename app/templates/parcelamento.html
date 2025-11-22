@@ -68,13 +68,13 @@
         e.preventDefault();
 
         const data = {
-            valor: parseFloat(document.getElementById('valor').value),
-            parcelas: parseInt(document.getElementById('parcelas').value),
-            taxa_mensal: parseFloat(document.getElementById('taxa').value) / 100
+            value: parseFloat(document.getElementById('valor').value),
+            installments: parseInt(document.getElementById('parcelas').value),
+            monthly_rate: parseFloat(document.getElementById('taxa').value) / 100
         };
 
         try {
-            const response = await fetch('/parcelamento/simular', {
+            const response = await fetch('/parcelamento/simulate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -88,10 +88,10 @@
                 // Format currency
                 const fmt = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
-                document.getElementById('valorParcela').innerText = fmt(result.parcela);
-                document.getElementById('totalPago').innerText = fmt(result.total_pago);
-                document.getElementById('cetAnual').innerText = result.cet_anual + '%';
-                document.getElementById('jurosTotais').innerText = fmt(result.total_pago - data.valor);
+                document.getElementById('valorParcela').innerText = fmt(result.installment);
+                document.getElementById('totalPago').innerText = fmt(result.total_paid);
+                document.getElementById('cetAnual').innerText = result.annual_cet + '%';
+                document.getElementById('jurosTotais').innerText = fmt(result.total_paid - data.value);
             }
         } catch (error) {
             alert('Erro ao calcular');

@@ -90,8 +90,8 @@
                     <option value="EMAIL">E-mail</option>
                     <option value="CPF">CPF</option>
                     <option value="CNPJ">CNPJ</option>
-                    <option value="TELEFONE">Telefone</option>
-                    <option value="ALEATORIA">Chave Aleatória</option>
+                    <option value="PHONE">Phone</option>
+                    <option value="RANDOM">Random Key</option>
                 </select>
             </div>
 
@@ -279,7 +279,7 @@
         if (desc) document.getElementById('chave').value = "Chave do QR Code"; // In real app, extract key
 
         // Highlight that it came from QR
-        document.getElementById('tipo').value = 'ALEATORIA';
+        document.getElementById('tipo').value = 'RANDOM';
         alert(`Leitura realizada!\nValor: R$ ${valor || '?'}\nComplete os dados para finalizar.`);
     }
 
@@ -297,8 +297,8 @@
         btn.disabled = true;
 
         const data = {
-            valor: parseFloat(document.getElementById('valorReceber').value),
-            descricao: document.getElementById('descricaoReceber').value
+            value: parseFloat(document.getElementById('valorReceber').value),
+            description: document.getElementById('descricaoReceber').value
         };
 
         try {
@@ -345,11 +345,11 @@
         const dataAgendamento = document.getElementById('data_agendamento').value;
 
         const data = {
-            valor: parseFloat(document.getElementById('valor').value),
-            chave_pix: document.getElementById('chave').value,
-            tipo_chave: document.getElementById('tipo').value,
-            descricao: "Transferência via New Credit Fintech",
-            data_agendamento: dataAgendamento || null
+            value: parseFloat(document.getElementById('valor').value),
+            pix_key: document.getElementById('chave').value,
+            key_type: document.getElementById('tipo').value,
+            description: "Transfer via New Credit Fintech",
+            scheduled_date: dataAgendamento || null
         };
 
         try {
@@ -372,7 +372,7 @@
             resultDiv.classList.remove('hidden');
 
             if (response.ok) {
-                if (result.status === 'AGENDADO') {
+                if (result.status === 'SCHEDULED') {
                     resultDiv.className = "bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4";
                     resultIconContainer.className = "bg-blue-100 p-2 rounded-full";
                     resultIconContainer.innerHTML = '<i data-lucide="calendar" class="w-5 h-5 text-blue-600"></i>';
@@ -434,8 +434,8 @@
         btn.disabled = true;
 
         const data = {
-            valor: parseFloat(document.getElementById('valorReceber').value),
-            descricao: document.getElementById('descricaoReceber').value
+            value: parseFloat(document.getElementById('valorReceber').value),
+            description: document.getElementById('descricaoReceber').value
         };
 
         try {
@@ -450,7 +450,7 @@
             if (response.ok) {
                 document.getElementById('qrResult').classList.remove('hidden');
                 document.getElementById('qrImage').src = result.qr_code_url;
-                document.getElementById('copyPasteCode').value = result.copia_e_cola;
+                document.getElementById('copyPasteCode').value = result.copy_and_paste;
             }
 
         } catch (error) {

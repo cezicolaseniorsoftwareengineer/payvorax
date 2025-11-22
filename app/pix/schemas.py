@@ -9,66 +9,60 @@ from enum import Enum
 import re
 
 
-class TipoChavePix(str, Enum):
+from app.pix.models import PixStatus
+
+class PixKeyType(str, Enum):
     """Valid PIX key types."""
     CPF = "CPF"
     CNPJ = "CNPJ"
     EMAIL = "EMAIL"
-    TELEFONE = "TELEFONE"
-    ALEATORIA = "ALEATORIA"
+    PHONE = "TELEFONE"
+    RANDOM = "ALEATORIA"
 
 
-class StatusPix(str, Enum):
-    """Transaction status enumeration."""
-    CRIADO = "CRIADO"
-    PROCESSANDO = "PROCESSANDO"
-    CONFIRMADO = "CONFIRMADO"
-    FALHOU = "FALHOU"
-    CANCELADO = "CANCELADO"
-    AGENDADO = "AGENDADO"
 
 
 class PixCreateRequest(BaseModel):
     """PIX creation request payload."""
-    valor: float = Field(..., gt=0, le=1000000000000, description="Transaction value (R$)")
-    tipo_chave: TipoChavePix = Field(..., description="PIX Key Type")
-    chave_pix: str = Field(..., min_length=1, max_length=200, description="Destination PIX Key")
-    descricao: Optional[str] = Field(None, max_length=500, description="Transaction description")
-    data_agendamento: Optional[datetime] = Field(default=None, description="Date for scheduled transfer")
+    value: float = Field(..., gt=0, le=1000000000000, description="Transaction value (R$)")
+    key_type: PixKeyType = Field(..., description="PIX Key Type")
+    pix_key: str = Field(..., min_length=1, max_length=200, description="Destination PIX Key")
+    description: Optional[str] = Field(None, max_length=500, description="Transaction description")
+    scheduled_date: Optional[datetime] = Field(default=None, description="Date for scheduled transfer")
 
-    @field_validator('data_agendamento')
+    @field_validator('scheduled_date')
     @classmethod
-    def validar_data_agendamento(cls, v: Optional[datetime], info: ValidationInfo) -> Optional[datetime]:
+    def validate_scheduled_date(cls, v: Optional[datetime], info: ValidationInfo) -> Optional[datetime]:
         if v and v.date() < datetime.now().date():
             raise ValueError('Scheduled date cannot be in the past')
         return v
 
-    @field_validator('chave_pix')
+    @field_validator('pix_key')
     @classmethod
-    def validar_chave_pix(cls, v: str, info: ValidationInfo) -> str:
+    def validate_pix_key(cls, v: str, info: ValidationInfo) -> str:
         """Validates PIX key format based on the selected key type (Strategy Pattern)."""
-        if not info.data or 'tipo_chave' not in info.data:
+        if not info.data or 'key_type' not in info.data:
             return v
 
-        tipo = info.data['tipo_chave']
+        tipo = info.data['key_type']
 
-        if tipo == TipoChavePix.CPF:
+        if tipo == PixKeyType.CPF:
             # Remove formatting
             cpf = re.sub(r'\D', '', v)
             if len(cpf) != 11:
                 raise ValueError('CPF must have 11 digits')
 
-        elif tipo == TipoChavePix.CNPJ:
+        elif tipo == PixKeyType.CNPJ:
             # Remove formatting
             cnpj = re.sub(r'\D', '', v)
             if len(cnpj) != 14:
                 raise ValueError('CNPJ must have 14 digits')
 
-        elif tipo == TipoChavePix.EMAIL:
+        elif tipo == PixKeyType.EMAIL:
             if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
                 raise ValueError('Invalid Email format')
 
-        elif tipo == TipoChavePix.TELEFONE:
+        elif tipo == PixKeyType.PHONE:
             telefone = re.sub(r'\D', '', v)
             if len(telefone) < 10 or len(telefone) > 11:
                 raise ValueError('Phone number must have 10 or 11 digits')
@@ -84,15 +78,15 @@ class PixConfirmRequest(BaseModel):
 class PixResponse(BaseModel):
     """Transaction details response payload."""
     id: str
-    valor: float
-    chave_pix: str
-    tipo_chave: str
-    tipo: str  # ENVIADO or RECEBIDO
-    status: StatusPix
-    descricao: Optional[str]
-    data_agendamento: Optional[datetime]
-    criado_em: datetime
-    atualizado_em: datetime
+    value: float
+    pix_key: str
+    key_type: str
+    type: str  # SENT or RECEIVED
+    status: PixStatus
+    description: Optional[str]
+    scheduled_date: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
 
     # Detailed Receipt Fields
     sender_name: Optional[str] = None
@@ -106,21 +100,28 @@ class PixResponse(BaseModel):
 
 class PixStatementResponse(BaseModel):
     """Transaction ledger response payload."""
-    total_transacoes: int
-    total_valor: float
-    saldo: float
-    transacoes: list[PixResponse]
+    total_transactions: int
+    total_value: float
+    balance: float
+    transactions: list[PixResponse]
 
 
 class PixChargeRequest(BaseModel):
     """Request payload for generating a PIX charge (Receive)."""
-    valor: float = Field(..., gt=0, description="Value to receive (R$)")
-    descricao: Optional[str] = Field(None, max_length=100, description="Description for the payer")
+    value: float = Field(..., gt=0, description="Value to receive (R$)")
+    description: Optional[str] = Field(None, max_length=100, description="Description for the payer")
 
 
 class PixChargeResponse(BaseModel):
     """Response payload for a PIX charge."""
-    valor: float
-    descricao: Optional[str]
-    copia_e_cola: str = Field(..., description="Pix Copy and Paste string")
+    charge_id: str = Field(..., description="Unique Charge ID (Transaction ID)")
+    value: float
+    description: Optional[str]
+    copy_and_paste: str = Field(..., description="Pix Copy and Paste string")
     qr_code_url: str = Field(..., description="URL to generate QR Code image")
+
+
+class PixChargeConfirmRequest(BaseModel):
+    """Request payload for confirming a PIX charge payment."""
+    charge_id: str = Field(..., description="Unique Charge ID to confirm")
+

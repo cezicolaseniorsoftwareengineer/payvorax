@@ -2,23 +2,34 @@ from sqlalchemy import Float, String, DateTime, Enum
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime, timezone
 import enum
+from typing import Any, List
 from app.core.database import Base
 
 
-class StatusBoleto(str, enum.Enum):
-    PENDENTE = "PENDENTE"
-    PAGO = "PAGO"
-    FALHOU = "FALHOU"
+def get_enum_values(enum_cls: Any) -> List[str]:
+    """Helper to get values from an Enum class for SQLAlchemy."""
+    return [e.value for e in enum_cls]
 
 
-class TransacaoBoleto(Base):
+class BoletoStatus(str, enum.Enum):
+    PENDING = "PENDENTE"
+    PAID = "PAGO"
+    FAILED = "FALHOU"
+
+
+class BoletoTransaction(Base):
     __tablename__ = "transacoes_boleto"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, index=True)
-    valor: Mapped[float] = mapped_column(Float, nullable=False)
-    codigo_barras: Mapped[str] = mapped_column(String(100), nullable=False)
-    descricao: Mapped[str] = mapped_column(String(500), nullable=True)
-    status: Mapped[StatusBoleto] = mapped_column(Enum(StatusBoleto), nullable=False, default=StatusBoleto.PENDENTE)
+    value: Mapped[float] = mapped_column("valor", Float, nullable=False)
+    barcode: Mapped[str] = mapped_column("codigo_barras", String(100), nullable=False)
+    description: Mapped[str] = mapped_column("descricao", String(500), nullable=True)
+    status: Mapped[BoletoStatus] = mapped_column(
+        "status",
+        Enum(BoletoStatus, values_callable=get_enum_values),
+        nullable=False,
+        default=BoletoStatus.PENDING
+    )
     user_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    criado_em: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=lambda: datetime.now(timezone.utc))
     correlation_id: Mapped[str] = mapped_column(String(100), nullable=True)

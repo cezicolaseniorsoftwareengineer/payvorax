@@ -9,33 +9,33 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 
-from app.parcelamento.schemas import SimulacaoRequest, SimulacaoResponse, ParcelaAmortizacao
-from app.parcelamento.service import calcular_parcelas, salvar_simulacao
-from app.parcelamento.models import SimulacaoParcelamento
+from app.parcelamento.schemas import SimulationRequest, SimulationResponse, AmortizationInstallment
+from app.parcelamento.service import calculate_installments, save_simulation
+from app.parcelamento.models import InstallmentSimulation
 from app.core.database import get_db
 from app.core.logger import get_logger_with_correlation
 from app.auth.dependencies import require_active_account
 from app.auth.models import User
 
-router = APIRouter(tags=["Parcelamento"])
+router = APIRouter(tags=["Installments"])
 
 
-@router.post("/simular", response_model=SimulacaoResponse, status_code=201)
-def simular_parcelamento(
-    dados: SimulacaoRequest,
+@router.post("/simulate", response_model=SimulationResponse, status_code=201)
+def simulate_installments(
+    data: SimulationRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_active_account),
     x_correlation_id: str = Header(default=None)
-) -> SimulacaoResponse:
+) -> SimulationResponse:
     """
     **Challenge 1: Installment Simulation Engine**
 
     Calculates compound interest (Price Table) and CET.
     **Requires active account (at least one deposit made).**
 
-    - **valor**: Principal amount (R$)
-    - **parcelas**: Number of installments (1-360)
-    - **taxa_mensal**: Monthly interest rate in decimal (e.g., 0.035 = 3.5%)
+    - **value**: Principal amount (R$)
+    - **installments**: Number of installments (1-360)
+    - **monthly_rate**: Monthly interest rate in decimal (e.g., 0.035 = 3.5%)
 
     **Returns:**
     - Monthly installment value
@@ -48,25 +48,25 @@ def simular_parcelamento(
     logger = get_logger_with_correlation(correlation_id)
 
     try:
-        logger.info(f"Starting simulation: {dados.model_dump()}")
+        logger.info(f"Starting simulation: {data.model_dump()}")
 
         # Installment calculation
-        resultado: Dict[str, Any] = calcular_parcelas(dados)
+        result: Dict[str, Any] = calculate_installments(data)
 
         # Persistence for audit
-        simulacao = salvar_simulacao(db, dados, resultado, correlation_id)
+        simulation = save_simulation(db, data, result, correlation_id)
 
         # Conversion to response schema
-        response = SimulacaoResponse(
-            parcela=resultado["parcela"],
-            total_pago=resultado["total_pago"],
-            cet_anual=resultado["cet_anual"],
-            tabela=[ParcelaAmortizacao(**item) for item in resultado["tabela"]],
-            simulacao_id=simulacao.id,
-            criado_em=simulacao.criado_em
+        response = SimulationResponse(
+            installment=result["installment"],
+            total_paid=result["total_paid"],
+            annual_cet=result["annual_cet"],
+            table=[AmortizationInstallment(**item) for item in result["table"]],
+            simulation_id=simulation.id,
+            created_at=simulation.created_at
         )
 
-        logger.info(f"Simulation completed successfully: id={simulacao.id}")
+        logger.info(f"Simulation completed successfully: id={simulation.id}")
         return response
 
     except Exception as e:
@@ -74,28 +74,28 @@ def simular_parcelamento(
         raise HTTPException(status_code=500, detail=f"Error processing simulation: {str(e)}")
 
 
-@router.get("/historico/{simulacao_id}", response_model=SimulacaoResponse)
-def buscar_simulacao(
-    simulacao_id: int,
+@router.get("/history/{simulation_id}", response_model=SimulationResponse)
+def get_simulation(
+    simulation_id: int,
     db: Session = Depends(get_db)
-) -> SimulacaoResponse:
+) -> SimulationResponse:
     """
     Retrieves simulation history by ID for audit purposes.
     """
-    simulacao = db.query(SimulacaoParcelamento).filter(
-        SimulacaoParcelamento.id == simulacao_id
+    simulation = db.query(InstallmentSimulation).filter(
+        InstallmentSimulation.id == simulation_id
     ).first()
 
-    if not simulacao:
+    if not simulation:
         raise HTTPException(status_code=404, detail="Simulation not found")
 
-    tabela_data: List[Dict[str, Any]] = json.loads(simulacao.tabela_amortizacao)
+    table_data: List[Dict[str, Any]] = json.loads(simulation.amortization_table)
 
-    return SimulacaoResponse(
-        parcela=simulacao.valor_parcela,
-        total_pago=simulacao.total_pago,
-        cet_anual=simulacao.cet_anual,
-        tabela=[ParcelaAmortizacao(**item) for item in tabela_data],
-        simulacao_id=simulacao.id,
-        criado_em=simulacao.criado_em
+    return SimulationResponse(
+        installment=simulation.installment_value,
+        total_paid=simulation.total_paid,
+        annual_cet=simulation.annual_cet,
+        table=[AmortizationInstallment(**item) for item in table_data],
+        simulation_id=simulation.id,
+        created_at=simulation.created_at
     )

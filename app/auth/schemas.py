@@ -3,7 +3,7 @@ import re
 
 
 class UserCreate(BaseModel):
-    nome: str = Field(..., min_length=3)
+    name: str = Field(..., min_length=3)
     cpf_cnpj: str = Field(..., min_length=11)
     email: EmailStr
     password: str = Field(..., min_length=6)
@@ -26,6 +26,6 @@ class UserLogin(BaseModel):
 
 class UserResponse(BaseModel):
     id: str
-    nome: str
+    name: str
     email: str
     cpf_cnpj: str

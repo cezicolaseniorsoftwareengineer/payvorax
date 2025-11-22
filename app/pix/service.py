@@ -7,88 +7,88 @@ from typing import Optional, Dict, Any
 import re
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.pix.models import TransacaoPix, StatusPix as ModelStatusPix, TipoTransacao
-from app.pix.schemas import PixCreateRequest, TipoChavePix
+from app.pix.models import PixTransaction, PixStatus, TransactionType
+from app.pix.schemas import PixCreateRequest, PixKeyType
 from app.core.logger import logger, audit_log
 from app.core.security import mask_sensitive_data
-from app.boleto.models import TransacaoBoleto, StatusBoleto
+from app.boleto.models import BoletoTransaction, BoletoStatus
 from app.auth.models import User
 
 
-def get_saldo(db: Session, user_id: str) -> float:
+def get_balance(db: Session, user_id: str) -> float:
     """Calculates current account balance for a specific user."""
     try:
-        total_enviado = db.query(func.sum(TransacaoPix.valor)).filter(
-            TransacaoPix.status == ModelStatusPix.CONFIRMADO,
-            TransacaoPix.tipo == TipoTransacao.ENVIADO,
-            TransacaoPix.user_id == user_id
+        total_sent = db.query(func.sum(PixTransaction.value)).filter(
+            PixTransaction.status == PixStatus.CONFIRMED,
+            PixTransaction.type == TransactionType.SENT,
+            PixTransaction.user_id == user_id
         ).scalar() or 0.0
 
-        total_recebido = db.query(func.sum(TransacaoPix.valor)).filter(
-            TransacaoPix.status == ModelStatusPix.CONFIRMADO,
-            TransacaoPix.tipo == TipoTransacao.RECEBIDO,
-            TransacaoPix.user_id == user_id
+        total_received = db.query(func.sum(PixTransaction.value)).filter(
+            PixTransaction.status == PixStatus.CONFIRMED,
+            PixTransaction.type == TransactionType.RECEIVED,
+            PixTransaction.user_id == user_id
         ).scalar() or 0.0
 
-        total_pago_boleto = db.query(func.sum(TransacaoBoleto.valor)).filter(
-            TransacaoBoleto.status == StatusBoleto.PAGO,
-            TransacaoBoleto.user_id == user_id
+        total_boleto_paid = db.query(func.sum(BoletoTransaction.value)).filter(
+            BoletoTransaction.status == BoletoStatus.PAID,
+            BoletoTransaction.user_id == user_id
         ).scalar() or 0.0
 
-        return float(total_recebido - total_enviado - total_pago_boleto)
+        return float(total_received - total_sent - total_boleto_paid)
     except Exception as e:
-        logger.error(f"Erro ao calcular saldo para user {user_id}: {str(e)}")
+        logger.error(f"Error calculating balance for user {user_id}: {str(e)}")
         return 0.0
 
 
-def criar_pix(
+def create_pix(
     db: Session,
-    dados: PixCreateRequest,
+    data: PixCreateRequest,
     idempotency_key: str,
     correlation_id: str,
     user_id: str,
-    tipo: TipoTransacao = TipoTransacao.ENVIADO
-) -> TransacaoPix:
+    type: TransactionType = TransactionType.SENT
+) -> PixTransaction:
     """
     Creates a PIX transaction with strict idempotency guarantees.
     Returns existing transaction if idempotency key collision occurs.
     """
     # Idempotency check
-    pix_existente = db.query(TransacaoPix).filter(
-        TransacaoPix.idempotency_key == idempotency_key
+    existing_pix = db.query(PixTransaction).filter(
+        PixTransaction.idempotency_key == idempotency_key
     ).first()
 
-    if pix_existente:
-        logger.info(f"PIX duplicado detectado (idempotência): key={idempotency_key}, id={pix_existente.id}")
-        return pix_existente
+    if existing_pix:
+        logger.info(f"Duplicate PIX detected (idempotency): key={idempotency_key}, id={existing_pix.id}")
+        return existing_pix
 
     # Balance Check for Outgoing Transactions
-    if tipo == TipoTransacao.ENVIADO:
-        if dados.data_agendamento:
+    if type == TransactionType.SENT:
+        if data.scheduled_date:
             # Scheduled transaction
-            status_inicial = ModelStatusPix.AGENDADO
+            initial_status = PixStatus.SCHEDULED
         else:
             # Immediate transaction - Check Balance
-            saldo_atual = get_saldo(db, user_id)
-            if dados.valor > saldo_atual:
-                raise ValueError("Saldo insuficiente")
-            status_inicial = ModelStatusPix.CRIADO
+            current_balance = get_balance(db, user_id)
+            if data.value > current_balance:
+                raise ValueError("Insufficient balance")
+            initial_status = PixStatus.CREATED
     else:
         # Incoming transaction (Deposit)
-        status_inicial = ModelStatusPix.CRIADO
+        initial_status = PixStatus.CREATED
 
     # Create new transaction
-    pix = TransacaoPix(
+    pix = PixTransaction(
         id=str(uuid4()),
-        valor=dados.valor,
-        chave_pix=dados.chave_pix,
-        tipo_chave=dados.tipo_chave.value,
-        tipo=tipo,
-        status=status_inicial,
+        value=data.value,
+        pix_key=data.pix_key,
+        key_type=data.key_type.value,
+        type=type,
+        status=initial_status,
         idempotency_key=idempotency_key,
-        descricao=dados.descricao,
+        description=data.description,
         correlation_id=correlation_id,
-        data_agendamento=dados.data_agendamento,
+        scheduled_date=data.scheduled_date,
         user_id=user_id
     )
 
@@ -97,177 +97,177 @@ def criar_pix(
     db.refresh(pix)
 
     # Mask sensitive data in logs
-    chave_mascarada = mask_sensitive_data(dados.chave_pix)
+    masked_key = mask_sensitive_data(data.pix_key)
 
     audit_log(
-        action="pix_criado",
+        action="pix_created",
         user=user_id,
         resource=f"pix_id={pix.id}",
         details={
             "correlation_id": correlation_id,
-            "valor": dados.valor,
-            "chave_mascarada": chave_mascarada,
-            "tipo_chave": dados.tipo_chave.value,
-            "tipo_transacao": tipo.value,
-            "status": status_inicial.value
+            "value": data.value,
+            "masked_key": masked_key,
+            "key_type": data.key_type.value,
+            "transaction_type": type.value,
+            "status": initial_status.value
         }
     )
 
-    logger.info(f"PIX criado: id={pix.id}, valor={dados.valor}, tipo={tipo.value}, status={status_inicial.value}")
+    logger.info(f"PIX created: id={pix.id}, value={data.value}, type={type.value}, status={initial_status.value}")
 
     # Real-time Internal Transfer Logic
     # If the destination key belongs to a local user, credit them immediately.
-    if tipo == TipoTransacao.ENVIADO and status_inicial != ModelStatusPix.AGENDADO:
+    if type == TransactionType.SENT and initial_status != PixStatus.SCHEDULED:
         recipient_user = None
 
         # Search for recipient by Key
-        if dados.tipo_chave in [TipoChavePix.CPF, TipoChavePix.CNPJ]:
-            clean_key = re.sub(r'\D', '', dados.chave_pix)
+        if data.key_type in [PixKeyType.CPF, PixKeyType.CNPJ]:
+            clean_key = re.sub(r'\D', '', data.pix_key)
             recipient_user = db.query(User).filter(User.cpf_cnpj == clean_key).first()
-        elif dados.tipo_chave == TipoChavePix.EMAIL:
-            recipient_user = db.query(User).filter(User.email == dados.chave_pix).first()
+        elif data.key_type == PixKeyType.EMAIL:
+            recipient_user = db.query(User).filter(User.email == data.pix_key).first()
 
         if recipient_user:
             # Create incoming transaction for recipient
-            pix_recebido = TransacaoPix(
+            received_pix = PixTransaction(
                 id=str(uuid4()),
-                valor=dados.valor,
-                chave_pix=dados.chave_pix,
-                tipo_chave=dados.tipo_chave.value,
-                tipo=TipoTransacao.RECEBIDO,
-                status=ModelStatusPix.CONFIRMADO,
+                value=data.value,
+                pix_key=data.pix_key,
+                key_type=data.key_type.value,
+                type=TransactionType.RECEIVED,
+                status=PixStatus.CONFIRMED,
                 idempotency_key=f"internal-{idempotency_key}",
-                descricao=dados.descricao or "Transferência Recebida",
+                description=data.description or "Transfer Received",
                 correlation_id=correlation_id,
                 user_id=recipient_user.id
             )
-            db.add(pix_recebido)
+            db.add(received_pix)
 
             # Apply Credit Limit Increase Rule (50% of received amount)
-            aumento_limite = dados.valor * 0.50
-            recipient_user.limite_credito += aumento_limite
+            limit_increase = data.value * 0.50
+            recipient_user.credit_limit += limit_increase
             db.add(recipient_user)
 
-            logger.info(f"Transferência interna realizada: {dados.valor} para {recipient_user.nome} (ID: {recipient_user.id})")
-            logger.info(f"Limite de crédito de {recipient_user.nome} aumentado em R$ {aumento_limite:.2f}")
+            logger.info(f"Internal transfer executed: {data.value} to {recipient_user.name} (ID: {recipient_user.id})")
+            logger.info(f"Credit limit for {recipient_user.name} increased by R$ {limit_increase:.2f}")
 
     return pix
 
 
-def confirmar_pix(
+def confirm_pix(
     db: Session,
     pix_id: str,
     correlation_id: str
-) -> Optional[TransacaoPix]:
+) -> Optional[PixTransaction]:
     """
     Transitions transaction state to CONFIRMED.
     Simulates PSP callback processing.
     """
-    pix = db.query(TransacaoPix).filter(TransacaoPix.id == pix_id).first()
+    pix = db.query(PixTransaction).filter(PixTransaction.id == pix_id).first()
 
     if not pix:
-        logger.warning(f"PIX não encontrado para confirmação: id={pix_id}")
+        logger.warning(f"PIX not found for confirmation: id={pix_id}")
         return None
 
-    if pix.status == ModelStatusPix.CONFIRMADO:
-        logger.info(f"PIX já confirmado: id={pix_id}")
+    if pix.status == PixStatus.CONFIRMED:
+        logger.info(f"PIX already confirmed: id={pix_id}")
         return pix
 
     # Update status
-    pix.status = ModelStatusPix.CONFIRMADO
+    pix.status = PixStatus.CONFIRMED
     db.commit()
     db.refresh(pix)
 
     audit_log(
-        action="pix_confirmado",
-        user="sistema",
+        action="pix_confirmed",
+        user="system",
         resource=f"pix_id={pix.id}",
         details={"correlation_id": correlation_id}
     )
 
-    logger.info(f"PIX confirmado: id={pix.id}")
+    logger.info(f"PIX confirmed: id={pix.id}")
 
     return pix
 
 
-def cancelar_pix(
+def cancel_pix(
     db: Session,
     pix_id: str,
     user_id: str,
     correlation_id: str
-) -> Optional[TransacaoPix]:
+) -> Optional[PixTransaction]:
     """
     Cancels a scheduled transaction.
-    Only allows cancellation if status is AGENDADO.
+    Only allows cancellation if status is SCHEDULED.
     """
-    pix = db.query(TransacaoPix).filter(
-        TransacaoPix.id == pix_id,
-        TransacaoPix.user_id == user_id
+    pix = db.query(PixTransaction).filter(
+        PixTransaction.id == pix_id,
+        PixTransaction.user_id == user_id
     ).first()
 
     if not pix:
-        logger.warning(f"Tentativa de cancelamento de PIX inexistente ou de outro usuário: id={pix_id}")
+        logger.warning(f"Attempt to cancel non-existent or unauthorized PIX: id={pix_id}")
         return None
 
-    if pix.status != ModelStatusPix.AGENDADO:
-        raise ValueError("Apenas transações agendadas podem ser canceladas.")
+    if pix.status != PixStatus.SCHEDULED:
+        raise ValueError("Only scheduled transactions can be canceled.")
 
     # Update status
-    pix.status = ModelStatusPix.CANCELADO
+    pix.status = PixStatus.CANCELED
     db.commit()
     db.refresh(pix)
 
     audit_log(
-        action="pix_cancelado",
+        action="pix_canceled",
         user=user_id,
         resource=f"pix_id={pix.id}",
         details={"correlation_id": correlation_id}
     )
 
-    logger.info(f"PIX cancelado: id={pix.id}")
+    logger.info(f"PIX canceled: id={pix.id}")
 
     return pix
 
 
-def buscar_pix(db: Session, pix_id: str, user_id: str) -> Optional[TransacaoPix]:
+def get_pix(db: Session, pix_id: str, user_id: str) -> Optional[PixTransaction]:
     """Retrieves transaction details by unique identifier and user."""
-    return db.query(TransacaoPix).filter(TransacaoPix.id == pix_id, TransacaoPix.user_id == user_id).first()
+    return db.query(PixTransaction).filter(PixTransaction.id == pix_id, PixTransaction.user_id == user_id).first()
 
 
-def listar_extrato(
+def list_statement(
     db: Session,
     user_id: str,
-    limite: int = 50,
+    limit: int = 50,
     status: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Generates transaction ledger with aggregated totals for a specific user.
     """
-    query = db.query(TransacaoPix).filter(TransacaoPix.user_id == user_id)
+    query = db.query(PixTransaction).filter(PixTransaction.user_id == user_id)
 
     if status:
-        query = query.filter(TransacaoPix.status == status)
+        query = query.filter(PixTransaction.status == status)
 
-    transacoes = query.order_by(TransacaoPix.criado_em.desc()).limit(limite).all()
+    transactions = query.order_by(PixTransaction.created_at.desc()).limit(limit).all()
 
     # Calculate totals
-    total_enviado = db.query(func.sum(TransacaoPix.valor)).filter(
-        TransacaoPix.status == ModelStatusPix.CONFIRMADO,
-        TransacaoPix.tipo == TipoTransacao.ENVIADO,
-        TransacaoPix.user_id == user_id
+    total_sent = db.query(func.sum(PixTransaction.value)).filter(
+        PixTransaction.status == PixStatus.CONFIRMED,
+        PixTransaction.type == TransactionType.SENT,
+        PixTransaction.user_id == user_id
     ).scalar() or 0
 
-    total_recebido = db.query(func.sum(TransacaoPix.valor)).filter(
-        TransacaoPix.status == ModelStatusPix.CONFIRMADO,
-        TransacaoPix.tipo == TipoTransacao.RECEBIDO,
-        TransacaoPix.user_id == user_id
+    total_received = db.query(func.sum(PixTransaction.value)).filter(
+        PixTransaction.status == PixStatus.CONFIRMED,
+        PixTransaction.type == TransactionType.RECEIVED,
+        PixTransaction.user_id == user_id
     ).scalar() or 0
 
-    saldo = total_recebido - total_enviado
+    balance = total_received - total_sent
 
     return {
-        "total_transacoes": len(transacoes),
-        "total_valor": float(total_enviado),  # Keeping for backward compatibility if needed, but saldo is better
-        "saldo": float(saldo),
-        "transacoes": transacoes
+        "total_transactions": len(transactions),
+        "total_value": float(total_sent),  # Keeping for backward compatibility if needed
+        "balance": float(balance),
+        "transactions": transactions
     }

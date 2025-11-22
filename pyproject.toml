@@ -2,7 +2,7 @@
 name = "fintech-tech-challenge"
 version = "1.0.0"
 description = "Enterprise-grade Fintech API implementing DDD and Hexagonal Architecture"
-authors = ["Senior Software Engineer <engineer@fintech.com>"]
+authors = ["Cezi Cola SSE <cezi.cola.sse@fintech.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.11"

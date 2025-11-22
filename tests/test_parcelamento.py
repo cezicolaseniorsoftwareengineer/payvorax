@@ -3,98 +3,98 @@ Unit tests for Installment module.
 Validates compound interest calculation, CET, and persistence.
 """
 import pytest
-from app.parcelamento.service import calcular_parcelas
-from app.parcelamento.schemas import SimulacaoRequest
+from app.parcelamento.service import calculate_installments
+from app.parcelamento.schemas import SimulationRequest
 
 
-def test_calculo_parcelamento_basico():
+def test_basic_installment_calculation():
     """Tests basic installment calculation."""
-    dados = SimulacaoRequest(
-        valor=1000.0,
-        parcelas=12,
-        taxa_mensal=0.035
+    data = SimulationRequest(
+        value=1000.0,
+        installments=12,
+        monthly_rate=0.035
     )
 
-    resultado = calcular_parcelas(dados)
+    result = calculate_installments(data)
 
-    assert resultado["parcela"] > 0
-    assert resultado["total_pago"] > 1000.0
-    assert resultado["cet_anual"] > 0
-    assert len(resultado["tabela"]) == 12
+    assert result["installment"] > 0
+    assert result["total_paid"] > 1000.0
+    assert result["annual_cet"] > 0
+    assert len(result["table"]) == 12
 
 
-def test_primeira_parcela_juros():
+def test_first_installment_interest():
     """Validates interest calculation for the first installment."""
-    dados = SimulacaoRequest(
-        valor=1000.0,
-        parcelas=12,
-        taxa_mensal=0.035
+    data = SimulationRequest(
+        value=1000.0,
+        installments=12,
+        monthly_rate=0.035
     )
 
-    resultado = calcular_parcelas(dados)
-    primeira = resultado["tabela"][0]
+    result = calculate_installments(data)
+    first = result["table"][0]
 
     # Interest of first installment = initial balance * rate
-    assert abs(primeira["juros"] - 35.0) < 0.01
-    assert primeira["mes"] == 1
+    assert abs(first["interest"] - 35.0) < 0.01
+    assert first["month"] == 1
 
 
-def test_saldo_final_zero():
+def test_final_balance_zero():
     """Verifies that the final balance is zero after all installments."""
-    dados = SimulacaoRequest(
-        valor=5000.0,
-        parcelas=24,
-        taxa_mensal=0.02
+    data = SimulationRequest(
+        value=5000.0,
+        installments=24,
+        monthly_rate=0.02
     )
 
-    resultado = calcular_parcelas(dados)
-    ultima = resultado["tabela"][-1]
+    result = calculate_installments(data)
+    last = result["table"][-1]
 
-    assert ultima["saldo"] == 0.0
+    assert last["balance"] == 0.0
 
 
-def test_total_pago_maior_que_valor():
+def test_total_paid_greater_than_value():
     """Total paid must be greater than principal (due to interest)."""
-    dados = SimulacaoRequest(
-        valor=2000.0,
-        parcelas=10,
-        taxa_mensal=0.05
+    data = SimulationRequest(
+        value=2000.0,
+        installments=10,
+        monthly_rate=0.05
     )
 
-    resultado = calcular_parcelas(dados)
+    result = calculate_installments(data)
 
-    assert resultado["total_pago"] > 2000.0
+    assert result["total_paid"] > 2000.0
 
 
-def test_validacao_valor_negativo():
+def test_negative_value_validation():
     """Validates rejection of negative value."""
     with pytest.raises(Exception):
-        SimulacaoRequest(
-            valor=-100.0,
-            parcelas=12,
-            taxa_mensal=0.035
+        SimulationRequest(
+            value=-100.0,
+            installments=12,
+            monthly_rate=0.035
         )
 
 
-def test_validacao_taxa_excessiva():
+def test_excessive_rate_validation():
     """Validates rejection of excessive interest rate."""
     with pytest.raises(Exception):
-        SimulacaoRequest(
-            valor=1000.0,
-            parcelas=12,
-            taxa_mensal=0.20  # 20% - above limit
+        SimulationRequest(
+            value=1000.0,
+            installments=12,
+            monthly_rate=0.20  # 20% - above limit
         )
 
 
-def test_parcelas_decrescentes():
+def test_decreasing_balance():
     """Verifies that installments have decreasing balance."""
-    dados = SimulacaoRequest(
-        valor=3000.0,
-        parcelas=6,
-        taxa_mensal=0.03
+    data = SimulationRequest(
+        value=3000.0,
+        installments=6,
+        monthly_rate=0.03
     )
 
-    resultado = calcular_parcelas(dados)
+    result = calculate_installments(data)
 
-    for i in range(len(resultado["tabela"]) - 1):
-        assert resultado["tabela"][i]["saldo"] > resultado["tabela"][i + 1]["saldo"]
+    for i in range(len(result["table"]) - 1):
+        assert result["table"][i]["balance"] > result["table"][i + 1]["balance"]
