@@ -11,7 +11,7 @@
     <div id="cards-container" class="space-y-4">
         <!-- Loading State -->
         <div class="animate-pulse space-y-4">
-            <div class="h-48 bg-gray-200 rounded-xl"></div>
+            <div class="bg-gray-200 rounded-xl w-full md:w-[400px] mx-auto aspect-[1.58/1]"></div>
         </div>
     </div>
 
@@ -98,7 +98,7 @@
 
                     const html = `
                         <div onclick="selectCard('${card.id}')"
-                             class="cursor-pointer ${bgClass} ${blockedClass} ${borderClass} text-white p-4 md:p-6 rounded-xl shadow-lg relative overflow-hidden transform transition-all hover:scale-[1.02] card-item flex flex-col justify-between aspect-[1.58/1] md:aspect-auto md:h-auto"
+                             class="cursor-pointer ${bgClass} ${blockedClass} ${borderClass} text-white p-4 md:p-6 rounded-xl shadow-2xl relative overflow-hidden transform transition-all hover:scale-[1.05] card-item flex flex-col justify-between aspect-[1.58/1] w-full md:w-[400px] mx-auto border border-white/10"
                              id="card-${card.id}">
                             <!-- Background Pattern -->
                             <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-xl"></div>
