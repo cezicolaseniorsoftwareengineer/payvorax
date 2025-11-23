@@ -63,68 +63,104 @@
 </div>
 
 <!-- Receipt Modal -->
-<div id="receipt-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
-        <!-- Header -->
-        <div class="bg-gray-50 p-6 border-b border-gray-100 flex justify-between items-center">
-            <h3 class="text-lg font-bold text-gray-900">Comprovante de Transação</h3>
-            <button onclick="closeReceipt()" class="text-gray-400 hover:text-gray-600 transition-colors">
-                <i data-lucide="x" class="w-6 h-6"></i>
-            </button>
-        </div>
+<div id="receipt-modal" class="fixed inset-0 z-[100] hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog"
+    aria-modal="true">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onclick="closeReceipt()"></div>
 
-        <!-- Content -->
-        <div class="p-6 space-y-6">
-            <!-- Value and Status -->
-            <div class="text-center">
-                <p class="text-sm text-gray-500 mb-1">Valor da Transação</p>
-                <h2 class="text-3xl font-bold text-gray-900" id="receipt-value">R$ 0,00</h2>
-                <div id="receipt-status" class="mt-2 inline-block"></div>
+    <!-- Scrollable Container -->
+    <div class="flex min-h-full items-center justify-center p-4 text-center">
+        <!-- Modal Panel -->
+        <div
+            class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-xl transition-all w-full max-w-md flex flex-col my-8 mx-auto">
+            <!-- Receipt Content (To be captured) -->
+            <div id="receipt-content" class="bg-white p-8 rounded-t-2xl relative overflow-hidden">
+                <!-- Decorative Background -->
+                <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-purple-600 to-blue-600"></div>
+                <div class="absolute -top-24 -right-24 w-48 h-48 bg-purple-50 rounded-full blur-3xl opacity-50"></div>
+
+                <!-- Header -->
+                <div class="text-center border-b border-gray-100 pb-6 mb-6 relative z-10">
+                    <div
+                        class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-gray-100">
+                        <img src="/static/img/logo.png" alt="Logo" class="w-10 h-10 object-contain">
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900">Comprovante</h3>
+                    <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest font-medium">NewCredit Fintech</p>
+                </div>
+
+                <!-- Value -->
+                <div class="text-center mb-8 relative z-10">
+                    <p class="text-xs text-gray-500 mb-2 uppercase tracking-wide">Valor da Transação</p>
+                    <h2 class="text-4xl font-bold text-gray-900 tracking-tight" id="receipt-value">R$ 0,00</h2>
+                    <div id="receipt-status" class="mt-4 inline-flex shadow-sm"></div>
+                </div>
+
+                <!-- Details -->
+                <div class="space-y-5 text-sm relative z-10">
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-gray-500">Data</span>
+                        <span class="font-semibold text-gray-900" id="receipt-date">--/--/----</span>
+                    </div>
+
+                    <div class="py-3 border-t border-gray-50 border-dashed">
+                        <div class="flex justify-between mb-1">
+                            <span class="text-gray-500">Origem</span>
+                            <span class="font-bold text-gray-900 text-right" id="receipt-sender-name">Nome</span>
+                        </div>
+                        <p class="text-xs text-gray-400 text-right font-mono" id="receipt-sender-doc">***</p>
+                    </div>
+
+                    <div class="py-3 border-t border-gray-50 border-dashed">
+                        <div class="flex justify-between mb-1">
+                            <span class="text-gray-500">Destino</span>
+                            <span class="font-bold text-gray-900 text-right" id="receipt-receiver-name">Nome</span>
+                        </div>
+                        <p class="text-xs text-gray-400 text-right font-mono" id="receipt-receiver-doc">***</p>
+                    </div>
+
+                    <div class="flex justify-between py-3 border-t border-gray-50 border-dashed">
+                        <span class="text-gray-500">Descrição</span>
+                        <span class="font-medium text-gray-900 text-right max-w-[60%] truncate"
+                            id="receipt-desc">-</span>
+                    </div>
+
+                    <div class="pt-6 mt-2 border-t border-gray-100">
+                        <p class="text-[10px] text-gray-400 mb-1 uppercase tracking-wider text-center">ID da
+                            Autenticação
+                        </p>
+                        <p class="font-mono text-[10px] text-gray-400 break-all text-center leading-relaxed"
+                            id="receipt-id">UUID</p>
+                    </div>
+                </div>
             </div>
 
-            <!-- Details Grid -->
-            <div class="space-y-4 text-sm">
-                <div class="flex justify-between py-2 border-b border-gray-50">
-                    <span class="text-gray-500">Data e Hora</span>
-                    <span class="font-medium text-gray-900 text-right" id="receipt-date">--/--/----</span>
+            <!-- Actions Footer -->
+            <div class="bg-gray-50 p-4 rounded-b-2xl border-t border-gray-100">
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <button onclick="downloadReceipt()"
+                        class="flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95 text-sm">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        Salvar Imagem
+                    </button>
+                    <button onclick="shareWhatsApp()"
+                        class="flex items-center justify-center gap-2 bg-[#25D366] text-white py-3 rounded-xl font-semibold hover:bg-[#128C7E] transition-all shadow-sm active:scale-95 text-sm">
+                        <i data-lucide="message-circle" class="w-4 h-4"></i>
+                        WhatsApp
+                    </button>
                 </div>
-
-                <!-- Sender -->
-                <div class="py-2 border-b border-gray-50">
-                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Origem</p>
-                    <p class="font-bold text-gray-900" id="receipt-sender-name">Nome do Remetente</p>
-                    <p class="text-gray-500" id="receipt-sender-doc">***.***.***-**</p>
-                </div>
-
-                <!-- Receiver -->
-                <div class="py-2 border-b border-gray-50">
-                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Destino</p>
-                    <p class="font-bold text-gray-900" id="receipt-receiver-name">Nome do Destinatário</p>
-                    <p class="text-gray-500" id="receipt-receiver-doc">***.***.***-**</p>
-                </div>
-
-                <div class="flex justify-between py-2 border-b border-gray-50">
-                    <span class="text-gray-500">Descrição</span>
-                    <span class="font-medium text-gray-900 text-right" id="receipt-desc">-</span>
-                </div>
-
-                <div class="pt-2">
-                    <p class="text-xs text-gray-400 mb-1">ID da Transação</p>
-                    <p class="font-mono text-xs text-gray-500 break-all" id="receipt-id">UUID</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="shareEmail()"
+                        class="flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95 text-sm">
+                        <i data-lucide="mail" class="w-4 h-4"></i>
+                        Email
+                    </button>
+                    <button onclick="closeReceipt()"
+                        class="flex items-center justify-center gap-2 bg-gray-900 text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition-all shadow-sm active:scale-95 text-sm">
+                        Fechar
+                    </button>
                 </div>
             </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="bg-gray-50 p-4 flex gap-3">
-            <button onclick="window.print()"
-                class="flex-1 bg-white border border-gray-200 text-gray-700 font-medium py-2.5 rounded-xl hover:bg-gray-50 transition-colors flex justify-center items-center gap-2">
-                <i data-lucide="printer" class="w-4 h-4"></i> Imprimir
-            </button>
-            <button onclick="closeReceipt()"
-                class="flex-1 bg-purple-600 text-white font-medium py-2.5 rounded-xl hover:bg-purple-700 transition-colors">
-                Fechar
-            </button>
         </div>
     </div>
 </div>
@@ -132,8 +168,52 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 <script>
     let allTransactions = [];
+
+    function downloadReceipt() {
+        const element = document.getElementById('receipt-content');
+        // Use html2canvas to capture the element
+        html2canvas(element, {
+            scale: 2, // Higher resolution
+            backgroundColor: '#ffffff',
+            logging: false,
+            useCORS: true // If we have external images like logo
+        }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = `comprovante-newcredit-${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }).catch(err => {
+            console.error('Erro ao gerar imagem:', err);
+            alert('Não foi possível gerar a imagem do comprovante.');
+        });
+    }
+
+    function shareWhatsApp() {
+        const value = document.getElementById('receipt-value').innerText;
+        const date = document.getElementById('receipt-date').innerText;
+        const receiver = document.getElementById('receipt-receiver-name').innerText;
+        const id = document.getElementById('receipt-id').innerText;
+
+        const text = `*Comprovante NewCredit*\n\n💰 *Valor:* ${value}\n📅 *Data:* ${date}\n👤 *Para:* ${receiver}\n🆔 *ID:* ${id}\n\nVerifique seu extrato para mais detalhes.`;
+
+        // Check if mobile to use api.whatsapp.com or web.whatsapp.com logic, but wa.me is universal
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    }
+
+    function shareEmail() {
+        const value = document.getElementById('receipt-value').innerText;
+        const date = document.getElementById('receipt-date').innerText;
+        const receiver = document.getElementById('receipt-receiver-name').innerText;
+        const id = document.getElementById('receipt-id').innerText;
+
+        const subject = "Comprovante de Transação - NewCredit";
+        const body = `Comprovante de Transação\n\nValor: ${value}\nData: ${date}\nPara: ${receiver}\nID: ${id}\n\nEste é um comprovante automático gerado pelo NewCredit.`;
+
+        window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+    }
 
     async function loadExtrato() {
         try {

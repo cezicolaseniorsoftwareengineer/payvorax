@@ -192,14 +192,119 @@ def get_statement(
 ) -> PixStatementResponse:
     """
     Retrieves transaction ledger with optional status filtering.
+    Optimized with batch loading to prevent N+1 query issues.
     """
     result: Dict[str, Any] = list_statement(db, current_user.id, limit, status.value if status else None)
+
+    transactions = result["transactions"]
+
+    # --- BATCH LOADING OPTIMIZATION ---
+    # 1. Collect all relevant IDs
+    user_ids = {t.user_id for t in transactions}
+    correlation_ids = {t.correlation_id for t in transactions if t.correlation_id}
+
+    # 2. Fetch all related Users in one query
+    # We need the current user (already have) and potentially others if we were admin,
+    # but here we mostly need the current user.
+    # However, for internal transfers, we need the OTHER user.
+    # The 'build_pix_response' logic looks for related transactions to find the other user.
+
+    # 3. Fetch all related Transactions (Counterparts) in one query
+    related_txs = []
+    if correlation_ids:
+        related_txs = db.query(PixTransaction).filter(
+            PixTransaction.correlation_id.in_(correlation_ids),
+            PixTransaction.id.notin_([t.id for t in transactions]) # Exclude self
+        ).all()
+
+    # Map correlation_id -> related_transaction
+    related_tx_map = {tx.correlation_id: tx for tx in related_txs}
+
+    # 4. Collect User IDs from related transactions
+    related_user_ids = {tx.user_id for tx in related_txs}
+    all_user_ids = user_ids.union(related_user_ids)
+
+    # 5. Fetch all Users in one query
+    users = db.query(User).filter(User.id.in_(all_user_ids)).all()
+    user_map = {u.id: u for u in users}
+
+    # 6. Build Responses in Memory
+    response_list = []
+
+    for pix in transactions:
+        # Default values
+        sender_name = "Unknown"
+        sender_doc = "***"
+        receiver_name = "Unknown"
+        receiver_doc = "***"
+
+        owner_user = user_map.get(pix.user_id)
+
+        if pix.type == TransactionType.SENT:
+            # Owner is Sender
+            if owner_user:
+                sender_name = owner_user.name
+                sender_doc = mask_cpf_cnpj(owner_user.cpf_cnpj)
+
+            # Find Receiver (Counterpart)
+            receiver_tx = related_tx_map.get(pix.correlation_id)
+            # Ensure it's the right type (RECEIVED)
+            if receiver_tx and receiver_tx.type == TransactionType.RECEIVED:
+                receiver_user = user_map.get(receiver_tx.user_id)
+                if receiver_user:
+                    receiver_name = receiver_user.name
+                    receiver_doc = mask_cpf_cnpj(receiver_user.cpf_cnpj)
+            else:
+                # External
+                receiver_name = "External Receiver"
+                receiver_doc = mask_cpf_cnpj(pix.pix_key)
+
+        elif pix.type == TransactionType.RECEIVED:
+            # Owner is Receiver
+            if owner_user:
+                receiver_name = owner_user.name
+                receiver_doc = mask_cpf_cnpj(owner_user.cpf_cnpj)
+
+            # Find Sender (Counterpart)
+            sender_tx = related_tx_map.get(pix.correlation_id)
+            # Ensure it's the right type (SENT)
+            if sender_tx and sender_tx.type == TransactionType.SENT:
+                sender_user = user_map.get(sender_tx.user_id)
+                if sender_user:
+                    sender_name = sender_user.name
+                    sender_doc = mask_cpf_cnpj(sender_user.cpf_cnpj)
+            else:
+                # Deposit or External
+                if "SIMULACAO" in pix.pix_key or "Deposit" in (pix.description or ""):
+                    sender_name = "Deposit via QR Code"
+                    sender_doc = "Financial Institution"
+                else:
+                    sender_name = "External Sender"
+                    sender_doc = "***"
+
+        response_list.append(PixResponse(
+            id=pix.id,
+            value=pix.value,
+            pix_key=pix.pix_key,
+            key_type=pix.key_type,
+            type=pix.type,
+            status=pix.status,
+            description=pix.description,
+            scheduled_date=pix.scheduled_date,
+            created_at=pix.created_at,
+            updated_at=pix.updated_at,
+            formatted_time=format_brasilia_time(pix.created_at),
+            sender_name=sender_name,
+            sender_doc=sender_doc,
+            receiver_name=receiver_name,
+            receiver_doc=receiver_doc
+        ))
 
     return PixStatementResponse(
         total_transactions=result["total_transactions"],
         total_value=result["total_value"],
         balance=result["balance"],
-        transactions=[build_pix_response(t, db) for t in result["transactions"]]
+        transactions=response_list
     )
 
 
