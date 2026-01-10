@@ -447,3 +447,5 @@ This project was developed for educational and technical demonstration purposes.
 - [ ] Cloud Deployment (AWS/GCP/Azure)
 
 ---
+Bio Code Technology inc.
+Cezi Cola Senior Software Engineer
