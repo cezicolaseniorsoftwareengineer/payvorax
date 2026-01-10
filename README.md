@@ -447,5 +447,3 @@ This project was developed for educational and technical demonstration purposes.
 - [ ] Cloud Deployment (AWS/GCP/Azure)
 
 ---
-
-**Ready for the Fintech Mais Todos interview!**
