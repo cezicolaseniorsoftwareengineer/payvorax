@@ -15,12 +15,6 @@ pip-delete-this-directory.txt
 .vscode/
 .idea/
 
-# Agent & Persona Specific (Strictly Excluded)
-.copilot/
-.github/copilot-instructions.md
-
-desafiofintechpy.py
-ObjetivoProjeto.txt
 *.json
 !package.json
 !tasks.json
@@ -36,12 +30,7 @@ ObjetivoProjeto.txt
 *.db-shm
 *.db-wal
 
-# Agent Configuration
-CeziColaSSE.md
-
 
 # Local DBs and Sensitive Scripts
 *.db
 scripts/restore_access.py
-scripts/fix_identities.py
-scripts/set_password.py
