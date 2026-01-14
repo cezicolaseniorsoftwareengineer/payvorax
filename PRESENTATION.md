@@ -1,6 +1,6 @@
 Resumo da Analise do Sistema PayvoraX:
 
-PONTOS POSITIVOS IDENTIFICADOS:
+PONTOS POSITIVOS:
 
 Arquitetura Enterprise-Grade
 
@@ -40,23 +40,6 @@ Cobertura de Testes
 Testes data-driven com pytest.mark.parametrize
 Cobertura minima de 70% enforced no CI
 O documento INTERVIEW_PRESENTATION.md contem o roteiro completo com:
-
-Sumario executivo (2 min)
-Arquitetura e decisoes tecnicas (8 min)
-Seguranca (7 min)
-Diferenciais tecnicos (5 min)
-Demonstracao ao vivo com curls prontos (5 min)
-Perguntas frequentes (3 min)
-
-# PayvoraX - Apresentacao Tecnica para Entrevista
-
-**Candidato**: Cezi Cola — Senior Software Engineer
-**Vaga**: Senior Software Engineer Principal
-**Tempo de Apresentacao**: 30 minutos
-**Projeto**: https://github.com/cezicolaseniorsoftwareengineer/payvorax
-**Demo ao Vivo**: https://new-credit-fintech.onrender.com
-
----
 
 ## SUMARIO EXECUTIVO (2 minutos)
 
