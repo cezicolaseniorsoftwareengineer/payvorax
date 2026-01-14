@@ -77,8 +77,6 @@ These scenarios are covered by the script `scripts/test_api_manual.py` and valid
 
 ---
 
-## Conclusion for the Recruiter
-
 This catalog demonstrates that the system not only "works" but was built with **Quality and Reliability** as priorities.
 
 - **Security**: Validated by input tests and fraud rules.
