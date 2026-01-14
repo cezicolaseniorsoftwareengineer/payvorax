@@ -1,4 +1,4 @@
-# Quick Start Guide - Project Initialization
+# PayvoraX - Quickstart Guide
 
 ## Start the Server
 

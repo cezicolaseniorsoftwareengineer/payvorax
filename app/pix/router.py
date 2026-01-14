@@ -358,7 +358,7 @@ def generate_pix_charge(
     # Simulate a Pix Copy & Paste string
     mock_payload = (
         f"00020126580014BR.GOV.BCB.PIX0136{charge_id}520400005303986540"
-        f"{str(data.value).replace('.', '')}5802BR5913NewCredit User6008BRASILIA62070503***6304"
+        f"{str(data.value).replace('.', '')}5802BR5913PayvoraX User6008BRASILIA62070503***6304"
     )
 
     # Generate simulation URL with the CHARGE ID

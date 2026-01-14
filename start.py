@@ -8,7 +8,7 @@ import sys
 
 def main():
     """Installs dependencies and starts the server."""
-    print("Fintech Tech Challenge - Initialization\n")
+    print("PayvoraX - Initialization\n")
 
     # Install simplified dependencies
     print("Installing dependencies...")
@@ -29,7 +29,11 @@ def main():
 
     # Set flag to allow application startup
     import os
-    os.environ["NEWCREDIT_ALLOWED_START"] = "1"
+    os.environ["PAYVORAX_ALLOWED_START"] = "1"
+
+    # Force local SQLite database for development to avoid remote connection errors
+    print("Configuring local database (SQLite)...")
+    os.environ["DATABASE_URL"] = "sqlite:///./fintech.db"
 
     try:
         subprocess.run(

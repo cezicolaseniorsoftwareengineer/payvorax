@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Immutable configuration schema backed by environment variables."""
 
-    APP_NAME: str = "Fintech Tech Challenge"
+    APP_NAME: str = "PayvoraX"
     VERSION: str = "1.0.0"
     DEBUG: bool = False
 

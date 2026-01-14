@@ -8,7 +8,7 @@ on:
 
 env:
     PYTHON_VERSION: "3.11"
-    DOCKER_IMAGE: newcredit-fintech
+    DOCKER_IMAGE: payvorax
 
 jobs:
     quality-assurance:
@@ -51,7 +51,7 @@ jobs:
 
             - name: Run Tests (Pytest)
               env:
-                  NEWCREDIT_ALLOWED_START: "true"
+                  PAYVORAX_ALLOWED_START: "true"
               run: |
                   # Running tests with coverage
                   # Reduced coverage threshold temporarily to allow for incremental improvement

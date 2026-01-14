@@ -1,4 +1,4 @@
-# Fintech Tech Challenge - Python + FastAPI
+# PayvoraX - Fintech Platform
 
 Complete project demonstrating **3 real-world fintech challenges** integrated, developed with professional architecture and software engineering best practices.
 
@@ -202,7 +202,7 @@ Body:
 
 ```json
 {
-  "valor": 150.50,
+  "valor": 150.5,
   "chave_pix": "test@email.com",
   "tipo_chave": "EMAIL",
   "descricao": "Test payment"
@@ -400,26 +400,31 @@ git commit -m "feat: implement complete fintech project with 3 challenges
 ### Suggested Demo (10-15 minutes)
 
 1. **Overview** (2 min)
+
    - Show folder structure
    - Explain DDD + Hexagonal architecture
    - Highlight separation of concerns
 
 2. **Challenge 1 - Installments** (3 min)
+
    - Show calculation in `/docs`
    - Explain Price formula
    - Highlight CET and amortization schedule
 
 3. **Challenge 2 - PIX** (3 min)
+
    - Demonstrate idempotency (same key = same result)
    - Show status control
    - Display statement
 
 4. **Challenge 3 - Anti-Fraud** (3 min)
+
    - Test with different values
    - Show activated rules
    - Explain scoring system
 
 5. **Technical Differentiators** (3 min)
+
    - Structured logs and correlation IDs
    - Unit tests
    - Docker and docker-compose

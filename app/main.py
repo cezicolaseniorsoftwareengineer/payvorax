@@ -5,11 +5,12 @@ Features strict input validation, audit logging, and distributed tracing.
 """
 import os
 import sys
+from pathlib import Path
 from typing import Callable, Awaitable, Dict, Any
 
 # STRICT STARTUP ENFORCEMENT
 # The application must be started via `python start.py`
-if not os.environ.get("NEWCREDIT_ALLOWED_START") and "pytest" not in sys.modules:
+if not os.environ.get("PAYVORAX_ALLOWED_START") and "pytest" not in sys.modules:
     # Allow production environments (Render/PythonAnywhere) to bypass if needed,
     # but for local dev, enforce start.py.
     # Checking for common production env vars or if explicitly disabled.
@@ -21,7 +22,7 @@ if not os.environ.get("NEWCREDIT_ALLOWED_START") and "pytest" not in sys.modules
         sys.exit(1)
 
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
@@ -147,6 +148,15 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Web UI Router (Frontend)
 app.include_router(web_router, tags=["Web UI"])
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    """Serve favicon to avoid noisy 404s from browsers."""
+    candidate = Path(__file__).resolve().parent / "static" / "img" / "logo.png"
+    if candidate.exists():
+        return FileResponse(path=str(candidate), media_type="image/png")
+    return Response(status_code=204)
 
 
 # API Info Endpoint (Moved from root)

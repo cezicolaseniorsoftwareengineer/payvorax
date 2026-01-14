@@ -86,7 +86,7 @@
                         <img src="/static/img/logo.png" alt="Logo" class="w-10 h-10 object-contain">
                     </div>
                     <h3 class="text-xl font-bold text-gray-900">Comprovante</h3>
-                    <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest font-medium">NewCredit Fintech</p>
+                    <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest font-medium">PayvoraX</p>
                 </div>
 
                 <!-- Value -->
@@ -182,7 +182,7 @@
             useCORS: true // If we have external images like logo
         }).then(canvas => {
             const link = document.createElement('a');
-            link.download = `comprovante-newcredit-${Date.now()}.png`;
+            link.download = `comprovante-payvorax-${Date.now()}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
         }).catch(err => {
@@ -197,7 +197,7 @@
         const receiver = document.getElementById('receipt-receiver-name').innerText;
         const id = document.getElementById('receipt-id').innerText;
 
-        const text = `*Comprovante NewCredit*\n\n💰 *Valor:* ${value}\n📅 *Data:* ${date}\n👤 *Para:* ${receiver}\n🆔 *ID:* ${id}\n\nVerifique seu extrato para mais detalhes.`;
+        const text = `*Comprovante PayvoraX*\n\n💰 *Valor:* ${value}\n📅 *Data:* ${date}\n👤 *Para:* ${receiver}\n🆔 *ID:* ${id}\n\nVerifique seu extrato para mais detalhes.`;
 
         // Check if mobile to use api.whatsapp.com or web.whatsapp.com logic, but wa.me is universal
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
@@ -209,8 +209,8 @@
         const receiver = document.getElementById('receipt-receiver-name').innerText;
         const id = document.getElementById('receipt-id').innerText;
 
-        const subject = "Comprovante de Transação - NewCredit";
-        const body = `Comprovante de Transação\n\nValor: ${value}\nData: ${date}\nPara: ${receiver}\nID: ${id}\n\nEste é um comprovante automático gerado pelo NewCredit.`;
+        const subject = "Comprovante de Transação - PayvoraX";
+        const body = `Comprovante de Transação\n\nValor: ${value}\nData: ${date}\nPara: ${receiver}\nID: ${id}\n\nEste é um comprovante automático gerado pelo PayvoraX.`;
 
         window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
     }
