@@ -23,25 +23,26 @@
     </style>
 </head>
 
-<body class="bg-white min-h-screen flex flex-col">
+<body class="bg-white min-h-[100dvh] flex flex-col">
 
-    <div class="flex-grow flex flex-col items-center justify-center p-4 w-full -mt-16">
+    <div class="flex-grow flex flex-col items-center justify-center p-4 w-full">
         <!-- Logo -->
-        <div class="mb-6 text-center w-full max-w-md mx-auto">
-            <div class="inline-block mb-2">
-                <img src="/static/img/logo.png" alt="PayvoraX Logo"
-                    class="w-48 h-48 md:w-64 md:h-64 object-contain rounded-full mx-auto shadow-sm">
+        <div class="mb-4 md:mb-8 text-center w-full max-w-md mx-auto">
+            <div class="inline-block mb-2 md:mb-4">
+                <img src="/static/img/logo.png?v=payvorax1" alt="PayvoraX Logo"
+                    class="w-32 h-32 md:w-64 md:h-64 object-contain rounded-full mx-auto shadow-sm">
             </div>
-            <h2 class="text-xl font-medium text-gray-500 tracking-wide">Soluções financeiras em um só lugar.</h2>
+            <h2 class="text-lg md:text-xl font-medium text-gray-500 tracking-wide">Soluções financeiras em um só lugar.
+            </h2>
         </div>
 
         <!-- Login Form -->
-        <div class="w-full max-w-sm space-y-6">
-            <form id="loginForm" class="space-y-4">
+        <div class="w-full max-w-sm space-y-4 md:space-y-6">
+            <form id="loginForm" class="space-y-3 md:space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">CPF ou CNPJ</label>
                     <input type="text" id="cpf_cnpj" required
-                        class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all shadow-sm"
+                        class="w-full p-3 md:p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all shadow-sm"
                         placeholder="Digite seu documento">
                 </div>
 
@@ -49,17 +50,17 @@
                     <label class="block text-sm font-medium text-gray-700 mb-1">Senha</label>
                     <div class="relative">
                         <input type="password" id="password" required
-                            class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all shadow-sm"
+                            class="w-full p-3 md:p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all shadow-sm"
                             placeholder="Sua senha">
                         <button type="button" onclick="togglePassword()"
-                            class="absolute right-4 top-4 text-gray-400 hover:text-gray-600">
+                            class="absolute right-4 top-3 md:top-4 text-gray-400 hover:text-gray-600">
                             <i data-lucide="eye" class="w-5 h-5"></i>
                         </button>
                     </div>
                 </div>
 
                 <button type="submit"
-                    class="w-full nu-purple text-white font-bold py-4 rounded-full hover:bg-purple-800 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 mt-2">
+                    class="w-full nu-purple text-white font-bold py-3 md:py-4 rounded-full hover:bg-purple-800 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 mt-2">
                     Entrar
                 </button>
             </form>
