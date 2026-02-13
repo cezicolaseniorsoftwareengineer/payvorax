@@ -25,10 +25,10 @@ def _build_engine_kwargs(database_url: str) -> Dict[str, Any]:
     """
     Build SQLAlchemy engine kwargs with guardrails for common production issues.
 
-    Key focus:
-    - Supabase pooler requires tenant routing in the username (e.g. 'postgres.<project_ref>').
-    - Supabase requires SSL in most setups.
-    - pool_pre_ping improves resilience against stale connections.
+    Supports multiple PostgreSQL providers:
+    - Neon (*.neon.tech) — serverless, auto-suspend after inactivity
+    - Supabase pooler (*.pooler.supabase.com) — multi-tenant routing
+    - Any standard PostgreSQL instance
     """
     url = make_url(database_url)
     host = (url.host or "").lower()
@@ -40,9 +40,9 @@ def _build_engine_kwargs(database_url: str) -> Dict[str, Any]:
             "connect_args": {"check_same_thread": False},
         }
 
-    # Supabase pooler specifics (multi-tenant router)
-    # Observed failure mode: FATAL: Tenant or user not found
-    # Typically caused by missing '<tenant>' suffix in username when using pooler host.
+    # --- Provider-specific validation ---
+
+    # Supabase pooler: requires tenant suffix in username
     if host.endswith(".pooler.supabase.com"):
         if "." not in username:
             safe_url = _redact_sqlalchemy_url(url)
@@ -54,12 +54,20 @@ def _build_engine_kwargs(database_url: str) -> Dict[str, Any]:
             raise RuntimeError(
                 "Invalid DATABASE_URL for Supabase pooler. "
                 "Use the Supabase 'Transaction pooler' connection string and ensure the username "
-                "includes the project ref suffix (example: 'postgres.<project_ref>')."
+                "includes the project ref suffix (example: 'postgres.<project_ref>'). "
+                "Also verify the Supabase project is not paused (free-tier projects pause after 7 days of inactivity)."
             )
+        else:
+            logger.info(f"Supabase pooler detected (host={host}).")
 
+    # Neon: log detection for operational awareness
+    if host.endswith(".neon.tech"):
+        logger.info(f"Neon serverless PostgreSQL detected (host={host}).")
+
+    # --- SSL enforcement for cloud providers ---
     connect_args: Dict[str, Any] = {}
-    # Enforce SSL for Supabase endpoints if not explicitly set in the URL query.
-    if host.endswith(".supabase.co") or host.endswith(".supabase.com"):
+    cloud_hosts = (".supabase.co", ".supabase.com", ".neon.tech")
+    if any(host.endswith(suffix) for suffix in cloud_hosts):
         if "sslmode" not in (url.query or {}):
             connect_args["sslmode"] = "require"
 
@@ -96,8 +104,42 @@ def get_db():
         db.close()
 
 
-def init_db():
-    """Idempotent initialization of database schema artifacts."""
-    logger.info("Iniciando criação de tabelas no banco de dados")
-    Base.metadata.create_all(bind=engine)
-    logger.info("Tabelas criadas com sucesso")
+def init_db(max_retries: int = 5, base_delay: float = 2.0) -> None:
+    """
+    Idempotent initialization of database schema artifacts.
+
+    Implements exponential backoff to survive transient connection failures
+    (e.g. Supabase pooler cold-start, DNS resolution delays, network blips).
+    Raises the last exception after exhausting all retries.
+    """
+    import time
+
+    last_exception: Exception | None = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(
+                "Iniciando criação de tabelas no banco de dados",
+                extra={"attempt": attempt, "max_retries": max_retries},
+            )
+            Base.metadata.create_all(bind=engine)
+            logger.info("Tabelas criadas com sucesso")
+            return
+        except Exception as exc:
+            last_exception = exc
+            delay = base_delay * (2 ** (attempt - 1))
+            logger.warning(
+                f"Database connection failed (attempt {attempt}/{max_retries}). "
+                f"Retrying in {delay:.1f}s. Error: {exc}",
+            )
+            if attempt < max_retries:
+                time.sleep(delay)
+
+    # All retries exhausted — let the application crash with a clear message.
+    logger.critical(
+        f"Database initialization failed after {max_retries} attempts. "
+        "Verify DATABASE_URL, database provider status (Neon/Supabase), and network connectivity."
+    )
+    raise RuntimeError(
+        f"Could not initialize database after {max_retries} attempts."
+    ) from last_exception

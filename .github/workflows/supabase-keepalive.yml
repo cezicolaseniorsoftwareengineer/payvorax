@@ -1,0 +1,59 @@
+name: Database Keep-Alive
+
+# Prevents free-tier database providers (Supabase, Neon, etc.) from suspending
+# the project due to inactivity. Runs a lightweight SELECT every 4 days.
+# GitHub Actions scheduled workflows are free for public repos and have generous limits for private repos.
+
+on:
+  schedule:
+    # Every 4 days at 06:00 UTC — within Neon's 5-day and Supabase's 7-day inactivity windows
+    - cron: "0 6 */4 * *"
+  workflow_dispatch:
+    # Allow manual trigger for immediate testing
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  keepalive:
+    name: Ping PostgreSQL Database
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Run keep-alive query
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret is not set. Configure it in repo Settings > Secrets."
+            exit 1
+          fi
+
+          pip install psycopg2-binary --quiet
+
+          python3 -c "
+          import psycopg2
+          import sys
+          import os
+
+          dsn = os.environ['DATABASE_URL']
+
+          try:
+              conn = psycopg2.connect(dsn, connect_timeout=15)
+              cur = conn.cursor()
+              cur.execute('SELECT 1;')
+              result = cur.fetchone()
+              cur.close()
+              conn.close()
+              if result and result[0] == 1:
+                  print('Keep-alive successful: database is responsive.')
+              else:
+                  print('::warning::Unexpected query result.', file=sys.stderr)
+                  sys.exit(1)
+          except psycopg2.OperationalError as e:
+              # Mask connection details in logs
+              error_msg = str(e).split('password')[0] if 'password' in str(e) else str(e)
+              print(f'::error::Database connection failed: {error_msg}', file=sys.stderr)
+              sys.exit(1)
+          "

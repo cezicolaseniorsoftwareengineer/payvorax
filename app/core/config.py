@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     DEBUG: bool = False
 
-    # Supabase PostgreSQL Connection
+    # PostgreSQL Connection (Neon, Supabase, or any standard PostgreSQL)
     # WARNING: Set this in your environment variables (e.g. .env file or Render Dashboard)
     DATABASE_URL: str = "postgresql://user:password@host:port/dbname"
 
