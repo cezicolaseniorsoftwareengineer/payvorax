@@ -343,13 +343,16 @@
         }
     });
 
-    // Handle Send Pix
+    // Handle Send Pix — Optimistic UI: instant feedback while backend validates
     document.getElementById('pixForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = e.target.querySelector('button');
         const originalText = btn.innerHTML;
-        btn.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>';
+        btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div><span>Enviando...</span></div>';
         btn.disabled = true;
+
+        // Instant optimistic toast
+        PVX.showToast('Processando seu Pix...', 'info', 10000);
 
         const dataAgendamento = document.getElementById('data_agendamento').value;
 
@@ -382,6 +385,7 @@
 
             if (response.ok) {
                 if (result.status === 'SCHEDULED') {
+                    PVX.showToast('Pix agendado com sucesso!', 'success');
                     resultDiv.className = "bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4";
                     resultIconContainer.className = "bg-blue-100 p-2 rounded-full";
                     resultIconContainer.innerHTML = '<i data-lucide="calendar" class="w-5 h-5 text-blue-600"></i>';
@@ -390,6 +394,7 @@
                     resultText.className = "text-sm text-blue-700";
                     resultText.innerHTML = `Agendado para: <strong>${dataAgendamento}</strong><br>ID: ${result.id}`;
                 } else {
+                    PVX.showToast('Pix enviado com sucesso!', 'success');
                     resultDiv.className = "bg-green-50 border border-green-200 rounded-xl p-4 mt-4";
                     resultIconContainer.className = "bg-green-100 p-2 rounded-full";
                     resultIconContainer.innerHTML = '<i data-lucide="check" class="w-5 h-5 text-green-600"></i>';
@@ -399,6 +404,7 @@
                     resultText.innerHTML = `ID: ${result.id}<br>Status: <strong>${result.status}</strong>`;
                 }
             } else {
+                PVX.showToast('Falha no envio. Verifique os dados.', 'error');
                 resultDiv.className = "bg-red-50 border border-red-200 rounded-xl p-4 mt-4";
                 resultIconContainer.className = "bg-red-100 p-2 rounded-full";
                 resultIconContainer.innerHTML = '<i data-lucide="alert-circle" class="w-5 h-5 text-red-600"></i>';
@@ -434,13 +440,14 @@
         }
     });
 
-    // Handle Receive Pix (Cobrar)
+    // Handle Receive Pix (Cobrar) — Instant feedback
     document.getElementById('cobrarForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = e.target.querySelector('button');
         const originalText = btn.innerHTML;
-        btn.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>';
+        btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div><span>Gerando...</span></div>';
         btn.disabled = true;
+        PVX.showToast('Gerando QR Code...', 'info', 10000);
 
         const data = {
             value: parseFloat(document.getElementById('valorReceber').value),
@@ -457,6 +464,7 @@
             const result = await response.json();
 
             if (response.ok) {
+                PVX.showToast('QR Code gerado!', 'success');
                 document.getElementById('qrResult').classList.remove('hidden');
                 document.getElementById('qrImage').src = result.qr_code_url;
                 document.getElementById('copyPasteCode').value = result.copy_and_paste;

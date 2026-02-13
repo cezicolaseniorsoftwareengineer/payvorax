@@ -87,14 +87,18 @@
             input.type = input.type === 'password' ? 'text' : 'password';
         }
 
+        // Database warm-up on login page load (wakes Neon before user submits)
+        fetch('/health', { method: 'GET', priority: 'low' }).catch(() => { });
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const cpf = document.getElementById('cpf_cnpj').value;
             const password = document.getElementById('password').value;
             const btn = e.target.querySelector('button[type="submit"]');
 
+            // Instant visual feedback
             btn.disabled = true;
-            btn.innerHTML = 'Entrando...';
+            btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span>Entrando...</span></div>';
 
             try {
                 const response = await fetch('/auth/login', {
@@ -105,16 +109,22 @@
 
                 if (response.ok) {
                     const data = await response.json();
-                    localStorage.setItem('user_name', data.nome); // Backup for UI
-                    localStorage.setItem('access_token', data.access_token); // Persistência extra
+                    localStorage.setItem('user_name', data.nome);
+                    localStorage.setItem('access_token', data.access_token);
+                    // Show success state before redirect
+                    btn.innerHTML = '<div class="flex items-center justify-center gap-2"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span>Bem-vindo!</span></div>';
+                    btn.classList.remove('nu-purple');
+                    btn.classList.add('bg-green-600');
                     window.location.href = '/';
                 } else {
-                    alert('Credenciais inválidas');
+                    btn.classList.add('animate-shake');
+                    setTimeout(() => btn.classList.remove('animate-shake'), 500);
+                    alert('Credenciais invalidas');
                     btn.disabled = false;
                     btn.innerHTML = 'Entrar';
                 }
             } catch (error) {
-                alert('Erro de conexão');
+                alert('Erro de conexao. Verifique sua internet.');
                 btn.disabled = false;
                 btn.innerHTML = 'Entrar';
             }

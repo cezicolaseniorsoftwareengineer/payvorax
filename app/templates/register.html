@@ -85,11 +85,14 @@
             input.type = input.type === 'password' ? 'text' : 'password';
         }
 
+        // Database warm-up on register page load
+        fetch('/health', { method: 'GET', priority: 'low' }).catch(() => { });
+
         document.getElementById('registerForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = e.target.querySelector('button');
             btn.disabled = true;
-            btn.innerHTML = 'Cadastrando...';
+            btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span>Cadastrando...</span></div>';
 
             const data = {
                 name: document.getElementById('nome').value,

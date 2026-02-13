@@ -21,16 +21,18 @@ if not os.environ.get("PAYVORAX_ALLOWED_START") and "pytest" not in sys.modules:
         print("\nDirect execution via uvicorn or other methods is prohibited to ensure environment consistency.\n")
         sys.exit(1)
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Depends
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 import time
 from uuid import uuid4
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.database import init_db
+from app.core.database import init_db, get_db
 from app.core.logger import logger
 from app.cards.router import router as cards_router
 from app.pix.router import router as pix_router
@@ -183,12 +185,22 @@ def api_info() -> Dict[str, Any]:
 
 
 @app.get("/health", tags=["Health"])
-def health_check() -> Dict[str, str]:
+def health_check(db: Session = Depends(get_db)) -> Dict[str, str]:
     """
-    Liveness probe endpoint for orchestration systems.
+    Readiness probe and database warm-up endpoint.
+    Executes a lightweight query to wake the Neon serverless compute
+    and keep the connection pool warm. Called silently by the frontend
+    on every page load to eliminate cold-start latency for user actions.
     """
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception:
+        db_status = "degraded"
+
     return {
         "status": "healthy",
+        "db": db_status,
         "app": settings.APP_NAME,
         "version": settings.VERSION
     }

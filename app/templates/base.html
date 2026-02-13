@@ -51,10 +51,115 @@
             scrollbar-width: none;
             /* Firefox */
         }
+
+        /* --- Optimistic UI: instant feedback layer --- */
+        .pvx-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: rgba(255, 255, 255, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s ease;
+        }
+
+        .pvx-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .pvx-spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid #e5e7eb;
+            border-top-color: #820AD1;
+            border-radius: 50%;
+            animation: pvx-spin 0.6s linear infinite;
+        }
+
+        @keyframes pvx-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .pvx-overlay-msg {
+            margin-top: 12px;
+            font-size: 14px;
+            color: #374151;
+            font-weight: 500;
+        }
+
+        /* Skeleton shimmer for data loading */
+        .pvx-skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: pvx-shimmer 1.2s infinite;
+            border-radius: 6px;
+            min-height: 1.2em;
+        }
+
+        @keyframes pvx-shimmer {
+            0% {
+                background-position: 200% 0
+            }
+
+            100% {
+                background-position: -200% 0
+            }
+        }
+
+        /* Toast notification */
+        .pvx-toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            z-index: 10000;
+            opacity: 0;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+        }
+
+        .pvx-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-8px);
+        }
+
+        .pvx-toast.success {
+            background: #065f46;
+            color: white;
+        }
+
+        .pvx-toast.error {
+            background: #991b1b;
+            color: white;
+        }
+
+        .pvx-toast.info {
+            background: #1e40af;
+            color: white;
+        }
     </style>
 </head>
 
 <body class="bg-gray-100 min-h-screen flex flex-col">
+
+    <!-- Optimistic UI: full-screen loading overlay -->
+    <div id="pvx-overlay" class="pvx-overlay">
+        <div class="pvx-spinner"></div>
+        <p class="pvx-overlay-msg" id="pvx-overlay-msg">Processando...</p>
+    </div>
+    <!-- Toast notifications -->
+    <div id="pvx-toast" class="pvx-toast"></div>
 
     <!-- Mobile-first Header -->
     <header class="nu-purple text-white p-4 shadow-lg">
@@ -195,6 +300,59 @@
             localStorage.removeItem('user_name');
             window.location.href = '/login';
         }
+
+        // === Optimistic UI Engine ===
+        const PVX = {
+            overlay: document.getElementById('pvx-overlay'),
+            overlayMsg: document.getElementById('pvx-overlay-msg'),
+            toastEl: document.getElementById('pvx-toast'),
+            _toastTimer: null,
+
+            /** Show full-screen loading overlay with instant feedback */
+            showOverlay(msg = 'Processando...') {
+                this.overlayMsg.textContent = msg;
+                this.overlay.classList.add('active');
+            },
+
+            /** Hide overlay */
+            hideOverlay() {
+                this.overlay.classList.remove('active');
+            },
+
+            /** Show a toast notification (success | error | info) */
+            showToast(msg, type = 'success', duration = 3000) {
+                clearTimeout(this._toastTimer);
+                this.toastEl.textContent = msg;
+                this.toastEl.className = `pvx-toast ${type} show`;
+                this._toastTimer = setTimeout(() => {
+                    this.toastEl.classList.remove('show');
+                }, duration);
+            },
+
+            /**
+             * Optimistic fetch: shows overlay instantly, executes request,
+             * then shows toast with result. Returns the response.
+             */
+            async optimisticFetch(url, options = {}, optimisticMsg = 'Processando...') {
+                this.showOverlay(optimisticMsg);
+                try {
+                    const response = await fetch(url, options);
+                    this.hideOverlay();
+                    return response;
+                } catch (err) {
+                    this.hideOverlay();
+                    this.showToast('Erro de conexao. Tente novamente.', 'error');
+                    throw err;
+                }
+            }
+        };
+
+        // Database warm-up: silent health-check to wake Neon compute on page load.
+        // This runs in the background so by the time the user interacts,
+        // the database connection is already established (~500ms head start).
+        (function warmUpDatabase() {
+            fetch('/health', { method: 'GET', priority: 'low' }).catch(() => { });
+        })();
     </script>
     {% block scripts %}{% endblock %}
 </body>
