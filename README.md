@@ -2,6 +2,20 @@
 
 Complete project demonstrating **3 real-world fintech challenges** integrated, developed with professional architecture and software engineering best practices.
 
+<img width="1779" height="1066" alt="image" src="https://github.com/user-attachments/assets/4e7fc792-2bc0-43f9-b199-b1a91e5318f7" />
+
+<img width="1598" height="1076" alt="image" src="https://github.com/user-attachments/assets/033ba713-a2c3-4908-b0dc-bd9d3af764ce" />
+
+<img width="1623" height="1070" alt="image" src="https://github.com/user-attachments/assets/1221b2b8-7ce4-4a97-bc42-36be789092fb" />
+
+Fictitious Credit Cards (DEMO)
+
+<img width="1805" height="1078" alt="image" src="https://github.com/user-attachments/assets/0199d94d-d74e-4d96-8eb0-2d9c25b514b4" />
+
+<img width="1906" height="1064" alt="image" src="https://github.com/user-attachments/assets/21804d91-1cfe-41b9-b5a4-8d113e49ed4b" />
+
+
+
 ## Implemented Challenges
 
 ### 1. Installment Simulation Engine
