@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status, Header
+from fastapi import APIRouter, Depends, HTTPException, Response, status, Header, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from uuid import uuid4
@@ -14,10 +14,14 @@ from app.auth.service import (
     get_user_balance
 )
 from app.auth.dependencies import get_current_user
-from datetime import timedelta
+from app.core.email_service import send_verification_email
+from app.core.document_validator import validate_document
+from datetime import timedelta, datetime, timezone
 from app.core.config import settings
 from app.core.logger import logger
 import traceback
+import secrets
+import re
 
 router = APIRouter()
 
@@ -25,10 +29,20 @@ router = APIRouter()
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(response: Response, user: UserCreate, db: Session = Depends(get_db)):
     """
-    Registers a new user with robust validation and error handling.
+    Registers a new user.
+    Validates CPF/CNPJ mathematically, then sends email verification link.
+    Account is active but email_verified=False until link is confirmed.
     """
     try:
         logger.info(f"Starting registration for CPF/CNPJ: {user.cpf_cnpj}")
+
+        # --- Document validation (anti-fraud KYC gate) ---
+        is_valid_doc, doc_result = validate_document(user.cpf_cnpj)
+        if not is_valid_doc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=doc_result
+            )
 
         # Check if user already exists
         db_user = db.query(User).filter(
@@ -39,37 +53,48 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
             logger.warning(f"Duplicate registration attempt: {user.cpf_cnpj} or {user.email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email or CPF/CNPJ already registered in the system."
+                detail="Email ou CPF/CNPJ ja cadastrado no sistema."
             )
 
-        # Create new user
+        # Generate email verification token (cryptographically secure)
+        email_token = secrets.token_urlsafe(32)
+
+        # Create new user — email_verified starts False
         hashed_password = get_password_hash(user.password)
         new_user = User(
             name=user.name,
             email=user.email,
             cpf_cnpj=user.cpf_cnpj,
-            hashed_password=hashed_password
+            hashed_password=hashed_password,
+            email_verified=False,
+            document_verified=True,  # CPF/CNPJ passed mathematical validation
+            email_verification_token=email_token,
+            email_verification_sent_at=datetime.now(timezone.utc)
         )
 
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
 
-        logger.info(f"User created successfully: ID {new_user.id}")
+        logger.info(f"User created: ID {new_user.id} | doc_type={doc_result}")
 
-        # Auto-login: Generate token
+        # Send verification email (non-blocking: failure does not abort registration)
+        sent = send_verification_email(new_user.email, new_user.name, email_token)
+        if not sent:
+            logger.warning(f"Verification email not sent for {new_user.id} (SMTP not configured)")
+
+        # Auto-login: Generate session token
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": new_user.cpf_cnpj, "name": new_user.name},
             expires_delta=access_token_expires
         )
 
-        # Configure Secure Cookie (HttpOnly)
         response.set_cookie(
             key="access_token",
             value=f"Bearer {access_token}",
             httponly=True,
-            secure=True,  # Requer HTTPS
+            secure=True,
             samesite="lax",
             max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             expires=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
@@ -79,15 +104,19 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
             "access_token": access_token,
             "token_type": "bearer",
             "name": new_user.name,
-            "message": "Registration successful."
+            "email_verified": False,
+            "document_verified": True,
+            "message": "Cadastro realizado. Verifique seu e-mail para ativar todos os recursos."
         }
 
+    except HTTPException:
+        raise
     except IntegrityError as e:
         db.rollback()
         logger.error(f"Database integrity error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Error processing data. Check if fields are correct."
+            detail="Erro ao processar dados. Verifique os campos informados."
         )
     except Exception as e:
         db.rollback()
@@ -95,7 +124,7 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
         logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error. Please try again later."
+            detail="Erro interno. Tente novamente mais tarde."
         )
 
 
@@ -155,6 +184,84 @@ def login(response: Response, user_in: UserLogin, db: Session = Depends(get_db))
 def logout(response: Response):
     response.delete_cookie("access_token")
     return {"message": "Logout successful"}
+
+
+@router.get("/verificar-email")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    """
+    Confirms the user's email via the token sent during registration.
+    Token expires after 24 hours.
+    """
+    user = db.query(User).filter(User.email_verification_token == token).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Link de verificacao invalido ou ja utilizado."
+        )
+
+    # Check expiry (24 hours)
+    if user.email_verification_sent_at:
+        sent_at = user.email_verification_sent_at
+        if sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+        elapsed = datetime.now(timezone.utc) - sent_at
+        if elapsed.total_seconds() > 86400:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Link de verificacao expirado. Solicite um novo envio."
+            )
+
+    user.email_verified = True
+    user.email_verification_token = None
+    db.commit()
+
+    logger.info(f"Email verified for user {user.id}")
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/?email_verificado=1", status_code=302)
+
+
+@router.post("/reenviar-verificacao")
+def resend_verification(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    Resends the email verification link.
+    Rate-limited: minimum 5 minutes between sends.
+    """
+    if current_user.email_verified:
+        raise HTTPException(status_code=400, detail="E-mail ja verificado.")
+
+    # Rate limit: 5 minutes between resends
+    if current_user.email_verification_sent_at:
+        sent_at = current_user.email_verification_sent_at
+        if sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+        elapsed = datetime.now(timezone.utc) - sent_at
+        if elapsed.total_seconds() < 300:
+            remaining = int(300 - elapsed.total_seconds())
+            raise HTTPException(
+                status_code=429,
+                detail=f"Aguarde {remaining} segundos antes de solicitar novo envio."
+            )
+
+    new_token = secrets.token_urlsafe(32)
+    current_user.email_verification_token = new_token
+    current_user.email_verification_sent_at = datetime.now(timezone.utc)
+    db.commit()
+
+    send_verification_email(current_user.email, current_user.name, new_token)
+    return {"message": "E-mail de verificacao reenviado."}
+
+
+@router.post("/validar-documento")
+def validate_doc(cpf_cnpj: str, db: Session = Depends(get_db)):
+    """
+    Validates a CPF or CNPJ without creating an account.
+    Used by the registration form for real-time client-side feedback.
+    """
+    from app.core.document_validator import validate_document
+    digits = re.sub(r"\D", "", cpf_cnpj)
+    is_valid, result = validate_document(digits)
+    return {"valid": is_valid, "doc_type": result if is_valid else None, "message": result}
 
 
 @router.get("/balance", response_model=BalanceResponse)

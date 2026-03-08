@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     # These tests require valid CPF/CNPJ and real Asaas credentials.
     ASAAS_INTEGRATION_TESTS: bool = False
 
+    # Transactional email via Resend (https://resend.com)
+    # CRITICAL: set only via environment variable — never hardcode this value.
+    RESEND_API_KEY: Optional[str] = None
+    RESEND_FROM_NAME: str = "PayvoraX"
+    RESEND_FROM_EMAIL: str = "noreply@payvorax.com"
+    # Base URL used to build verification links (e.g. https://payvorax.onrender.com)
+    APP_BASE_URL: str = "http://localhost:8000"
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 
