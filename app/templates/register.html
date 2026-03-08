@@ -28,15 +28,19 @@
     <div class="flex-grow flex flex-col items-center justify-center p-6">
         <div class="mb-8 text-center">
             <h1 class="text-2xl font-bold text-gray-900">Crie sua conta</h1>
-            <p class="text-gray-500">Junte-se à revolução financeira.</p>
+            <p class="text-gray-500">Dados completos para ativacao da conta.</p>
         </div>
 
         <form id="registerForm" class="w-full max-w-sm space-y-4">
+
+            <!-- Dados pessoais -->
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-2">Dados pessoais</p>
+
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
                 <input type="text" id="nome" required
                     class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
-                    placeholder="Seu nome">
+                    placeholder="Seu nome completo">
             </div>
 
             <div>
@@ -55,11 +59,18 @@
             </div>
 
             <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Telefone (com DDD)</label>
+                <input type="tel" id="phone" required inputmode="numeric"
+                    class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                    placeholder="(11) 99999-9999" maxlength="16">
+            </div>
+
+            <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Senha</label>
                 <div class="relative">
                     <input type="password" id="password" required
                         class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
-                        placeholder="Mínimo 6 caracteres">
+                        placeholder="Minimo 6 caracteres">
                     <button type="button" onclick="togglePassword()"
                         class="absolute right-4 top-4 text-gray-400 hover:text-gray-600">
                         <i data-lucide="eye" class="w-5 h-5"></i>
@@ -67,14 +78,67 @@
                 </div>
             </div>
 
+            <!-- Endereco -->
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-2">Endereco</p>
+
+            <div class="flex gap-2">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">CEP</label>
+                    <input type="text" id="address_zip" required inputmode="numeric"
+                        class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                        placeholder="00000-000" maxlength="9" oninput="formatCep(this)" onblur="fetchCep(this.value)">
+                </div>
+                <div id="cep-spinner" class="hidden self-end pb-4">
+                    <div class="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin">
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Logradouro</label>
+                <input type="text" id="address_street" required
+                    class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                    placeholder="Rua, Avenida...">
+            </div>
+
+            <div class="flex gap-2">
+                <div class="w-28">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Numero</label>
+                    <input type="text" id="address_number" required
+                        class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                        placeholder="Ex: 42">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Complemento</label>
+                    <input type="text" id="address_complement"
+                        class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                        placeholder="Apto, Bloco... (opcional)">
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
+                    <input type="text" id="address_city" required
+                        class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                        placeholder="Cidade">
+                </div>
+                <div class="w-20">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">UF</label>
+                    <input type="text" id="address_state" required maxlength="2"
+                        class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                        placeholder="SP">
+                </div>
+            </div>
+
             <button type="submit"
                 class="w-full nu-purple text-white font-bold py-4 rounded-full hover:bg-purple-800 transition-all shadow-lg mt-4">
-                Cadastrar
+                Criar conta
             </button>
         </form>
 
         <p class="mt-6 text-center text-sm text-gray-600">
-            Já tem conta? <a href="/login" class="nu-text-purple font-semibold hover:underline">Fazer Login</a>
+            Ja tem conta? <a href="/login" class="nu-text-purple font-semibold hover:underline">Fazer Login</a>
         </p>
     </div>
 
@@ -146,6 +210,45 @@
             }
         }
 
+        // Phone formatting
+        const phoneInput = document.getElementById('phone');
+        phoneInput.addEventListener('input', function () {
+            let d = this.value.replace(/\D/g, '').slice(0, 11);
+            if (d.length > 6) {
+                d = d.replace(/^(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3');
+            } else if (d.length > 2) {
+                d = d.replace(/^(\d{2})(\d{0,5})/, '($1) $2');
+            } else if (d.length > 0) {
+                d = d.replace(/^(\d{0,2})/, '($1');
+            }
+            this.value = d;
+        });
+
+        // CEP formatting and ViaCEP auto-fill
+        function formatCep(input) {
+            let d = input.value.replace(/\D/g, '').slice(0, 8);
+            if (d.length > 5) d = d.replace(/^(\d{5})(\d{0,3})/, '$1-$2');
+            input.value = d;
+        }
+
+        async function fetchCep(cep) {
+            const digits = cep.replace(/\D/g, '');
+            if (digits.length !== 8) return;
+            const spinner = document.getElementById('cep-spinner');
+            spinner.classList.remove('hidden');
+            try {
+                const r = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+                const d = await r.json();
+                if (!d.erro) {
+                    document.getElementById('address_street').value = d.logradouro || '';
+                    document.getElementById('address_city').value = d.localidade || '';
+                    document.getElementById('address_state').value = (d.uf || '').toUpperCase();
+                    document.getElementById('address_number').focus();
+                }
+            } catch (_) { /* network error: user fills manually */ }
+            finally { spinner.classList.add('hidden'); }
+        }
+
         // Database warm-up on register page load
         fetch('/health', { method: 'GET', priority: 'low' }).catch(() => { });
 
@@ -161,15 +264,37 @@
                 return;
             }
 
+            const phone = document.getElementById('phone').value.replace(/\D/g, '');
+            if (phone.length < 10) {
+                alert('Informe um telefone valido com DDD.');
+                document.getElementById('phone').focus();
+                return;
+            }
+
+            const zip = document.getElementById('address_zip').value.replace(/\D/g, '');
+            if (zip.length !== 8) {
+                alert('Informe um CEP valido com 8 digitos.');
+                document.getElementById('address_zip').focus();
+                return;
+            }
+
             const btn = e.target.querySelector('button[type="submit"]');
             btn.disabled = true;
-            btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span>Cadastrando...</span></div>';
+            btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span>Criando conta...</span></div>';
 
+            const complement = document.getElementById('address_complement').value.trim();
             const data = {
                 name: document.getElementById('nome').value,
                 cpf_cnpj: digits,
                 email: document.getElementById('email').value,
-                password: document.getElementById('password').value
+                password: document.getElementById('password').value,
+                phone: phone,
+                address_street: document.getElementById('address_street').value.trim(),
+                address_number: document.getElementById('address_number').value.trim(),
+                address_complement: complement || null,
+                address_city: document.getElementById('address_city').value.trim(),
+                address_state: document.getElementById('address_state').value.trim().toUpperCase(),
+                address_zip: zip
             };
 
             try {
@@ -185,7 +310,6 @@
                     localStorage.setItem('access_token', result.access_token);
 
                     if (result.email_verified === false) {
-                        // Show email verification banner before redirect
                         const form = document.getElementById('registerForm');
                         form.innerHTML = `
                             <div class="text-center py-8 px-4">
@@ -211,12 +335,12 @@
                     const err = await response.json();
                     alert('Erro: ' + err.detail);
                     btn.disabled = false;
-                    btn.innerHTML = 'Cadastrar';
+                    btn.innerHTML = 'Criar conta';
                 }
             } catch (error) {
                 alert('Erro de conexao');
                 btn.disabled = false;
-                btn.innerHTML = 'Cadastrar';
+                btn.innerHTML = 'Criar conta';
             }
         });
     </script>

@@ -208,12 +208,16 @@ class AsaasAdapter(PaymentGatewayPort):
         For external keys, use POST /pix/qrCodes/pay (decode QR Code payment).
         """
         # Map internal key types to Asaas format
+        # Internal enum values: CPF, CNPJ, EMAIL, TELEFONE, ALEATORIA
         asaas_key_type_map = {
             "CPF": "CPF",
             "CNPJ": "CNPJ",
             "EMAIL": "EMAIL",
+            "TELEFONE": "PHONE",    # PixKeyType.PHONE.value = "TELEFONE"
+            "ALEATORIA": "EVP",    # PixKeyType.RANDOM.value = "ALEATORIA" → Asaas EVP
+            # Legacy keys kept for backward compatibility
             "PHONE": "PHONE",
-            "RANDOM": "EVP"  # Chave Aleatória = EVP (Endereço Virtual de Pagamento)
+            "RANDOM": "EVP"
         }
 
         payload = {

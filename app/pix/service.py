@@ -91,13 +91,46 @@ def create_pix(
 
                 return sent_tx
             else:
-                # External transfer - debit sender balance and create transaction
-                logger.info(f"External transfer detected for key: {data.pix_key}")
+                # External transfer — validate balance, dispatch via Asaas, then debit
+                logger.info(f"External transfer detected for key: {data.pix_key} (type={data.key_type.value})")
 
                 if sender.balance < data.value:
                     raise ValueError(f"Insufficient balance. Available: R$ {sender.balance:.2f}, Required: R$ {data.value:.2f}")
 
-                # Debit sender balance for external transfer
+                gateway = get_payment_gateway()
+                if gateway:
+                    try:
+                        payment_result = gateway.create_pix_payment(
+                            value=Decimal(str(data.value)),
+                            pix_key=data.pix_key,
+                            pix_key_type=data.key_type.value,
+                            description=data.description or "PayvoraX PIX Transfer",
+                            idempotency_key=idempotency_key
+                        )
+                        end_to_end_id = payment_result.get("end_to_end_id") or payment_result.get("payment_id")
+                        logger.info(
+                            f"Asaas PIX transfer dispatched: payment_id={payment_result.get('payment_id')}, "
+                            f"end_to_end={end_to_end_id}, key={mask_sensitive_data(data.pix_key)}"
+                        )
+                        # Persist end-to-end ID in correlation_id for auditability
+                        if end_to_end_id:
+                            correlation_id = end_to_end_id
+                    except Exception as e:
+                        logger.error(
+                            f"Asaas PIX transfer failed: key={mask_sensitive_data(data.pix_key)}, "
+                            f"error={str(e)}"
+                        )
+                        raise ValueError(
+                            f"Falha ao processar transferencia PIX: {str(e)}"
+                        )
+                else:
+                    # Gateway not configured (dev/local) — process locally without real dispatch
+                    logger.warning(
+                        f"Payment gateway not configured. Transfer processed locally without real dispatch. "
+                        f"key={mask_sensitive_data(data.pix_key)}"
+                    )
+
+                # Debit only after successful gateway dispatch (or local fallback)
                 sender.balance -= data.value
                 db.add(sender)
 
@@ -249,7 +282,11 @@ def list_statement(
 
     transactions = query.order_by(PixTransaction.created_at.desc()).limit(limit).all()
 
-    # Calculate totals
+    # Use user.balance as the single authoritative source — never derived from transaction history
+    user = db.query(User).filter(User.id == user_id).first()
+    authoritative_balance = float(user.balance) if user else 0.0
+
+    # Metrics for extrato summary cards (informational only, not used for balance)
     total_sent = db.query(func.sum(PixTransaction.value)).filter(
         PixTransaction.status == PixStatus.CONFIRMED,
         PixTransaction.type == TransactionType.SENT,
@@ -262,12 +299,10 @@ def list_statement(
         PixTransaction.user_id == user_id
     ).scalar() or 0
 
-    balance = total_received - total_sent
-
     return {
         "total_transactions": len(transactions),
-        "total_value": float(total_sent),  # Keeping for backward compatibility if needed
-        "balance": float(balance),
+        "total_value": float(total_sent),
+        "balance": authoritative_balance,
         "transactions": transactions
     }
 

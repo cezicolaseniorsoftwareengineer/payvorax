@@ -27,18 +27,23 @@ def override_get_db() -> Generator[Any, None, None]:
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
+app.dependency_overrides  # accessed at module level; override is managed by fixture below
 
 client = TestClient(app)
 
-@pytest.fixture(scope="module")
-def test_db() -> Generator[None, None, None]:
+@pytest.fixture(scope="module", autouse=True)
+def _setup_pix_v2_module() -> Generator[None, None, None]:
+    """Installs and tears down the SQLite DB override for this module only."""
+    saved = dict(app.dependency_overrides)
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    app.dependency_overrides.clear()
+    app.dependency_overrides.update(saved)
 
 @pytest.fixture(scope="module")
-def sender_token(test_db: None) -> str:
+def sender_token() -> str:
     # Create Sender User
     db = TestingSessionLocal()
     sender = User(
@@ -58,7 +63,7 @@ def sender_token(test_db: None) -> str:
     return response.json()["access_token"]
 
 @pytest.fixture(scope="module")
-def receiver_token(test_db: None) -> str:
+def receiver_token() -> str:
     # Create Receiver User
     db = TestingSessionLocal()
     receiver = User(
@@ -77,7 +82,7 @@ def receiver_token(test_db: None) -> str:
     assert response.status_code == 200
     return response.json()["access_token"]
 
-def test_high_value_pix(sender_token: str) -> None:
+def test_high_value_pix(sender_token: str, receiver_token: str) -> None:
     """Test sending a very high value PIX (1 Billion)."""
     cookies = {"access_token": f"Bearer {sender_token}"}
     headers = {
@@ -180,7 +185,7 @@ def test_copia_e_cola_flow(sender_token: str, receiver_token: str) -> None:
 
     assert found, "Receiver did not receive the confirmed charge transaction"
 
-def test_self_deposit_simulation(test_db: None) -> None:
+def test_self_deposit_simulation() -> None:
     """Test the Self-Deposit Simulation (Faucet) via Cobrar + Confirmar."""
     # Create a user with 0 balance (idempotent guard)
     db = TestingSessionLocal()
@@ -232,7 +237,7 @@ def test_self_deposit_simulation(test_db: None) -> None:
     # Balance should be 1 Billion (Received) - 0 (Sent skipped) = 1 Billion
     assert statement["balance"] == 1000000000.0
 
-def test_confirm_receipt_flow(test_db: None) -> None:
+def test_confirm_receipt_flow() -> None:
     """Test the 'Simular Pagamento' flow (Method A)."""
     # Create user with unique CPF suffix to avoid collision in shared module DB
     db = TestingSessionLocal()
@@ -274,7 +279,7 @@ def test_confirm_receipt_flow(test_db: None) -> None:
     statement = response.json()
     assert statement["balance"] == 100.0
 
-def test_high_value_receipt_flow(test_db: None) -> None:
+def test_high_value_receipt_flow() -> None:
     """Test receiving a very high value PIX (1 Billion) via Charge flow."""
     # Create user with idempotent guard to avoid collision in shared module DB
     db = TestingSessionLocal()

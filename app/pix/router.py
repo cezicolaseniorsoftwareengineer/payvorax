@@ -561,6 +561,85 @@ def verify_pix_charge_payment(
         raise HTTPException(status_code=500, detail="Erro ao verificar o pagamento. Tente novamente.")
 
 
+@router.post("/webhook/asaas", status_code=200)
+async def asaas_webhook(
+    request: Request,
+    payload: dict,
+    db: Session = Depends(get_db),
+    x_correlation_id: str = Header(default=None)
+):
+    """
+    Asaas payment webhook receiver.
+    Auto-confirms charges when Asaas notifies PAYMENT_RECEIVED or PAYMENT_CONFIRMED.
+    Configure in Asaas dashboard: Settings > Integrations > Webhooks > URL: /pix/webhook/asaas
+    Token must match ASAAS_WEBHOOK_TOKEN environment variable.
+    """
+    from uuid import uuid4 as _uuid4
+    from app.core.config import settings as _settings
+
+    correlation_id = x_correlation_id or str(_uuid4())
+    logger = get_logger_with_correlation(correlation_id)
+
+    # Validate Asaas authentication token (header: asaas-access-token)
+    if _settings.ASAAS_WEBHOOK_TOKEN:
+        incoming_token = request.headers.get("asaas-access-token", "")
+        if not incoming_token or incoming_token != _settings.ASAAS_WEBHOOK_TOKEN:
+            logger.warning(
+                f"Asaas webhook rejected: invalid token. "
+                f"Origin: {request.client.host if request.client else 'unknown'}"
+            )
+            # Return 200 to avoid Asaas retry storm, but take no action
+            return {"received": False, "action": "rejected", "reason": "invalid_token"}
+
+    event = payload.get("event", "")
+    payment = payload.get("payment", {})
+    payment_id = payment.get("id")
+
+    logger.info(f"Asaas webhook received: event={event}, payment_id={payment_id}")
+
+    # Only process confirmed/received payment events
+    if event not in ("PAYMENT_RECEIVED", "PAYMENT_CONFIRMED"):
+        return {"received": True, "action": "ignored", "event": event}
+
+    if not payment_id:
+        logger.warning("Asaas webhook: missing payment ID in payload")
+        return {"received": True, "action": "ignored", "reason": "no_payment_id"}
+
+    # Find pending charge in DB
+    pix = db.query(PixTransaction).filter(
+        PixTransaction.id == payment_id
+    ).first()
+
+    if not pix:
+        logger.warning(f"Asaas webhook: charge not found in DB: {payment_id}")
+        return {"received": True, "action": "ignored", "reason": "charge_not_found"}
+
+    if pix.status.value == "CONFIRMADO":
+        logger.info(f"Asaas webhook: charge already confirmed: {payment_id}")
+        return {"received": True, "action": "already_confirmed"}
+
+    # Confirm the transaction and credit balance
+    pix.status = PixStatus.CONFIRMED
+    db.add(pix)
+
+    receiver_user = db.query(User).filter(User.id == pix.user_id).first()
+    if receiver_user:
+        previous_balance = receiver_user.balance
+        receiver_user.balance += pix.value
+        receiver_user.credit_limit += pix.value * 0.50
+        db.add(receiver_user)
+        logger.info(
+            f"Asaas webhook confirmed deposit: user={receiver_user.id}, "
+            f"amount=R${pix.value:.2f}, "
+            f"balance: R${previous_balance:.2f} -> R${receiver_user.balance:.2f}"
+        )
+
+    db.commit()
+
+    logger.info(f"Asaas webhook: charge {payment_id} confirmed automatically via webhook")
+    return {"received": True, "action": "confirmed", "charge_id": payment_id}
+
+
 def build_pix_response(pix: Any, db: Session) -> PixResponse:
     """
     Constructs a PixResponse with enriched data (names, masked docs, formatted time).

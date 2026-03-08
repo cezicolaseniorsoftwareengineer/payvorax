@@ -12,9 +12,33 @@ Covers:
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from unittest.mock import patch, MagicMock
 from app.main import app
+from app.core.database import Base, get_db
 from app.core.document_validator import validate_cpf, validate_cnpj, validate_document
+
+# ---------------------------------------------------------------------------
+# In-memory SQLite override — prevents any write reaching Neon in test mode
+# ---------------------------------------------------------------------------
+
+_TEST_DB_URL = "sqlite:///:memory:"
+_engine = create_engine(
+    _TEST_DB_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+_TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+
+
+def _override_get_db():
+    db = _TestingSession()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +128,14 @@ class TestValidateDocument:
 
 @pytest.fixture
 def client():
-    return TestClient(app, raise_server_exceptions=False)
+    saved = dict(app.dependency_overrides)
+    app.dependency_overrides[get_db] = _override_get_db
+    Base.metadata.create_all(bind=_engine)
+    c = TestClient(app, raise_server_exceptions=False)
+    yield c
+    Base.metadata.drop_all(bind=_engine)
+    app.dependency_overrides.clear()
+    app.dependency_overrides.update(saved)
 
 
 @pytest.fixture
@@ -113,7 +144,14 @@ def valid_user_payload():
         "name": "Test User",
         "email": "test_verify@example.com",
         "cpf_cnpj": "52998224725",
-        "password": "TestPass@123"
+        "password": "TestPass@123",
+        "phone": "11999999999",
+        "address_street": "Rua das Flores",
+        "address_number": "123",
+        "address_complement": None,
+        "address_city": "Sao Paulo",
+        "address_state": "SP",
+        "address_zip": "01310100"
     }
 
 
@@ -123,7 +161,13 @@ class TestRegisterDocumentGate:
             "name": "Fake User",
             "email": "fake@example.com",
             "cpf_cnpj": "11111111111",  # repeated digits — always invalid
-            "password": "SomePass@123"
+            "password": "SomePass@123",
+            "phone": "11999999999",
+            "address_street": "Rua Teste",
+            "address_number": "1",
+            "address_city": "Sao Paulo",
+            "address_state": "SP",
+            "address_zip": "01310100"
         }
         response = client.post("/auth/register", json=payload)
         assert response.status_code == 422
@@ -135,7 +179,13 @@ class TestRegisterDocumentGate:
             "name": "Fake Corp",
             "email": "fakecorp@example.com",
             "cpf_cnpj": "00000000000000",  # repeated digits — always invalid
-            "password": "SomePass@123"
+            "password": "SomePass@123",
+            "phone": "11999999999",
+            "address_street": "Rua Teste",
+            "address_number": "1",
+            "address_city": "Sao Paulo",
+            "address_state": "SP",
+            "address_zip": "01310100"
         }
         response = client.post("/auth/register", json=payload)
         assert response.status_code == 422
@@ -145,12 +195,18 @@ class TestRegisterDocumentGate:
             "name": "Wrong Digit",
             "email": "wrongdigit@example.com",
             "cpf_cnpj": "52998224726",  # last digit wrong
-            "password": "SomePass@123"
+            "password": "SomePass@123",
+            "phone": "11999999999",
+            "address_street": "Rua Teste",
+            "address_number": "1",
+            "address_city": "Sao Paulo",
+            "address_state": "SP",
+            "address_zip": "01310100"
         }
         response = client.post("/auth/register", json=payload)
         assert response.status_code == 422
 
-    @patch("app.core.email_service.send_verification_email", return_value=True)
+    @patch("app.auth.router.send_verification_email", return_value=True)
     def test_register_valid_cpf_accepted(self, mock_email, client, valid_user_payload):
         # Use a unique email to avoid duplicate conflict
         valid_user_payload["email"] = "valid_new_user@example.com"
@@ -165,7 +221,7 @@ class TestRegisterDocumentGate:
             assert data.get("email_verified") is False
             assert data.get("document_verified") is True
 
-    @patch("app.core.email_service.send_verification_email", return_value=True)
+    @patch("app.auth.router.send_verification_email", return_value=True)
     def test_register_sends_verification_email(self, mock_email, client, valid_user_payload):
         valid_user_payload["email"] = "emailcheck@example.com"
         valid_user_payload["cpf_cnpj"] = "52998224725"

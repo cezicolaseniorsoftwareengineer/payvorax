@@ -217,7 +217,7 @@
 
     async function loadExtrato() {
         try {
-            const response = await fetch('/pix/extrato?limite=100');
+            const response = await fetch('/pix/extrato?limit=100');
             const data = await response.json();
 
             // Update Summary

@@ -66,10 +66,19 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
             email=user.email,
             cpf_cnpj=user.cpf_cnpj,
             hashed_password=hashed_password,
+            phone=user.phone,
+            address_street=user.address_street,
+            address_number=user.address_number,
+            address_complement=user.address_complement,
+            address_city=user.address_city,
+            address_state=user.address_state,
+            address_zip=user.address_zip,
             email_verified=False,
             document_verified=True,  # CPF/CNPJ passed mathematical validation
             email_verification_token=email_token,
-            email_verification_sent_at=datetime.now(timezone.utc)
+            email_verification_sent_at=datetime.now(timezone.utc),
+            is_active=True,
+            is_admin=False
         )
 
         db.add(new_user)

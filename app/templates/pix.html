@@ -90,8 +90,8 @@
                     <option value="EMAIL">E-mail</option>
                     <option value="CPF">CPF</option>
                     <option value="CNPJ">CNPJ</option>
-                    <option value="PHONE">Phone</option>
-                    <option value="RANDOM">Random Key</option>
+                    <option value="TELEFONE">Telefone</option>
+                    <option value="ALEATORIA">Chave Aleatória</option>
                 </select>
             </div>
 
@@ -132,8 +132,8 @@
                     <input type="number" id="valorReceber" step="0.01" min="0.01"
                         class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-lg font-semibold"
                         placeholder="0,00">
-                    <p class="text-xs text-blue-600 mt-1 font-medium">
-                        Valor minimo R$5,00 para QR Code PayvoraX. Abaixo disso, use o modo demonstracao.
+                    <p class="text-xs text-gray-400 mt-1">
+                        Valores a partir de R$5,00 geram QR Code integrado com a rede bancaria externa.
                     </p>
                 </div>
             </div>
@@ -286,7 +286,7 @@
         if (desc) document.getElementById('chave').value = "Chave do QR Code"; // In real app, extract key
 
         // Highlight that it came from QR
-        document.getElementById('tipo').value = 'RANDOM';
+        document.getElementById('tipo').value = 'ALEATORIA';
         alert(`Leitura realizada!\nValor: R$ ${valor || '?'}\nComplete os dados para finalizar.`);
     }
 
@@ -499,10 +499,10 @@
                 badge.classList.remove('hidden', 'bg-green-100', 'text-green-700', 'bg-amber-100', 'text-amber-700');
                 if (isReal) {
                     badge.classList.add('bg-blue-100', 'text-blue-700');
-                    badge.textContent = 'QR Code PayvoraX Verificado';
+                    badge.textContent = 'QR Code — Rede bancaria externa';
                 } else {
                     badge.classList.add('bg-gray-100', 'text-gray-600');
-                    badge.textContent = 'Modo Demonstracao (minimo R$5,00 para QR real)';
+                    badge.textContent = 'QR Code — Rede interna PayvoraX';
                 }
                 badge.classList.remove('hidden');
 
@@ -510,7 +510,7 @@
                 if (isReal) {
                     btnText.textContent = 'Confirmar Recebimento PayvoraX';
                 } else {
-                    btnText.textContent = 'Feito (Demonstracao)';
+                    btnText.textContent = 'Confirmar Recebimento';
                 }
                 lucide.createIcons();
             }

@@ -38,7 +38,9 @@ def test_create_pix_success():
     )
 
     # Mock find_recipient_user to return None (external transfer)
-    with patch("app.pix.service.find_recipient_user", return_value=None):
+    # Mock get_payment_gateway to return None (dev/local mode, no real dispatch)
+    with patch("app.pix.service.find_recipient_user", return_value=None), \
+         patch("app.pix.service.get_payment_gateway", return_value=None):
         pix = create_pix(db_mock, data, "idem-key-123", "corr-123", "user-123")
 
     assert pix.value == 150.0

@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     # Set to true ONLY to run real-money integration tests against Asaas.
     # These tests require valid CPF/CNPJ and real Asaas credentials.
     ASAAS_INTEGRATION_TESTS: bool = False
+    # Webhook authentication token — must match the token configured in Asaas Dashboard.
+    # Generate via: Asaas > Configuracoes > Integracoes > Webhooks > Token de autenticacao
+    # Then set this value in Render Dashboard as ASAAS_WEBHOOK_TOKEN
+    ASAAS_WEBHOOK_TOKEN: Optional[str] = None
+
+    # Admin access — only this email gets the admin panel
+    ADMIN_EMAIL: str = "biocodetechnology@gmail.com"
 
     # Transactional email via Resend (https://resend.com)
     # CRITICAL: set only via environment variable — never hardcode this value.

@@ -184,14 +184,16 @@ def test_external_pix_creates_single_transaction(db, user_alice):
         description="External payment"
     )
 
-    sent_tx = create_pix(
-        db=db,
-        data=pix_request,
-        idempotency_key="alice-external-001",
-        correlation_id="corr-external-001",
-        user_id=user_alice.id,
-        type=TransactionType.SENT
-    )
+    from unittest.mock import patch as _patch
+    with _patch("app.pix.service.get_payment_gateway", return_value=None):
+        sent_tx = create_pix(
+            db=db,
+            data=pix_request,
+            idempotency_key="alice-external-001",
+            correlation_id="corr-external-001",
+            user_id=user_alice.id,
+            type=TransactionType.SENT
+        )
 
     assert sent_tx.status == PixStatus.CONFIRMED
     assert sent_tx.value == 200.00

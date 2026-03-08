@@ -99,14 +99,29 @@
 
         <!-- Anti-Fraud Status -->
         <div class="bg-white rounded-xl p-6 shadow-sm">
-            <h2 class="text-lg font-semibold text-gray-800 mb-4">Segurança</h2>
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Seguranca</h2>
             <div class="flex items-center gap-3 bg-green-50 p-3 rounded-lg border border-green-100">
                 <i data-lucide="shield-check" class="w-6 h-6 text-green-600"></i>
                 <div>
                     <p class="text-sm font-semibold text-green-800">Motor Antifraude Ativo</p>
-                    <p class="text-xs text-green-600">Suas transações estão protegidas em tempo real.</p>
+                    <p class="text-xs text-green-600">Suas transacoes estao protegidas em tempo real.</p>
                 </div>
             </div>
+
+            {% if is_admin %}
+            <a href="/admin"
+                class="mt-4 flex items-center gap-3 bg-gray-900 hover:bg-gray-800 p-3 rounded-lg border border-gray-700 transition-colors group">
+                <div class="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="shield" class="w-4 h-4 text-white"></i>
+                </div>
+                <div class="flex-1">
+                    <p class="text-sm font-semibold text-white">Painel Administrativo</p>
+                    <p class="text-xs text-gray-400">Gerenciar correntistas e verificacoes KYC</p>
+                </div>
+                <i data-lucide="chevron-right"
+                    class="w-4 h-4 text-gray-500 group-hover:text-purple-400 transition-colors"></i>
+            </a>
+            {% endif %}
         </div>
     </div>
 </div>

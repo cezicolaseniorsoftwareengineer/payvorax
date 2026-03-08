@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.pix.service import list_statement
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
+from app.core.config import settings
+from pydantic import BaseModel
 import os
 
 # Setup templates directory
@@ -30,14 +31,15 @@ async def register_page(request: Request):
 @router.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Main Dashboard (Home)"""
-    statement = list_statement(db, current_user.id)
-    balance = statement["balance"]
+    # Always use user.balance: single authoritative source, never derived from transaction sums
+    balance = current_user.balance
 
     return templates.TemplateResponse("index.html", {
         "request": request,
         "page": "home",
         "balance": balance,
-        "user_name": current_user.name
+        "user_name": current_user.name,
+        "is_admin": current_user.email == settings.ADMIN_EMAIL,
     })
 
 
@@ -79,3 +81,53 @@ async def pix_payment_simulation(request: Request, current_user: User = Depends(
 async def extrato_ui(request: Request, current_user: User = Depends(get_current_user)):
     """Statement Interface"""
     return templates.TemplateResponse("extrato.html", {"request": request, "page": "extrato", "user_name": current_user.name})
+
+
+@router.get("/admin", response_class=HTMLResponse)
+async def admin_panel(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Admin panel — restricted to admin account only."""
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso restrito.")
+
+    users = db.query(User).order_by(User.created_at.desc()).all()
+
+    return templates.TemplateResponse("admin.html", {
+        "request": request,
+        "page": "admin",
+        "user_name": current_user.name,
+        "users": users,
+        "total": len(users),
+        "active": sum(1 for u in users if u.is_active),
+        "verified_docs": sum(1 for u in users if u.document_verified),
+        "verified_emails": sum(1 for u in users if u.email_verified),
+    })
+
+
+class ToggleActiveRequest(BaseModel):
+    active: bool
+
+
+@router.post("/admin/users/{user_id}/toggle-active")
+async def toggle_user_active(
+    user_id: str,
+    payload: ToggleActiveRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Activate or suspend a user account. Admin only."""
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso restrito.")
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuario nao encontrado.")
+    if target.email == settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=400, detail="Conta admin nao pode ser suspensa.")
+
+    target.is_active = payload.active
+    db.commit()
+    return {"ok": True, "user_id": user_id, "is_active": payload.active}
