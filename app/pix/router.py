@@ -729,7 +729,7 @@ def pay_pix_qrcode(
         ).first()
 
     if internal_charge:
-        charge_value = Decimal(str(internal_charge.value))
+        charge_value = float(internal_charge.value)
         receiver = db.query(User).filter(User.id == internal_charge.user_id).first()
         if not receiver:
             raise HTTPException(status_code=422, detail="Recebedor da cobrança não encontrado.")
@@ -748,21 +748,21 @@ def pay_pix_qrcode(
             if sender.balance < charge_value:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Saldo insuficiente. Disponivel: R$ {sender.balance:.2f}, Necessario: R$ {float(charge_value):.2f}"
+                    detail=f"Saldo insuficiente. Disponivel: R$ {sender.balance:.2f}, Necessario: R$ {charge_value:.2f}"
                 )
             previous_balance = sender.balance
             sender.balance -= charge_value
             db.add(sender)
             logger.info(
                 f"Internal QR payment: debited payer={sender.id}, "
-                f"amount=R${float(charge_value):.2f}, "
-                f"balance: R${float(previous_balance):.2f} -> R${float(sender.balance):.2f}"
+                f"amount=R${charge_value:.2f}, "
+                f"balance: R${previous_balance:.2f} -> R${sender.balance:.2f}"
             )
 
         internal_charge.status = PixStatus.CONFIRMED
         db.add(internal_charge)
         receiver.balance += charge_value
-        receiver.credit_limit += charge_value * Decimal("0.50")
+        receiver.credit_limit += charge_value * 0.50
         db.add(receiver)
 
         if not is_self_deposit:
