@@ -121,11 +121,11 @@
                     </div>
                 </div>
 
-                <!-- Key not found warning -->
-                <div id="recipientNotFound"
-                    class="hidden rounded-xl border border-red-200 bg-red-50 p-3 flex items-center gap-2 text-sm text-red-700">
-                    <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0"></i>
-                    <span>Chave Pix nao encontrada. Verifique os dados.</span>
+                <!-- Key format detected indicator -->
+                <div id="keyDetectedBadge"
+                    class="hidden rounded-xl border border-green-200 bg-green-50 p-3 flex items-center gap-2 text-sm text-green-700">
+                    <i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i>
+                    <span id="keyDetectedLabel">Formato reconhecido</span>
                 </div>
 
                 <!-- Agendamento Toggle -->
@@ -583,23 +583,48 @@
     let _lookupTimer = null;
     let _recipientData = null;
 
-    // Detect key type from the raw value — updates the SELECT silently
-    function detectPixKeyType(raw) {
+    // Labels for each recognised key type
+    const KEY_TYPE_META = {
+        EMAIL: 'E-mail reconhecido',
+        CPF: 'CPF reconhecido',
+        CNPJ: 'CNPJ reconhecido',
+        TELEFONE: 'Telefone reconhecido',
+        ALEATORIA: 'Chave aleatoria reconhecida',
+    };
+
+    // Detect key type from raw value.
+    // hintType: current SELECT value — used to resolve 11-digit CPF vs Telefone ambiguity.
+    // If user manually selected TELEFONE and typed 11 digits, honour that selection.
+    function detectPixKeyType(raw, hintType) {
         const v = raw.trim();
         const digits = v.replace(/\D/g, '');
         if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'EMAIL';
         if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return 'ALEATORIA';
         if (digits.length === 14) return 'CNPJ';
-        if (digits.length === 11) return 'CPF';
-        const phoneDigits = v.replace(/^\+55/, '').replace(/\D/g, '');
-        if (phoneDigits.length >= 10 && phoneDigits.length <= 11) return 'TELEFONE';
+        if (v.startsWith('+') || digits.length === 10) return 'TELEFONE';
+        if (digits.length === 11) return (hintType === 'TELEFONE') ? 'TELEFONE' : 'CPF';
         return null;
+    }
+
+    // Show/hide the keyDetectedBadge based on what is typed.
+    // Returns the detected type string or null.
+    function updateKeyDetectionBadge(raw, currentType) {
+        const detected = detectPixKeyType(raw, currentType);
+        const badge = document.getElementById('keyDetectedBadge');
+        if (detected && raw.trim().length >= 5) {
+            document.getElementById('keyDetectedLabel').textContent = KEY_TYPE_META[detected] || 'Formato reconhecido';
+            badge.classList.remove('hidden');
+            lucide.createIcons();
+        } else {
+            badge.classList.add('hidden');
+        }
+        return detected;
     }
 
     function resetRecipientCard() {
         _recipientData = null;
         document.getElementById('recipientCard').classList.add('hidden');
-        document.getElementById('recipientNotFound').classList.add('hidden');
+        // keyDetectedBadge is managed by detection logic, not here
     }
 
     async function lookupRecipient() {
@@ -624,12 +649,12 @@
                 document.getElementById('recipientBank').textContent = data.bank || '';
                 const badge = document.getElementById('recipientBadge');
                 if (data.internal) { badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
+                // Recipient card has richer info — hide the format badge
+                document.getElementById('keyDetectedBadge').classList.add('hidden');
                 document.getElementById('recipientCard').classList.remove('hidden');
                 lucide.createIcons();
-            } else if (res.status === 404) {
-                document.getElementById('recipientNotFound').classList.remove('hidden');
-                _recipientData = null;
             }
+            // 404 or key not in our DB: silent — Asaas is the sole validation authority on submit.
         } catch (_) { /* Network error - silent */ } finally {
             spinner.classList.add('hidden');
         }
@@ -641,7 +666,10 @@
 
         const raw = document.getElementById('chave').value;
         const tipoSelect = document.getElementById('tipo');
-        const detected = detectPixKeyType(raw);
+        const detected = updateKeyDetectionBadge(raw, tipoSelect.value);
+        // Auto-update SELECT only when detection is unambiguous.
+        // detectPixKeyType already uses the current SELECT as hint, so detected
+        // already honours the user's manual selection — safe to apply directly.
         if (detected && tipoSelect.value !== detected) {
             tipoSelect.value = detected;
         }
@@ -652,6 +680,9 @@
     document.getElementById('tipo').addEventListener('change', () => {
         clearTimeout(_lookupTimer);
         resetRecipientCard();
+        // Re-evaluate badge using the newly selected type as hint
+        const raw = document.getElementById('chave').value;
+        updateKeyDetectionBadge(raw, document.getElementById('tipo').value);
         _lookupTimer = setTimeout(lookupRecipient, 400);
     });
 
@@ -696,6 +727,7 @@
         document.getElementById('pixForm').reset();
         document.getElementById('valor').value = '';
         resetRecipientCard();
+        document.getElementById('keyDetectedBadge').classList.add('hidden');
         lucide.createIcons();
     }
 
@@ -724,10 +756,9 @@
             PVX.showToast('Informe a Chave Pix do destinatario.', 'error');
             btn.innerHTML = originalText; btn.disabled = false; return;
         }
-        if (!document.getElementById('recipientNotFound').classList.contains('hidden')) {
-            PVX.showToast('Chave Pix nao encontrada. Verifique os dados.', 'error');
-            btn.innerHTML = originalText; btn.disabled = false; return;
-        }
+        // Key lookup is informational only — Asaas is the sole validation authority.
+        // Do NOT block the transfer here; if the key is invalid, Asaas will reject
+        // the transfer and the user will receive a clear error from the backend.
 
         const payload = {
             value: parsedValor,
