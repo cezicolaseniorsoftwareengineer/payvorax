@@ -39,4 +39,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column("is_active", Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column("is_admin", Boolean, default=False, nullable=False)
 
+    # Password reset
+    password_reset_token: Mapped[Optional[str]] = mapped_column("password_reset_token", String(64), nullable=True, index=True)
+    password_reset_sent_at: Mapped[Optional[datetime]] = mapped_column("password_reset_sent_at", DateTime, nullable=True)
+
     cards = relationship("CreditCard", back_populates="user", lazy="select")

@@ -646,7 +646,41 @@ async def asaas_webhook(
 
     logger.info(f"Asaas webhook received: event={event}, payment_id={payment_id}")
 
-    # Only process confirmed/received payment events
+    # Handled events
+    HANDLED_EVENTS = {
+        "PAYMENT_RECEIVED",
+        "PAYMENT_CONFIRMED",
+        "TRANSFER_DONE",
+        "TRANSFER_FAILED",
+        "PAYMENT_REFUNDED",
+        "PAYMENT_OVERDUE",
+        "PAYMENT_DELETED",
+        "PAYMENT_RESTORED",
+    }
+    if event not in HANDLED_EVENTS:
+        return {"received": True, "action": "ignored", "event": event}
+
+    # Transfer status events: update PixTransaction status
+    if event in ("TRANSFER_DONE", "TRANSFER_FAILED"):
+        transfer_id = payment.get("id") or payment.get("transferId")
+        if transfer_id:
+            pix_tx = db.query(PixTransaction).filter(PixTransaction.id == transfer_id).first()
+            if pix_tx:
+                if event == "TRANSFER_DONE":
+                    pix_tx.status = PixStatus.CONFIRMED
+                else:
+                    pix_tx.status = PixStatus.FAILED
+                db.add(pix_tx)
+                db.commit()
+                logger.info(f"Asaas webhook: transfer {transfer_id} updated to {event}")
+        return {"received": True, "action": "transfer_updated", "event": event}
+
+    # Refund / overdue / deleted / restored: log only, no balance mutation
+    if event in ("PAYMENT_REFUNDED", "PAYMENT_OVERDUE", "PAYMENT_DELETED", "PAYMENT_RESTORED"):
+        logger.info(f"Asaas webhook: lifecycle event {event} for payment {payment_id}")
+        return {"received": True, "action": "logged", "event": event}
+
+    # Only credit balance for confirmed/received events below
     if event not in ("PAYMENT_RECEIVED", "PAYMENT_CONFIRMED"):
         return {"received": True, "action": "ignored", "event": event}
 

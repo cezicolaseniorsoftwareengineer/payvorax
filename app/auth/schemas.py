@@ -74,3 +74,12 @@ class BalanceResponse(BaseModel):
     balance: float
     credit_limit: float
     available_credit: float
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=6)

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Esqueci minha senha - Bio Code Tech Pay</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .nu-purple {
+            background-color: #1d4ed8;
+        }
+
+        .nu-text-purple {
+            color: #1d4ed8;
+        }
+    </style>
+</head>
+
+<body class="bg-white min-h-[100dvh] flex flex-col">
+
+    <div class="flex-grow flex flex-col items-center justify-center p-4 w-full">
+        <div class="mb-6 text-center w-full max-w-md mx-auto">
+            <a href="/login">
+                <img src="/static/img/logo.png?v=logo3" alt="Bio Code Tech Pay Logo"
+                    class="w-24 h-24 object-contain rounded-full mx-auto shadow-sm mb-4">
+            </a>
+            <h1 class="text-2xl font-bold text-gray-800">Esqueceu sua senha?</h1>
+            <p class="text-sm text-gray-500 mt-1">Informe seu e-mail e enviaremos um link para redefinir sua senha.</p>
+        </div>
+
+        <div class="w-full max-w-sm space-y-4">
+            <div id="successMsg"
+                class="hidden bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800 text-center">
+                Se o e-mail estiver cadastrado, voce recebera as instrucoes em breve. Verifique sua caixa de entrada.
+            </div>
+
+            <form id="resetForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">E-mail cadastrado</label>
+                    <input type="email" id="email" required
+                        class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none transition-all"
+                        placeholder="seuemail@exemplo.com">
+                </div>
+
+                <button type="submit"
+                    class="w-full nu-purple text-white font-bold py-3 rounded-full hover:bg-blue-900 transition-all shadow-lg">
+                    Enviar link de redefinicao
+                </button>
+            </form>
+
+            <p class="text-center text-sm text-gray-600">
+                Lembrou a senha? <a href="/login" class="nu-text-purple font-semibold hover:underline">Entrar</a>
+            </p>
+        </div>
+    </div>
+
+    <footer class="w-full p-4 text-center text-xs text-gray-400 border-t border-gray-100 bg-white">
+        <p>Todos os Direitos Reservados 2026 Bio Code Tech Pay</p>
+    </footer>
+
+    <script>
+        document.getElementById('resetForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span>Enviando...</span></div>';
+
+            try {
+                const response = await fetch('/auth/esqueci-senha', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: document.getElementById('email').value })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('resetForm').classList.add('hidden');
+                    document.getElementById('successMsg').classList.remove('hidden');
+                } else {
+                    alert(data.detail || 'Erro ao processar solicitacao. Tente novamente.');
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }
+            } catch {
+                alert('Erro de conexao. Verifique sua internet.');
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+    </script>
+</body>
+
+</html>

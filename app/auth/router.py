@@ -5,7 +5,7 @@ from uuid import uuid4
 from typing import Optional
 from app.core.database import get_db
 from app.auth.models import User
-from app.auth.schemas import UserCreate, UserLogin, DepositRequest, DepositResponse, BalanceResponse
+from app.auth.schemas import UserCreate, UserLogin, DepositRequest, DepositResponse, BalanceResponse, PasswordResetRequest, PasswordResetConfirm
 from app.auth.service import (
     get_password_hash,
     verify_password,
@@ -296,6 +296,74 @@ def get_balance(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving balance"
         )
+
+
+@router.post("/esqueci-senha", status_code=200)
+def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
+    """
+    Initiates password reset flow.
+    Sends reset link to registered email. Always returns 200 to avoid user enumeration.
+    """
+    from app.core.email_service import send_password_reset_email
+
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user:
+        # Do not reveal whether email exists
+        return {"message": "Se o e-mail estiver cadastrado, voce recebera as instrucoes em breve."}
+
+    # Rate limit: 5 minutes between requests
+    if user.password_reset_sent_at:
+        sent_at = user.password_reset_sent_at
+        if sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+        elapsed = datetime.now(timezone.utc) - sent_at
+        if elapsed.total_seconds() < 300:
+            remaining = int(300 - elapsed.total_seconds())
+            raise HTTPException(
+                status_code=429,
+                detail=f"Aguarde {remaining} segundos antes de solicitar novamente."
+            )
+
+    token = secrets.token_urlsafe(32)
+    user.password_reset_token = token
+    user.password_reset_sent_at = datetime.now(timezone.utc)
+    db.commit()
+
+    send_password_reset_email(user.email, user.name, token)
+    logger.info(f"Password reset requested for user {user.id}")
+    return {"message": "Se o e-mail estiver cadastrado, voce recebera as instrucoes em breve."}
+
+
+@router.post("/redefinir-senha", status_code=200)
+def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
+    """
+    Confirms password reset using the token received by email.
+    Token expires in 1 hour and is invalidated after use.
+    """
+    from app.auth.service import get_password_hash
+
+    user = db.query(User).filter(User.password_reset_token == payload.token).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Link invalido ou ja utilizado.")
+
+    # Check expiry (1 hour)
+    if user.password_reset_sent_at:
+        sent_at = user.password_reset_sent_at
+        if sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+        elapsed = datetime.now(timezone.utc) - sent_at
+        if elapsed.total_seconds() > 3600:
+            user.password_reset_token = None
+            db.commit()
+            raise HTTPException(status_code=400, detail="Link expirado. Solicite um novo link de redefinicao.")
+
+    user.hashed_password = get_password_hash(payload.new_password)
+    user.password_reset_token = None
+    user.password_reset_sent_at = None
+    db.commit()
+
+    logger.info(f"Password reset completed for user {user.id}")
+    return {"message": "Senha redefinida com sucesso. Faca login com a nova senha."}
 
 
 @router.post("/deposit", response_model=DepositResponse, status_code=status.HTTP_201_CREATED)

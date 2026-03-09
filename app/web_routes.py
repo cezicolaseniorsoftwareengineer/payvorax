@@ -28,6 +28,16 @@ async def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
 
+@router.get("/esqueci-senha", response_class=HTMLResponse)
+async def forgot_password_page(request: Request):
+    return templates.TemplateResponse("esqueci_senha.html", {"request": request})
+
+
+@router.get("/redefinir-senha", response_class=HTMLResponse)
+async def reset_password_page(request: Request, token: str = ""):
+    return templates.TemplateResponse("redefinir_senha.html", {"request": request, "token": token})
+
+
 @router.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Main Dashboard (Home)"""
