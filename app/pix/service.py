@@ -431,7 +431,7 @@ def create_pix_charge_with_qrcode(
         pix = PixTransaction(
             id=charge_data["charge_id"],  # Use Asaas payment ID
             value=value,
-            pix_key=charge_data["qr_code"],  # Store QR Code copy-paste
+            pix_key=charge_data["qr_code"][:200],  # VARCHAR(200) — truncated but queryable via [:200] lookup
             key_type=PixKeyType.RANDOM.value,
             type=TransactionType.RECEIVED,
             status=PixStatus.CREATED,

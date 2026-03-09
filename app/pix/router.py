@@ -17,6 +17,7 @@ from app.pix.schemas import (
     PixChargeRequest,
     PixChargeResponse,
     PixChargeConfirmRequest,
+    PixQrCodePayRequest,
     PixStatus,
     PixKeyType
 )
@@ -650,6 +651,248 @@ def verify_pix_charge_payment(
         db.rollback()
         logger.error(f"Error verifying Asaas charge {charge_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Erro ao verificar o pagamento. Tente novamente.")
+
+
+@router.post("/qrcode/pagar", response_model=Dict[str, Any], status_code=200)
+def pay_pix_qrcode(
+    data: PixQrCodePayRequest,
+    x_idempotency_key: str = Header(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    x_correlation_id: str = Header(default=None)
+) -> Dict[str, Any]:
+    """
+    Pays a PIX QR Code (scanned or Pix Copia e Cola EMV payload).
+
+    Routing logic:
+    1. If the EMV payload contains an internal Bio Code charge UUID -> confirm locally.
+    2. Otherwise -> dispatch to Asaas POST /pix/qrCodes/pay.
+
+    - **payload**: Full EMV string (000201...) or Pix Copia e Cola code
+    - **description**: Optional description (max 140 chars)
+    """
+    import re as _re
+
+    correlation_id = x_correlation_id or str(uuid4())
+    logger = get_logger_with_correlation(correlation_id)
+
+    logger.info(
+        f"QR Code payment request: user={current_user.id}, "
+        f"payload_length={len(data.payload)}, idempotency={x_idempotency_key}"
+    )
+
+    idempotency_key = x_idempotency_key or str(uuid4())
+
+    # Idempotency guard: reject duplicate payment attempts
+    if x_idempotency_key:
+        existing = db.query(PixTransaction).filter(
+            PixTransaction.idempotency_key == x_idempotency_key
+        ).first()
+        if existing:
+            logger.info(f"Duplicate QR Code payment blocked: idempotency_key={x_idempotency_key}")
+            return build_pix_response(existing, db).model_dump()
+
+    sender = db.query(User).filter(User.id == current_user.id).first()
+    if not sender:
+        raise HTTPException(status_code=404, detail="Usuario nao encontrado.")
+
+    # -------------------------------------------------------------------------
+    # Routing 1: detect internal Bio Code charge in the payload via two methods:
+    #   a) UUID regex — simulation EMVs embed the charge UUID (e.g. "0136{uuid}")
+    #   b) pix_key exact match — real Asaas charges store copy-paste EMV as pix_key
+    # -------------------------------------------------------------------------
+    UUID_RE = _re.compile(
+        r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
+        _re.IGNORECASE
+    )
+
+    internal_charge = None
+
+    # 1a: UUID scan (simulation charges)
+    for candidate_id in UUID_RE.findall(data.payload):
+        charge = db.query(PixTransaction).filter(
+            PixTransaction.id == candidate_id,
+            PixTransaction.type == TransactionType.RECEIVED,
+            PixTransaction.status == PixStatus.CREATED
+        ).first()
+        if charge:
+            internal_charge = charge
+            break
+
+    # 1b: pix_key exact match (real Asaas charges — pix_key column is VARCHAR(200))
+    if not internal_charge:
+        pix_key_lookup = data.payload[:200]
+        internal_charge = db.query(PixTransaction).filter(
+            PixTransaction.pix_key == pix_key_lookup,
+            PixTransaction.type == TransactionType.RECEIVED,
+            PixTransaction.status == PixStatus.CREATED
+        ).first()
+
+    if internal_charge:
+        charge_value = Decimal(str(internal_charge.value))
+        receiver = db.query(User).filter(User.id == internal_charge.user_id).first()
+        if not receiver:
+            raise HTTPException(status_code=422, detail="Recebedor da cobrança não encontrado.")
+
+        logger.info(
+            f"Internal charge detected: charge_id={internal_charge.id}, "
+            f"payer={current_user.id}, receiver={receiver.id}, value={charge_value}"
+        )
+
+        if internal_charge.status != PixStatus.CREATED:
+            raise HTTPException(status_code=409, detail="Esta cobranca ja foi paga.")
+
+        is_self_deposit = (internal_charge.user_id == current_user.id)
+
+        if not is_self_deposit:
+            if sender.balance < charge_value:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Saldo insuficiente. Disponivel: R$ {sender.balance:.2f}, Necessario: R$ {float(charge_value):.2f}"
+                )
+            previous_balance = sender.balance
+            sender.balance -= charge_value
+            db.add(sender)
+            logger.info(
+                f"Internal QR payment: debited payer={sender.id}, "
+                f"amount=R${float(charge_value):.2f}, "
+                f"balance: R${float(previous_balance):.2f} -> R${float(sender.balance):.2f}"
+            )
+
+        internal_charge.status = PixStatus.CONFIRMED
+        db.add(internal_charge)
+        receiver.balance += charge_value
+        receiver.credit_limit += charge_value * Decimal("0.50")
+        db.add(receiver)
+
+        if not is_self_deposit:
+            sent_pix = PixTransaction(
+                id=str(uuid4()),
+                value=float(charge_value),
+                pix_key=internal_charge.pix_key,
+                key_type=PixKeyType.RANDOM.value,
+                type=TransactionType.SENT,
+                status=PixStatus.CONFIRMED,
+                idempotency_key=idempotency_key,
+                description=data.description or "PIX QR Code Payment",
+                correlation_id=internal_charge.correlation_id,
+                user_id=current_user.id
+            )
+            db.add(sent_pix)
+            db.commit()
+            db.refresh(sent_pix)
+            audit_log(
+                action="PIX_QRCODE_INTERNAL_PAYMENT",
+                user_id=str(current_user.id),
+                details={
+                    "charge_id": internal_charge.id,
+                    "value": float(charge_value),
+                    "receiver_id": str(receiver.id)
+                }
+            )
+            result_dict = build_pix_response(sent_pix, db).model_dump()
+            result_dict["receiver_name"] = receiver.name
+            return result_dict
+        else:
+            db.commit()
+            db.refresh(internal_charge)
+            return build_pix_response(internal_charge, db).model_dump()
+
+    # -------------------------------------------------------------------------
+    # Routing 2: no internal charge found — dispatch to Asaas.
+    # -------------------------------------------------------------------------
+    if sender.balance <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Saldo insuficiente. Disponivel: R$ {sender.balance:.2f}"
+        )
+
+    gateway = get_payment_gateway()
+    if not gateway:
+        raise HTTPException(
+            status_code=503,
+            detail="Servico de pagamento temporariamente indisponivel."
+        )
+
+    try:
+        result = gateway.pay_qr_code(
+            payload=data.payload,
+            description=data.description or "Bio Code Tech Pay QR Code Payment",
+            idempotency_key=idempotency_key
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Asaas QR Code payment failed: {error_msg}", exc_info=True)
+        try:
+            import json as _json
+            detail_raw = getattr(e, 'response', None)
+            if detail_raw is not None:
+                body = _json.loads(detail_raw.text)
+                errors = body.get("errors", [])
+                if errors:
+                    error_msg = "; ".join(
+                        err.get("description") or err.get("code", "erro desconhecido")
+                        for err in errors
+                    )
+        except Exception:
+            pass
+        raise HTTPException(status_code=422, detail=error_msg)
+
+    payment_value = float(result.get("value") or 0)
+
+    if payment_value > 0 and sender.balance < payment_value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Saldo insuficiente. Disponivel: R$ {sender.balance:.2f}, Necessario: R$ {payment_value:.2f}"
+        )
+
+    payment_id = result.get("payment_id") or str(uuid4())
+    asaas_status = result.get("status", "BANK_PROCESSING")
+    pix_status = PixStatus.CONFIRMED if asaas_status == "CONFIRMED" else PixStatus.SENT
+    pix_key_ref = data.payload[:197] + "..." if len(data.payload) > 200 else data.payload
+
+    pix = PixTransaction(
+        id=payment_id,
+        value=payment_value if payment_value > 0 else 0.01,
+        pix_key=pix_key_ref,
+        key_type=PixKeyType.RANDOM.value,
+        type=TransactionType.SENT,
+        status=pix_status,
+        idempotency_key=idempotency_key,
+        description=data.description or "PIX QR Code Payment",
+        correlation_id=result.get("end_to_end_id") or correlation_id,
+        user_id=current_user.id
+    )
+    db.add(pix)
+
+    if payment_value > 0:
+        previous_balance = sender.balance
+        sender.balance -= payment_value
+        db.add(sender)
+        logger.info(
+            f"QR Code payment dispatched: id={payment_id}, user={sender.id}, "
+            f"amount=R${payment_value:.2f}, "
+            f"balance: R${previous_balance:.2f} -> R${sender.balance:.2f}"
+        )
+
+    db.commit()
+    db.refresh(pix)
+
+    audit_log(
+        action="PIX_QRCODE_PAYMENT",
+        user_id=str(current_user.id),
+        details={
+            "payment_id": payment_id,
+            "value": payment_value,
+            "status": asaas_status,
+            "receiver_name": result.get("receiver_name", "")
+        }
+    )
+
+    result_dict = build_pix_response(pix, db).model_dump()
+    if result.get("receiver_name"):
+        result_dict["receiver_name"] = result["receiver_name"]
+    return result_dict
 
 
 @router.post("/webhook/asaas", status_code=200)
