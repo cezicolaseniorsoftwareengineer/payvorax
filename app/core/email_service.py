@@ -28,10 +28,16 @@ def send_email(to: str, subject: str, html_body: str) -> bool:
     Sends a transactional HTML email via Resend.
     Returns True on success, False on failure or when not configured.
     API key is injected per-call to avoid module-level state leaks.
+
+    Prerequisites in production (Render):
+      RESEND_API_KEY   — API key from resend.com/api-keys
+      RESEND_FROM_EMAIL — must be from a domain verified in Resend Dashboard
+      APP_BASE_URL     — must be https://payvorax.onrender.com (never localhost)
     """
     if not _configured():
         logger.warning(
-            f"[EMAIL NOT SENT — RESEND_API_KEY not set] to={to} subject={subject}"
+            f"[EMAIL NOT SENT — RESEND_API_KEY not set] to={to} subject={subject}. "
+            "Set RESEND_API_KEY in Render environment variables."
         )
         logger.debug(f"[EMAIL BODY PREVIEW]: {html_body[:200]}")
         return False
