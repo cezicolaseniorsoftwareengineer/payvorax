@@ -345,6 +345,35 @@
                     this.showToast('Erro de conexao. Tente novamente.', 'error');
                     throw err;
                 }
+            },
+
+            /**
+             * Fetches the latest balance from the server and updates all
+             * .sensitive-data elements that contain a currency value (R$).
+             * Safe to call at any time — fails silently if unauthenticated.
+             */
+            async refreshBalance() {
+                try {
+                    const token = localStorage.getItem('access_token');
+                    const res = await fetch('/auth/balance', {
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+                        credentials: 'same-origin'
+                    });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const newBalance = Number(data.balance || 0);
+                    const formatted = 'R$ ' + newBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                    // Update all visible balance elements on the page
+                    document.querySelectorAll('.sensitive-data').forEach(el => {
+                        const current = el.dataset.original || el.innerText;
+                        if (current.includes('R$')) {
+                            el.dataset.original = formatted;
+                            const isHidden = el.classList.contains('privacy-hidden');
+                            if (!isHidden) el.innerText = formatted;
+                        }
+                    });
+                } catch (_) { /* silent — balance refresh is best-effort */ }
             }
         };
 

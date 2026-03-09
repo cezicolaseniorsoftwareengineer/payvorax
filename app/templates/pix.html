@@ -502,6 +502,8 @@
         document.getElementById('paymentConfirmedState').classList.remove('hidden');
         lucide.createIcons();
         PVX.showToast('Pagamento recebido! Saldo atualizado.', 'success', 4000);
+        // Refresh balance immediately after deposit is confirmed
+        PVX.refreshBalance();
     }
 
     async function confirmarRecebimento() {
@@ -659,6 +661,12 @@
     function showComprovante(result, chave, recipientData, dataAgendamento) {
         document.getElementById('pixInputStep').classList.add('hidden');
         document.getElementById('comprovanteCard').classList.remove('hidden');
+
+        // Refresh balance immediately after transfer is registered
+        PVX.refreshBalance();
+        // Refresh again after 4s to catch webhook TRANSFER_DONE confirmation
+        setTimeout(() => PVX.refreshBalance(), 4000);
+        setTimeout(() => PVX.refreshBalance(), 10000);
 
         const valor = result.value
             ? 'R$ ' + Number(result.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
