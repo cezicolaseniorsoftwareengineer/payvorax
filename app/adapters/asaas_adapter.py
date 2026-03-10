@@ -207,8 +207,8 @@ class AsaasAdapter(PaymentGatewayPort):
         if due_date:
             payload["dueDate"] = due_date.strftime("%Y-%m-%d")
         else:
-            # Default: expires in 24 hours
-            payload["dueDate"] = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+            # Default: due today (PIX charges are immediate — no deferred scheduling)
+            payload["dueDate"] = datetime.now().strftime("%Y-%m-%d")
 
         response = self._make_request(
             method="POST",
@@ -492,12 +492,16 @@ class AsaasAdapter(PaymentGatewayPort):
 
     def lookup_pix_key(self, pix_key: str, key_type: str) -> Optional[Dict[str, Any]]:
         """
-        Looks up a PIX key to retrieve beneficiary (recipient) information.
+        Looks up a PIX key via Asaas DICT.
 
-        Asaas API: GET /pix/addressKeys/info
-        Returns name, masked document, and bank/institution of the key holder.
-        Returns None if the key is not found or the API is unavailable.
+        Return contract:
+          - dict with name/document/bank  → key confirmed in DICT
+          - {"found": False, "reason": "not_in_dict"}  → Asaas 404: key not registered
+          - {"found": False, "reason": "invalid_format"} → Asaas 400/422: bad key format
+          - None  → gateway unavailable (network error, 5xx, timeout, sandbox)
+                    caller must allow the transfer to proceed (soft pass)
         """
+        import httpx as _httpx
         asaas_key_type_map = {
             "CPF": "CPF",
             "CNPJ": "CNPJ",
@@ -521,6 +525,7 @@ class AsaasAdapter(PaymentGatewayPort):
             account = response.get("account") or {}
             owner = response.get("owner") or {}
             return {
+                "found": True,
                 "name": owner.get("name") or response.get("name"),
                 "document": mask_sensitive_data(
                     owner.get("taxId") or response.get("cpfCnpj") or pix_key,
@@ -530,6 +535,20 @@ class AsaasAdapter(PaymentGatewayPort):
                 "key_type": key_type,
                 "pix_key": pix_key,
             }
+        except _httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if status == 404:
+                # Asaas confirmed: chave nao registrada no DICT
+                logger.info(f"PIX DICT lookup: key not registered (404) key={mask_sensitive_data(pix_key)}")
+                return {"found": False, "reason": "not_in_dict"}
+            if status in (400, 422):
+                # Formato invalido para o tipo informado
+                logger.info(f"PIX DICT lookup: invalid key format ({status}) key={mask_sensitive_data(pix_key)}")
+                return {"found": False, "reason": "invalid_format"}
+            # 5xx ou outro erro HTTP → gateway indisponivel, soft pass
+            logger.warning(f"PIX key lookup gateway error ({status}) key={mask_sensitive_data(pix_key)}: {e}")
+            return None
         except Exception as e:
-            logger.warning(f"PIX key lookup failed for key={mask_sensitive_data(pix_key)}: {e}")
+            # Timeout, network, sandbox sem suporte — soft pass, nao bloquear envio
+            logger.warning(f"PIX key lookup unavailable key={mask_sensitive_data(pix_key)}: {e}")
             return None
