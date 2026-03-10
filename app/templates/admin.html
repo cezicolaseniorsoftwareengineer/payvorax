@@ -1,20 +1,89 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-br">
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin — Bio Code Tech Pay</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Admin â€” Bio Code Tech Pay</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
+            -webkit-overflow-scrolling: touch;
+            overflow-x: hidden;
         }
 
-        .admin-badge {
-            background: #1d4ed8;
+        /* Prevent iOS input zoom â€” keep at 16px minimum */
+        input,
+        select,
+        textarea {
+            font-size: 16px !important;
+        }
+
+        @media (min-width: 768px) {
+
+            input,
+            select,
+            textarea {
+                font-size: 14px !important;
+            }
+        }
+
+        /* Safe area for notched phones and home bar */
+        .safe-bottom {
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        /* Minimum tap target */
+        .tap-target {
+            min-height: 44px;
+            min-width: 44px;
+        }
+
+        /* Matrix card gradient */
+        .matrix-card {
+            background: linear-gradient(135deg, #0f1c3a 0%, #111827 40%, #0f172a 100%);
+        }
+
+        /* Table row smooth highlight */
+        tbody tr:hover {
+            transition: background 0.15s ease;
+        }
+
+        /* Custom scrollbar for table */
+        .table-scroll::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .table-scroll::-webkit-scrollbar-track {
+            background: #111827;
+        }
+
+        .table-scroll::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 2px;
+        }
+
+        /* Mobile card active state */
+        .mobile-card:active {
+            background: rgba(55, 65, 81, 0.4);
+        }
+
+        /* Smooth modal animation */
+        #detail-modal {
+            transition: opacity 0.2s ease;
+        }
+
+        /* Number input â€” hide spinners */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+        }
+
+        input[type=number] {
+            -moz-appearance: textfield;
         }
     </style>
 </head>
@@ -22,62 +91,117 @@
 <body class="bg-gray-950 min-h-screen text-white">
 
     <!-- Top Bar -->
-    <header class="bg-gray-900 border-b border-gray-800 px-6 py-4">
-        <div class="max-w-7xl mx-auto flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center">
-                    <i data-lucide="shield" class="w-5 h-5 text-white"></i>
+    <header class="bg-gray-900 border-b border-gray-800 sticky top-0 z-40 px-4 sm:px-6 py-3 sm:py-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between gap-3">
+            <!-- Brand -->
+            <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+                <div class="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="shield" class="w-4 h-4 sm:w-5 sm:h-5 text-white"></i>
                 </div>
-                <div>
-                    <h1 class="font-bold text-white text-lg leading-none">Bio Code Tech Pay Admin</h1>
-                    <p class="text-xs text-gray-400">Painel de controle — acesso restrito</p>
+                <div class="min-w-0">
+                    <h1 class="font-bold text-white text-sm sm:text-lg leading-none truncate">Bio Code Tech Pay</h1>
+                    <p class="text-xs text-gray-500 hidden sm:block">Painel de controle â€” acesso restrito</p>
+                    <p class="text-xs text-yellow-400 sm:hidden font-medium">Admin</p>
                 </div>
             </div>
-            <div class="flex items-center gap-4">
-                <span class="text-sm text-gray-400">{{ user_name }}</span>
+            <!-- Actions -->
+            <div class="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+                <span class="text-xs text-gray-500 hidden lg:block truncate max-w-[160px]">{{ user_name }}</span>
                 <a href="/"
-                    class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg text-gray-300 flex items-center gap-1 transition-colors">
-                    <i data-lucide="arrow-left" class="w-3 h-3"></i>
-                    Voltar ao app
+                    class="tap-target flex items-center justify-center gap-1.5 bg-gray-800 hover:bg-gray-700 px-2.5 sm:px-3 py-2 rounded-lg text-gray-300 transition-colors">
+                    <i data-lucide="arrow-left" class="w-4 h-4 flex-shrink-0"></i>
+                    <span class="text-xs hidden sm:inline">Voltar ao app</span>
                 </a>
                 <button onclick="logout()"
-                    class="text-xs bg-red-900 hover:bg-red-800 px-3 py-1.5 rounded-lg text-red-300 flex items-center gap-1 transition-colors">
-                    <i data-lucide="log-out" class="w-3 h-3"></i>
-                    Sair
+                    class="tap-target flex items-center justify-center gap-1.5 bg-red-950 hover:bg-red-900 px-2.5 sm:px-3 py-2 rounded-lg text-red-400 transition-colors">
+                    <i data-lucide="log-out" class="w-4 h-4 flex-shrink-0"></i>
+                    <span class="text-xs hidden sm:inline">Sair</span>
                 </button>
             </div>
         </div>
     </header>
 
-    <div class="max-w-7xl mx-auto px-6 py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 safe-bottom">
+
+        <!-- Conta Matriz Bio Code Technology -->
+        <div class="matrix-card border border-blue-900/40 rounded-2xl p-5 sm:p-6 mb-6 sm:mb-8 shadow-2xl">
+
+            <!-- Header row: label + balance -->
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-5">
+                <div class="flex items-start gap-3">
+                    <div
+                        class="w-10 h-10 bg-blue-900/60 border border-blue-700/50 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i data-lucide="landmark" class="w-5 h-5 text-blue-400"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-blue-400 uppercase tracking-widest font-bold mb-0.5">Conta Matriz</p>
+                        <h2 class="text-white font-bold text-lg sm:text-xl leading-tight">Bio Code Technology</h2>
+                        <p class="text-blue-300/60 text-xs mt-0.5">Saldo acumulado de taxas da plataforma</p>
+                    </div>
+                </div>
+                <div class="sm:text-right bg-gray-900/50 rounded-xl px-4 py-3 border border-green-900/30">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Saldo disponivel</p>
+                    <p class="text-2xl sm:text-3xl font-bold text-green-400 tabular-nums" id="matrix-balance-display">
+                        R$&nbsp;{{ "%.2f"|format(matrix_balance) }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Matrix account access button -->
+            <div class="border-t border-blue-900/30 pt-5">
+                <a href="/admin/matrix"
+                    class="tap-target inline-flex items-center gap-3 bg-blue-700 hover:bg-blue-600 active:bg-blue-800 text-white font-semibold px-6 py-3 rounded-xl text-sm transition-colors shadow-lg shadow-blue-900/40 w-full sm:w-auto justify-center">
+                    <i data-lucide="landmark" class="w-4 h-4 flex-shrink-0"></i>
+                    Acessar Conta Matrix
+                </a>
+                <p class="text-xs text-blue-400/60 mt-2 pl-1">Ambiente isolado — transferencias sem taxa, acesso
+                    exclusivo admin.</p>
+            </div>
+        </div>
 
         <!-- KPIs -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Total correntistas</p>
-                <p class="text-3xl font-bold text-white">{{ total }}</p>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+            <div class="bg-gray-900 rounded-xl p-4 sm:p-5 border border-gray-800">
+                <div class="flex items-center gap-2 mb-2">
+                    <i data-lucide="users" class="w-4 h-4 text-gray-500"></i>
+                    <p class="text-xs text-gray-500 uppercase tracking-wide leading-none">Correntistas</p>
+                </div>
+                <p class="text-2xl sm:text-3xl font-bold text-white tabular-nums">{{ total }}</p>
             </div>
-            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Contas ativas</p>
-                <p class="text-3xl font-bold text-green-400">{{ active }}</p>
+            <div class="bg-gray-900 rounded-xl p-4 sm:p-5 border border-gray-800">
+                <div class="flex items-center gap-2 mb-2">
+                    <i data-lucide="circle-check" class="w-4 h-4 text-green-500"></i>
+                    <p class="text-xs text-gray-500 uppercase tracking-wide leading-none">Ativas</p>
+                </div>
+                <p class="text-2xl sm:text-3xl font-bold text-green-400 tabular-nums">{{ active }}</p>
             </div>
-            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Docs validados</p>
-                <p class="text-3xl font-bold text-blue-400">{{ verified_docs }}</p>
+            <div class="bg-gray-900 rounded-xl p-4 sm:p-5 border border-gray-800">
+                <div class="flex items-center gap-2 mb-2">
+                    <i data-lucide="id-card" class="w-4 h-4 text-blue-400"></i>
+                    <p class="text-xs text-gray-500 uppercase tracking-wide leading-none">Docs OK</p>
+                </div>
+                <p class="text-2xl sm:text-3xl font-bold text-blue-400 tabular-nums">{{ verified_docs }}</p>
             </div>
-            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">E-mails confirmados</p>
-                <p class="text-3xl font-bold text-blue-400">{{ verified_emails }}</p>
+            <div class="bg-gray-900 rounded-xl p-4 sm:p-5 border border-gray-800">
+                <div class="flex items-center gap-2 mb-2">
+                    <i data-lucide="mail-check" class="w-4 h-4 text-blue-400"></i>
+                    <p class="text-xs text-gray-500 uppercase tracking-wide leading-none">E-mails OK</p>
+                </div>
+                <p class="text-2xl sm:text-3xl font-bold text-blue-400 tabular-nums">{{ verified_emails }}</p>
             </div>
         </div>
 
         <!-- Search + Filter -->
-        <div class="flex flex-col md:flex-row gap-3 mb-6">
-            <input type="text" id="search-input" placeholder="Buscar por nome, CPF/CNPJ, e-mail ou cidade..."
-                class="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-600"
-                oninput="filterTable(this.value)">
+        <div class="flex flex-col sm:flex-row gap-3 mb-5">
+            <div class="relative flex-1">
+                <i data-lucide="search"
+                    class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none"></i>
+                <input type="text" id="search-input" placeholder="Buscar por nome, CPF, e-mail..."
+                    class="tap-target w-full bg-gray-900 border border-gray-700 rounded-xl pl-9 pr-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-600 transition-colors"
+                    oninput="filterTable(this.value)">
+            </div>
             <select id="filter-status" onchange="filterTable()"
-                class="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-300 focus:outline-none focus:border-blue-600">
+                class="tap-target bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-300 focus:outline-none focus:border-blue-600 transition-colors sm:w-52 appearance-none cursor-pointer">
                 <option value="">Todos os status</option>
                 <option value="active">Ativo</option>
                 <option value="inactive">Inativo</option>
@@ -89,34 +213,34 @@
 
         <!-- Users Table -->
         <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-                <h2 class="font-semibold text-white">Correntistas cadastrados</h2>
-                <span id="count-label" class="text-xs text-gray-400">{{ total }} usuario(s)</span>
+            <div class="px-4 sm:px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+                <h2 class="font-semibold text-white text-sm sm:text-base">Correntistas cadastrados</h2>
+                <span id="count-label" class="text-xs text-gray-400 bg-gray-800 px-2.5 py-1 rounded-full">{{ total
+                    }}</span>
             </div>
 
             <!-- Desktop Table -->
-            <div class="overflow-x-auto hidden md:block">
-                <table class="w-full text-sm" id="users-table">
+            <div class="table-scroll overflow-x-auto hidden md:block">
+                <table class="w-full text-sm min-w-[900px]" id="users-table">
                     <thead>
-                        <tr class="text-xs text-gray-500 uppercase tracking-wide border-b border-gray-800">
-                            <th class="px-4 py-3 text-left">Nome</th>
-                            <th class="px-4 py-3 text-left">CPF/CNPJ</th>
-                            <th class="px-4 py-3 text-left">E-mail</th>
-                            <th class="px-4 py-3 text-left">Telefone</th>
-                            <th class="px-4 py-3 text-left">Endereco</th>
-                            <th class="px-4 py-3 text-left">Cidade/UF</th>
-                            <th class="px-4 py-3 text-left">CEP</th>
-                            <th class="px-4 py-3 text-center">Status</th>
-                            <th class="px-4 py-3 text-center">Doc</th>
-                            <th class="px-4 py-3 text-center">Email</th>
-                            <th class="px-4 py-3 text-left">Saldo</th>
-                            <th class="px-4 py-3 text-left">Cadastro</th>
-                            <th class="px-4 py-3 text-center">Acoes</th>
+                        <tr
+                            class="text-xs text-gray-500 uppercase tracking-wide border-b border-gray-800 bg-gray-950/50">
+                            <th class="px-4 py-3 text-left font-medium">Nome</th>
+                            <th class="px-4 py-3 text-left font-medium">CPF/CNPJ</th>
+                            <th class="px-4 py-3 text-left font-medium">E-mail</th>
+                            <th class="px-4 py-3 text-left font-medium">Telefone</th>
+                            <th class="px-4 py-3 text-left font-medium">Cidade/UF</th>
+                            <th class="px-4 py-3 text-center font-medium">Status</th>
+                            <th class="px-4 py-3 text-center font-medium">Doc</th>
+                            <th class="px-4 py-3 text-center font-medium">Email</th>
+                            <th class="px-4 py-3 text-right font-medium">Saldo</th>
+                            <th class="px-4 py-3 text-left font-medium">Cadastro</th>
+                            <th class="px-4 py-3 text-center font-medium">Acao</th>
                         </tr>
                     </thead>
                     <tbody id="table-body">
                         {% for u in users %}
-                        <tr class="border-b border-gray-800 hover:bg-gray-800/50 transition-colors user-row"
+                        <tr class="border-b border-gray-800/70 hover:bg-gray-800/40 user-row"
                             data-name="{{ u.name|lower }}" data-doc="{{ u.cpf_cnpj }}" data-email="{{ u.email|lower }}"
                             data-city="{{ (u.address_city or '')|lower }}"
                             data-active="{{ 'active' if u.is_active else 'inactive' }}"
@@ -125,64 +249,53 @@
                             data-pending="{{ 'pending' if not u.email_verified or not u.document_verified else '' }}">
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
-                                    {% if u.is_admin %}
-                                    <span class="w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" title="Admin"></span>
-                                    {% else %}
                                     <span
-                                        class="w-2 h-2 rounded-full {{ 'bg-green-500' if u.is_active else 'bg-gray-600' }} flex-shrink-0"></span>
-                                    {% endif %}
-                                    <span class="font-medium text-white truncate max-w-[160px]">{{ u.name }}</span>
+                                        class="w-2 h-2 rounded-full flex-shrink-0 {{ 'bg-yellow-400' if u.is_admin else ('bg-green-500' if u.is_active else 'bg-gray-600') }}"></span>
+                                    <span class="font-medium text-white truncate max-w-[140px]">{{ u.name }}</span>
                                 </div>
                             </td>
-                            <td class="px-4 py-3 text-gray-300 font-mono text-xs">{{ u.cpf_cnpj }}</td>
-                            <td class="px-4 py-3 text-gray-300 text-xs truncate max-w-[180px]">{{ u.email }}</td>
-                            <td class="px-4 py-3 text-gray-400 text-xs">{{ u.phone or '—' }}</td>
-                            <td class="px-4 py-3 text-gray-400 text-xs truncate max-w-[180px]">
-                                {% if u.address_street %}
-                                {{ u.address_street }}, {{ u.address_number }}{% if u.address_complement %} {{
-                                u.address_complement }}{% endif %}
-                                {% else %}
-                                <span class="text-gray-600">nao informado</span>
-                                {% endif %}
+                            <td class="px-4 py-3 text-gray-400 font-mono text-xs whitespace-nowrap">{{ u.cpf_cnpj }}
                             </td>
                             <td class="px-4 py-3 text-gray-400 text-xs">
-                                {% if u.address_city %}
-                                {{ u.address_city }}/{{ u.address_state }}
-                                {% else %}—{% endif %}
+                                <span class="truncate block max-w-[160px]">{{ u.email }}</span>
                             </td>
-                            <td class="px-4 py-3 text-gray-400 text-xs font-mono">{{ u.address_zip or '—' }}</td>
+                            <td class="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{{ u.phone or 'â€”' }}</td>
+                            <td class="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                                {% if u.address_city %}{{ u.address_city }}/{{ u.address_state }}{% else %}â€”{% endif
+                                %}
+                            </td>
                             <td class="px-4 py-3 text-center">
                                 {% if u.is_active %}
                                 <span
-                                    class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-900/60 text-green-400">Ativo</span>
+                                    class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-900/50 text-green-400">Ativo</span>
                                 {% else %}
                                 <span
-                                    class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-900/60 text-red-400">Inativo</span>
+                                    class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-900/50 text-red-400">Inativo</span>
                                 {% endif %}
                             </td>
                             <td class="px-4 py-3 text-center">
                                 {% if u.document_verified %}
                                 <i data-lucide="check-circle" class="w-4 h-4 text-green-500 mx-auto"></i>
                                 {% else %}
-                                <i data-lucide="x-circle" class="w-4 h-4 text-red-500 mx-auto"></i>
+                                <i data-lucide="x-circle" class="w-4 h-4 text-gray-600 mx-auto"></i>
                                 {% endif %}
                             </td>
                             <td class="px-4 py-3 text-center">
                                 {% if u.email_verified %}
                                 <i data-lucide="check-circle" class="w-4 h-4 text-green-500 mx-auto"></i>
                                 {% else %}
-                                <i data-lucide="clock" class="w-4 h-4 text-yellow-500 mx-auto"></i>
+                                <i data-lucide="clock" class="w-4 h-4 text-yellow-600 mx-auto"></i>
                                 {% endif %}
                             </td>
-                            <td class="px-4 py-3 text-right font-mono text-xs text-white">
-                                R$ {{ "%.2f"|format(u.balance) }}
+                            <td class="px-4 py-3 text-right font-mono text-xs text-white whitespace-nowrap">
+                                R$&nbsp;{{ "%.2f"|format(u.balance) }}
                             </td>
-                            <td class="px-4 py-3 text-gray-500 text-xs">
-                                {{ u.created_at.strftime('%d/%m/%Y') if u.created_at else '—' }}
+                            <td class="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
+                                {{ u.created_at.strftime('%d/%m/%Y') if u.created_at else 'â€”' }}
                             </td>
                             <td class="px-4 py-3 text-center">
                                 <button onclick="openDetail('{{ u.id }}')"
-                                    class="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                                    class="text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors whitespace-nowrap">
                                     Detalhes
                                 </button>
                             </td>
@@ -193,43 +306,67 @@
             </div>
 
             <!-- Mobile Cards -->
-            <div class="md:hidden divide-y divide-gray-800" id="mobile-list">
+            <div class="md:hidden divide-y divide-gray-800/70" id="mobile-list">
                 {% for u in users %}
-                <div class="p-4 user-row hover:bg-gray-800/30 transition-colors" data-name="{{ u.name|lower }}"
-                    data-doc="{{ u.cpf_cnpj }}" data-email="{{ u.email|lower }}"
+                <div class="mobile-card p-4 active:bg-gray-800/30 transition-colors user-row"
+                    data-name="{{ u.name|lower }}" data-doc="{{ u.cpf_cnpj }}" data-email="{{ u.email|lower }}"
                     data-city="{{ (u.address_city or '')|lower }}"
                     data-active="{{ 'active' if u.is_active else 'inactive' }}"
                     data-doc-ok="{{ 'doc_ok' if u.document_verified else '' }}"
                     data-email-ok="{{ 'email_ok' if u.email_verified else '' }}"
                     data-pending="{{ 'pending' if not u.email_verified or not u.document_verified else '' }}">
-                    <div class="flex justify-between items-start mb-2">
-                        <div>
-                            <p class="font-semibold text-white">{{ u.name }}</p>
-                            <p class="text-xs text-gray-500 font-mono">{{ u.cpf_cnpj }}</p>
+                    <!-- Primary row: name + status -->
+                    <div class="flex items-start justify-between gap-3 mb-2">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <div
+                                class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold
+                                {{ 'bg-yellow-900/60 text-yellow-400' if u.is_admin else ('bg-green-900/60 text-green-400' if u.is_active else 'bg-gray-800 text-gray-500') }}">
+                                {{ u.name[0]|upper }}
+                            </div>
+                            <div class="min-w-0">
+                                <p class="font-semibold text-white truncate text-sm">{{ u.name }}</p>
+                                <p class="text-xs text-gray-500 font-mono truncate">{{ u.cpf_cnpj }}</p>
+                            </div>
                         </div>
-                        <div class="flex gap-1">
+                        <div class="flex flex-col items-end gap-1 flex-shrink-0">
                             {% if u.is_active %}
-                            <span class="text-xs bg-green-900/60 text-green-400 px-2 py-0.5 rounded-full">Ativo</span>
+                            <span
+                                class="text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded-full leading-none">Ativo</span>
                             {% else %}
-                            <span class="text-xs bg-red-900/60 text-red-400 px-2 py-0.5 rounded-full">Inativo</span>
+                            <span
+                                class="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded-full leading-none">Inativo</span>
                             {% endif %}
                         </div>
                     </div>
-                    <p class="text-xs text-gray-400 mb-1">{{ u.email }}</p>
-                    <p class="text-xs text-gray-500">Tel: {{ u.phone or 'nao informado' }}</p>
-                    {% if u.address_city %}
-                    <p class="text-xs text-gray-500">{{ u.address_city }}/{{ u.address_state }} — CEP {{ u.address_zip
-                        }}</p>
-                    {% endif %}
-                    <div class="flex justify-between mt-2">
-                        <div class="flex gap-3 text-xs text-gray-500">
-                            <span>Doc: {{ 'OK' if u.document_verified else 'pendente' }}</span>
-                            <span>Email: {{ 'OK' if u.email_verified else 'pendente' }}</span>
+
+                    <!-- Secondary row: email -->
+                    <p class="text-xs text-gray-500 truncate mb-2 pl-[2.75rem]">{{ u.email }}</p>
+
+                    <!-- Info row: verifications + balance -->
+                    <div class="flex items-center justify-between pl-[2.75rem] mb-2.5">
+                        <div class="flex items-center gap-3">
+                            <span
+                                class="flex items-center gap-1 text-xs {{ 'text-green-400' if u.document_verified else 'text-gray-600' }}">
+                                <i data-lucide="{{ 'check-circle' if u.document_verified else 'x-circle' }}"
+                                    class="w-3.5 h-3.5"></i>
+                                Doc
+                            </span>
+                            <span
+                                class="flex items-center gap-1 text-xs {{ 'text-green-400' if u.email_verified else 'text-yellow-600' }}">
+                                <i data-lucide="{{ 'check-circle' if u.email_verified else 'clock' }}"
+                                    class="w-3.5 h-3.5"></i>
+                                Email
+                            </span>
                         </div>
-                        <span class="text-xs font-mono text-white">R$ {{ "%.2f"|format(u.balance) }}</span>
+                        <span class="text-sm font-bold text-white font-mono">
+                            R$&nbsp;{{ "%.2f"|format(u.balance) }}
+                        </span>
                     </div>
+
+                    <!-- Action -->
                     <button onclick="openDetail('{{ u.id }}')"
-                        class="mt-2 text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                        class="tap-target w-full flex items-center justify-center gap-2 bg-gray-800/60 hover:bg-gray-800 active:bg-gray-700 text-blue-400 text-xs font-medium rounded-lg py-2 transition-colors">
+                        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
                         Ver detalhes
                     </button>
                 </div>
@@ -238,26 +375,33 @@
 
             {% if not users %}
             <div class="py-16 text-center text-gray-600">
-                <i data-lucide="users" class="w-12 h-12 mx-auto mb-3 opacity-30"></i>
-                <p>Nenhum correntista cadastrado ainda.</p>
+                <i data-lucide="users" class="w-12 h-12 mx-auto mb-3 opacity-20"></i>
+                <p class="text-sm">Nenhum correntista cadastrado ainda.</p>
             </div>
             {% endif %}
         </div>
     </div>
 
     <!-- Detail Modal -->
-    <div id="detail-modal" class="fixed inset-0 z-50 bg-black/70 hidden items-center justify-center p-4">
-        <div class="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center px-6 py-4 border-b border-gray-800 sticky top-0 bg-gray-900">
-                <h3 class="font-bold text-white">Ficha do Correntista</h3>
-                <button onclick="closeDetail()" class="text-gray-400 hover:text-white transition-colors">
+    <div id="detail-modal" class="fixed inset-0 z-50 bg-black/80 hidden items-center justify-center p-3 sm:p-4"
+        style="backdrop-filter: blur(4px);">
+        <div
+            class="bg-gray-900 rounded-2xl border border-gray-700/80 w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center px-5 sm:px-6 py-4 border-b border-gray-800 flex-shrink-0">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="user-round" class="w-4 h-4 text-blue-400"></i>
+                    <h3 class="font-bold text-white text-sm sm:text-base">Ficha do Correntista</h3>
+                </div>
+                <button onclick="closeDetail()"
+                    class="tap-target flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
                     <i data-lucide="x" class="w-5 h-5"></i>
                 </button>
             </div>
-            <div id="detail-content" class="p-6 text-sm text-gray-300 space-y-4">
-                <div class="flex items-center justify-center py-8">
-                    <div class="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin">
-                    </div>
+            <!-- Modal Content â€” scrollable -->
+            <div id="detail-content" class="p-5 sm:p-6 text-sm text-gray-300 space-y-4 overflow-y-auto flex-1">
+                <div class="flex items-center justify-center py-12">
+                    <div class="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                 </div>
             </div>
         </div>
@@ -285,7 +429,7 @@
             document_verified: { { 'true' if u.document_verified else 'false' } },
             is_active: { { 'true' if u.is_active else 'false' } },
             is_admin: { { 'true' if u.is_admin else 'false' } },
-            created_at: { { u.created_at.strftime('%d/%m/%Y %H:%M') | tojson if u.created_at else '"—"' } }
+            created_at: { { u.created_at.strftime('%d/%m/%Y %H:%M') | tojson if u.created_at else '"â€”"' } }
         } {% if not loop.last %}, {% endif %}
         {% endfor %}
         };
@@ -297,64 +441,79 @@
             const content = document.getElementById('detail-content');
 
             const badge = (ok, label) => ok
-                ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-900/60 text-green-400"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>${label}</span>`
-                : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-yellow-900/60 text-yellow-400"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${label} pendente</span>`;
+                ? `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-900/50 text-green-400 font-medium"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>${label}</span>`
+                : `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-yellow-900/40 text-yellow-400 font-medium"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>${label} pendente</span>`;
 
             const field = (label, value) => `
                 <div>
-                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-0.5">${label}</p>
-                    <p class="text-white font-medium">${value || '<span class="text-gray-600 font-normal">nao informado</span>'}</p>
+                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-1 font-medium">${label}</p>
+                    <p class="text-white font-medium text-sm break-words">${value || '<span class="text-gray-600 font-normal italic">nao informado</span>'}</p>
                 </div>`;
 
             const addressFull = [u.address_street, u.address_number, u.address_complement]
                 .filter(Boolean).join(', ');
 
             content.innerHTML = `
+                <!-- Status badges -->
                 <div class="flex flex-wrap gap-2 mb-4">
                     ${badge(u.document_verified, 'Documento')}
                     ${badge(u.email_verified, 'E-mail')}
                     ${u.is_active
-                    ? '<span class="px-2 py-0.5 rounded-full text-xs bg-green-900/60 text-green-400">Conta ativa</span>'
-                    : '<span class="px-2 py-0.5 rounded-full text-xs bg-red-900/60 text-red-400">Conta inativa</span>'}
-                    ${u.is_admin ? '<span class="px-2 py-0.5 rounded-full text-xs bg-yellow-900/60 text-yellow-300">Admin</span>' : ''}
+                    ? '<span class="px-2 py-1 rounded-full text-xs bg-green-900/50 text-green-400 font-medium">Conta ativa</span>'
+                    : '<span class="px-2 py-1 rounded-full text-xs bg-red-900/50 text-red-400 font-medium">Conta inativa</span>'}
+                    ${u.is_admin ? '<span class="px-2 py-1 rounded-full text-xs bg-yellow-900/40 text-yellow-300 font-medium">Admin</span>' : ''}
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-800/50 rounded-xl p-4">
+                <!-- Identity -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-800/40 rounded-xl p-4">
                     ${field('Nome completo', u.name)}
-                    ${field('CPF / CNPJ', u.cpf_cnpj)}
+                    ${field('CPF / CNPJ', `<span class="font-mono">${u.cpf_cnpj}</span>`)}
                     ${field('E-mail', u.email)}
                     ${field('Telefone', u.phone)}
                 </div>
 
-                <div class="bg-gray-800/50 rounded-xl p-4">
-                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-3">Endereco</p>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Address -->
+                <div class="bg-gray-800/40 rounded-xl p-4">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-3 font-medium">Endereco</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         ${field('Logradouro', addressFull)}
                         ${field('Cidade / UF', u.address_city ? u.address_city + ' / ' + u.address_state : '')}
-                        ${field('CEP', u.address_zip)}
+                        ${field('CEP', u.address_zip ? `<span class="font-mono">${u.address_zip}</span>` : '')}
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 bg-gray-800/50 rounded-xl p-4">
-                    ${field('Saldo atual', 'R$ ' + u.balance.toFixed(2).replace('.', ','))}
+                <!-- Financial -->
+                <div class="grid grid-cols-2 gap-4 bg-gray-800/40 rounded-xl p-4">
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-1 font-medium">Saldo atual</p>
+                        <p class="text-white font-bold text-lg tabular-nums">R$&nbsp;${u.balance.toFixed(2).replace('.', ',')}</p>
+                    </div>
                     ${field('Cadastro em', u.created_at)}
                 </div>
 
-                <div class="flex gap-3 pt-2">
+                <!-- Actions -->
+                <div class="flex flex-col sm:flex-row gap-2.5 pt-1">
                     <button onclick="toggleActive('${userId}', ${!u.is_active})"
-                        class="flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${u.is_active ? 'bg-red-900/60 hover:bg-red-900 text-red-300' : 'bg-green-900/60 hover:bg-green-900 text-green-300'}">
-                        ${u.is_active ? 'Suspender conta' : 'Reativar conta'}
+                        class="tap-target flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2
+                        ${u.is_active
+                    ? 'bg-red-950/60 hover:bg-red-950 text-red-300'
+                    : 'bg-green-950/60 hover:bg-green-950 text-green-300'}">
+                        ${u.is_active
+                    ? '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Suspender conta'
+                    : '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Reativar conta'}
                     </button>
-                    <button onclick="closeDetail()" class="flex-1 py-2 rounded-xl text-sm font-semibold bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors">
+                    <button onclick="closeDetail()" class="tap-target flex-1 py-2.5 rounded-xl text-sm font-semibold bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-gray-300 transition-colors">
                         Fechar
                     </button>
                 </div>`;
 
             modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
         }
 
         function closeDetail() {
             document.getElementById('detail-modal').style.display = 'none';
+            document.body.style.overflow = '';
         }
 
         async function toggleActive(userId, activate) {
@@ -372,7 +531,7 @@
 
         // Search / filter
         function filterTable(term) {
-            const q = (term || document.getElementById('search-input').value).toLowerCase();
+            const q = (term !== undefined ? term : document.getElementById('search-input').value).toLowerCase();
             const statusFilter = document.getElementById('filter-status').value;
             const rows = document.querySelectorAll('.user-row');
             let visible = 0;
@@ -393,7 +552,9 @@
                 row.style.display = show ? '' : 'none';
                 if (show) visible++;
             });
-            document.getElementById('count-label').textContent = visible + ' usuario(s)';
+            // Count only unique users (desktop + mobile render same user twice)
+            const uniqueVisible = Math.floor(visible / (window.innerWidth >= 768 ? 1 : 1));
+            document.getElementById('count-label').textContent = uniqueVisible;
         }
 
         async function logout() {
@@ -401,9 +562,14 @@
             window.location.href = '/login';
         }
 
-        // Close modal on outside click
+        // Close modal on backdrop click
         document.getElementById('detail-modal').addEventListener('click', function (e) {
             if (e.target === this) closeDetail();
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeDetail();
         });
     </script>
 </body>

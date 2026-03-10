@@ -1,16 +1,17 @@
-"""
+﻿"""
 Fintech Tech Challenge - Enterprise FastAPI Application.
 Implements Domain-Driven Design (DDD) and Hexagonal Architecture.
 Features strict input validation, audit logging, and distributed tracing.
 """
 import os
 import sys
+import asyncio
 from pathlib import Path
 from typing import Callable, Awaitable, Dict, Any
 
 # STRICT STARTUP ENFORCEMENT
 # The application must be started via `python start.py`
-if not os.environ.get("PAYVORAX_ALLOWED_START") and "pytest" not in sys.modules:
+if not os.environ.get("BIO_CODE_TECH_PAY_ALLOWED_START") and "pytest" not in sys.modules:
     # Allow production environments (Render/PythonAnywhere) to bypass if needed,
     # but for local dev, enforce start.py.
     # Checking for common production env vars or if explicitly disabled.
@@ -34,6 +35,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import init_db, get_db
 from app.core.logger import logger
+from app.core.matrix import seed_matrix_account
+from app.core.audit_worker import balance_audit_loop
 from app.cards.router import router as cards_router
 from app.pix.router import router as pix_router
 from app.antifraude.router import router as antifraude_router
@@ -51,10 +54,21 @@ async def lifespan(app: FastAPI):
     logger.info(f"Initializing {settings.APP_NAME} v{settings.VERSION}")
     init_db()
     logger.info("Database initialized")
+    seed_matrix_account()
+    logger.info("Matrix account ready")
+
+    # Start background balance audit worker (30-minute cycle)
+    from app.core.database import SessionLocal
+    from app.adapters.gateway_factory import get_payment_gateway
+    _audit_task = asyncio.create_task(
+        balance_audit_loop(SessionLocal, get_payment_gateway)
+    )
+    logger.info("Balance audit worker started")
 
     yield
 
     # Shutdown
+    _audit_task.cancel()
     logger.info("Shutting down application")
 
 
