@@ -1,16 +1,16 @@
-# PAYVORAX - AGENTE DE MUDANÇA
+﻿# Bio Code Tech Pay - AGENTE DE MUDANÇA
 
-Este arquivo marca a transição oficial para o sistema PayvoraX.
+Este arquivo marca a transição oficial para o sistema Bio Code Tech Pay.
 
 ## Histórico de Rebrands
 
 1. NewCredit -> Bio Pay
-2. Bio Pay -> PayvoraX
+2. Bio Pay -> Bio Code Tech Pay
 
 ## Status da Migração
 
 - [x] Configurações de Nome de App (APP_NAME)
-- [x] Variáveis de Ambiente de Inicialização (PAYVORAX_ALLOWED_START)
+- [x] Variáveis de Ambiente de Inicialização (BIO_CODE_TECH_PAY_ALLOWED_START)
 - [x] Templates HTML (Login, Register, Dashboard, Pix, Extratos)
 - [x] Documentação (README, QUICKSTART, INTERVIEW_PRESENTATION)
 - [x] CI/CD (GitHub Actions, Render)

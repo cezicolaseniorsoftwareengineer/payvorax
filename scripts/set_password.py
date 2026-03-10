@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 import argparse
 
@@ -31,7 +31,7 @@ def set_password(cpf_cnpj, new_password):
             hashed = get_password_hash(new_password)
             new_user = User(
                 name="Admin User",
-                email="admin@payvorax.com",
+                email="admin@biocodetechpay.com",
                 cpf_cnpj=cpf_clean,
                 hashed_password=hashed
             )

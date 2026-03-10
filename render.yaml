@@ -1,6 +1,6 @@
-services:
+﻿services:
   - type: web
-    name: payvorax
+    name: Bio Code Tech Pay
     runtime: docker
     plan: free
     branch: main

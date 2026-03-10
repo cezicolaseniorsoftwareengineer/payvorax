@@ -1,11 +1,11 @@
-import os
+﻿import os
 import sys
 from fastapi.testclient import TestClient
 import logging
 
 # FORCE LOCAL SQLITE
 os.environ["DATABASE_URL"] = "sqlite:///./fintech.db"
-os.environ["PAYVORAX_ALLOWED_START"] = "1"
+os.environ["BIO_CODE_TECH_PAY_ALLOWED_START"] = "1"
 
 # Add project root to sys.path
 sys.path.append(os.getcwd())

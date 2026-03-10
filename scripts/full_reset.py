@@ -1,9 +1,9 @@
-import sys
+﻿import sys
 import os
 
 # 1. FORCE LOCAL SQLITE
 os.environ["DATABASE_URL"] = "sqlite:///./fintech.db"
-os.environ["PAYVORAX_ALLOWED_START"] = "1" # Allow config to load if it checks this
+os.environ["BIO_CODE_TECH_PAY_ALLOWED_START"] = "1" # Allow config to load if it checks this
 
 # Add project root to sys.path
 sys.path.append(os.getcwd())
@@ -45,8 +45,8 @@ def full_reset():
 
         if not user:
              new_user = User(
-                name="PayvoraX Utils",
-                email="admin@payvorax.com.br",
+                name="Bio Code Tech Pay Utils",
+                email="admin@biocodetechpay.com.br",
                 cpf_cnpj=cpf_clean,
                 hashed_password=hashed,
                 credit_limit=50000.00

@@ -1,4 +1,4 @@
-# PayvoraX - Fintech Platform
+﻿# Bio Code Tech Pay - Fintech Platform
 
 Complete project demonstrating **3 real-world fintech challenges** integrated, developed with professional architecture and software engineering best practices.
 

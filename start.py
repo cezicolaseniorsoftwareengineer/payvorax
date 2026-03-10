@@ -1,4 +1,4 @@
-"""
+﻿"""
 Quick start script for local development.
 Bypasses dependency issues requiring compilation.
 """
@@ -8,7 +8,7 @@ import sys
 
 def main():
     """Installs dependencies and starts the server."""
-    print("PayvoraX - Initialization\n")
+    print("Bio Code Tech Pay - Initialization\n")
 
     # Install simplified dependencies
     print("Installing dependencies...")
@@ -29,7 +29,7 @@ def main():
 
     # Set flag to allow application startup
     import os
-    os.environ["PAYVORAX_ALLOWED_START"] = "1"
+    os.environ["BIO_CODE_TECH_PAY_ALLOWED_START"] = "1"
 
     try:
         subprocess.run(

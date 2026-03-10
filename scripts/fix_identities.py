@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 
 # FORCE LOCAL SQLITE
@@ -25,17 +25,17 @@ def fix_identities():
     else:
         print(f"[ERRO] Conta Bio Code {cnpj_biocode} não encontrada para corrigir.")
 
-    print("\n--- 2. CRIANDO CONTA ADMIN PAYVORAX (SEPARADA) ---")
+    print("\n--- 2. CRIANDO CONTA Admin Bio Code Tech Pay (SEPARADA) ---")
     cpf_admin = "00000000000"  # CPF virtual para Admin do Sistema
     user_admin = db.query(User).filter(User.cpf_cnpj == cpf_admin).first()
 
-    admin_pass = "admin.payvorax"
+    admin_pass = "admin.Bio Code Tech Pay"
     hashed_admin = get_password_hash(admin_pass)
 
     if not user_admin:
         user_admin = User(
-            name="Admin PayvoraX",
-            email="root@payvorax.com",
+            name="Admin Bio Code Tech Pay",
+            email="root@biocodetechpay.com",
             cpf_cnpj=cpf_admin,
             hashed_password=hashed_admin,
             credit_limit=1000000.00
@@ -43,7 +43,7 @@ def fix_identities():
         db.add(user_admin)
         print(f"[CRIADO] Novo Admin do Sistema criado.")
     else:
-        user_admin.name = "Admin PayvoraX"
+        user_admin.name = "Admin Bio Code Tech Pay"
         user_admin.hashed_password = hashed_admin
         print(f"[ATUALIZADO] Admin do Sistema existente atualizado.")
 
