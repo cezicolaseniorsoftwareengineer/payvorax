@@ -1,4 +1,4 @@
-"""
+﻿"""
 FastAPI Router for PIX endpoints.
 Exposes RESTful API with strict validation and automated documentation.
 """
@@ -71,7 +71,7 @@ def _extract_emv_merchant(emv: str) -> str:
 
 def _find_internal_qrcode_charge(payload: str, db, logger) -> tuple:
     """
-    Detects whether a PIX QR Code payload matches an internal PayvoraX charge.
+    Detects whether a PIX QR Code payload matches an internal Bio Code Tech Pay charge.
     Tests four routes in priority order:
       1a. UUID scan           — simulation charges embed charge UUID in EMV
       1b. Asaas pay_xxx scan  — charges with pay_xxx ID in the EMV URL
@@ -512,7 +512,7 @@ def lookup_pix_key_endpoint(
 ) -> Dict[str, Any]:
     """
     Validates a PIX key and returns beneficiary (recipient) information.
-    Priority: internal PayvoraX users -> Asaas gateway -> key format valid.
+    Priority: internal Bio Code Tech Pay users -> Asaas gateway -> key format valid.
     The key is normalized before any lookup to ensure correct format for Asaas.
     """
     import re as _re
@@ -527,7 +527,7 @@ def lookup_pix_key_endpoint(
     # 2. Normalize the raw key to its canonical form
     chave_normalizada = _normalize_pix_key(chave.strip(), tipo)
 
-    # 3. Check internal PayvoraX users first (use original for email, normalized for cpf/phone)
+    # 3. Check internal Bio Code Tech Pay users first (use original for email, normalized for cpf/phone)
     recipient = find_recipient_user(db, chave_normalizada, key_type_enum)
     if not recipient and chave_normalizada != chave.strip():
         # Fallback: try with raw value in case internal store uses different format
@@ -547,7 +547,37 @@ def lookup_pix_key_endpoint(
     if gateway:
         try:
             info = gateway.lookup_pix_key(chave_normalizada, tipo)
-            if info and info.get("name"):
+
+            if info is None:
+                # Gateway indisponivel (rede, sandbox, erro 5xx) — soft pass: nao bloquear envio
+                return {
+                    "found": True,
+                    "name": "Destinatario nao identificado",
+                    "document": "***",
+                    "bank": "Transferencia via rede PIX",
+                    "internal": False,
+                    "unverified": True,
+                }
+
+            if info.get("found") is False:
+                reason = info.get("reason", "not_in_dict")
+                if reason == "invalid_format":
+                    return {
+                        "found": False,
+                        "error": "Formato de chave invalido para o tipo selecionado.",
+                    }
+                # 404 do DICT: chave nao cadastrada no Asaas sandbox, mas pode existir em outro banco.
+                # Soft pass — nao bloquear; a rede PIX valida no momento do envio.
+                return {
+                    "found": True,
+                    "name": "Destinatario nao identificado",
+                    "document": "***",
+                    "bank": "Transferencia via rede PIX",
+                    "internal": False,
+                    "unverified": True,
+                }
+
+            if info.get("name"):
                 return {
                     "found": True,
                     "name": info["name"],
@@ -555,16 +585,18 @@ def lookup_pix_key_endpoint(
                     "bank": info.get("bank", "Rede Bancaria"),
                     "internal": False,
                 }
-        except Exception:
-            pass  # Gateway lookup is best-effort
 
-    # 5. Key not found in any source — return structured not-found so the UI can show feedback
+        except Exception:
+            pass  # Gateway completamente indisponivel — soft pass abaixo
+
+    # 5. Sem gateway configurado ou erro inesperado — soft pass para nao bloquear envio
     return {
-        "found": False,
-        "name": None,
-        "document": None,
-        "bank": None,
+        "found": True,
+        "name": "Destinatario nao identificado",
+        "document": "***",
+        "bank": "Transferencia via rede PIX",
         "internal": False,
+        "unverified": True,
     }
 
 

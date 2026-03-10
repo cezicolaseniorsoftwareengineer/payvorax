@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block content %}
 <style>
@@ -180,6 +180,8 @@
                             class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none text-lg font-semibold"
                             placeholder="0,00">
                     </div>
+                    <div id="balanceFeedback"
+                        class="hidden mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium"></div>
                 </div>
 
                 <div>
@@ -196,20 +198,13 @@
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Chave Pix</label>
-                    <div class="flex gap-2">
-                        <div class="relative flex-1">
-                            <input type="text" id="chave"
-                                class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none pr-10"
-                                placeholder="CPF, Email ou Telefone">
-                            <div id="chaveSpinner"
-                                class="hidden absolute right-3 top-3.5 w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin">
-                            </div>
+                    <div class="relative">
+                        <input type="text" id="chave"
+                            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none pr-10"
+                            placeholder="CPF, Email ou Telefone">
+                        <div id="chaveSpinner"
+                            class="hidden absolute right-3 top-3.5 w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin">
                         </div>
-                        <button type="button" id="buscarBtn"
-                            class="hidden px-4 py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors whitespace-nowrap"
-                            onclick="clearTimeout(_lookupTimer); lookupRecipient();">
-                            Buscar
-                        </button>
                     </div>
                 </div>
 
@@ -597,6 +592,11 @@
     document.addEventListener('DOMContentLoaded', () => {
         setupCurrencyInput('valor');
         setupCurrencyInput('valorReceber');
+        // Seed balance from server-rendered value; PVX.refreshBalance() will keep it updated
+        PVX._currentBalance = {{ user_balance | default (0) }
+    };
+    // Real-time balance validation as user types the amount
+    document.getElementById('valor').addEventListener('input', updateBalanceFeedback);
     });
 
     let html5QrcodeScanner = null;
@@ -1094,7 +1094,7 @@
             let response;
 
             if (isReal) {
-                // PayvoraX real charge: verify payment via gateway
+                // Bio Code Tech Pay real charge: verify payment via gateway
                 response = await fetch(`/pix/cobrar/${chargeId}/verificar`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
@@ -1148,11 +1148,63 @@
     // -------------------------------------------------------------------------
     const USER_IS_PJ = {{ user_is_pj | lower }};
 
+    function computePixFeeNumeric(valueFloat, isInternal) {
+        if (isInternal || valueFloat <= 0) return 0;
+        if (!USER_IS_PJ) return 0.25;
+        return Math.max(valueFloat * 0.005, 0.50);
+    }
+
+    function updateBalanceFeedback() {
+        const fb = document.getElementById('balanceFeedback');
+        if (!fb) return;
+        const amount = parseCurrencyInput(document.getElementById('valor'));
+        const sendBtn = document.getElementById('pixForm')?.querySelector('button[type="submit"]');
+
+        if (!amount || amount <= 0) {
+            fb.classList.add('hidden');
+            return;
+        }
+
+        const balance = PVX._currentBalance;
+        if (balance === null) {
+            // Balance not yet loaded — skip validation
+            fb.classList.add('hidden');
+            return;
+        }
+
+        const isInternal = !!(_recipientData && _recipientData.internal);
+        const fee = computePixFeeNumeric(amount, isInternal);
+        const total = amount + fee;
+        const fmtBRL = (n) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        if (total > balance) {
+            fb.className = 'mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium border border-red-200 bg-red-50 text-red-700';
+            const feeText = fee > 0 ? ' (inclui taxa R$ ' + fmtBRL(fee) + ')' : '';
+            fb.innerHTML = '<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>'
+                + '<span>Saldo insuficiente. Disponivel: R$ ' + fmtBRL(balance) + feeText + '</span>';
+            fb.classList.remove('hidden');
+            if (sendBtn) sendBtn.disabled = true;
+            lucide.createIcons();
+        } else {
+            fb.className = 'mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium border border-green-200 bg-green-50 text-green-700';
+            const remaining = balance - total;
+            fb.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i>'
+                + '<span>Saldo OK. Restara: R$ ' + fmtBRL(remaining) + '</span>';
+            fb.classList.remove('hidden');
+            // Re-enable only if no lookup error is blocking
+            const keyBadge = document.getElementById('keyDetectedBadge');
+            const hasLookupError = keyBadge && !keyBadge.classList.contains('hidden')
+                && keyBadge.classList.contains('bg-red-50');
+            if (sendBtn && !hasLookupError) sendBtn.disabled = false;
+            lucide.createIcons();
+        }
+    }
+
     function computePixFeeDisplay(valueFloat, isInternal) {
         if (isInternal) return 'Gratuito';
-        if (!USER_IS_PJ) return 'R$ 0,50';
-        const rate = valueFloat * 0.01;
-        const fee = Math.max(rate, 1.00);
+        if (!USER_IS_PJ) return 'R$ 0,25';
+        const rate = valueFloat * 0.005;
+        const fee = Math.max(rate, 0.50);
         return 'R$ ' + fee.toFixed(2).replace('.', ',');
     }
 
@@ -1166,7 +1218,7 @@
             return;
         }
         const feeStr = computePixFeeDisplay(valueFloat || 0, false);
-        label.textContent = USER_IS_PJ ? 'Taxa PJ (1,0% do valor, min R$ 1,00)' : 'Taxa de servico (Pix externo)';
+        label.textContent = USER_IS_PJ ? 'Taxa PJ (0,5% do valor, min R$ 0,50)' : 'Taxa de servico (Pix externo)';
         valueEl.textContent = feeStr;
         badge.classList.remove('hidden');
         lucide.createIcons();
@@ -1228,6 +1280,9 @@
     function resetRecipientCard() {
         _recipientData = null;
         document.getElementById('recipientCard').classList.add('hidden');
+        // Reabilitar botao de envio ao resetar (usuario pode estar corrigindo a chave)
+        const sendBtn = document.querySelector('button[type="submit"]');
+        if (sendBtn) sendBtn.disabled = false;
         // keyDetectedBadge is managed by detection logic, not here
     }
 
@@ -1238,9 +1293,7 @@
         if (!chave || chave.length < 5) { resetRecipientCard(); return; }
 
         const spinner = document.getElementById('chaveSpinner');
-        const buscarBtn = document.getElementById('buscarBtn');
         spinner.classList.remove('hidden');
-        if (buscarBtn) { buscarBtn.disabled = true; buscarBtn.textContent = '...'; }
         resetRecipientCard();
 
         try {
@@ -1251,8 +1304,9 @@
                 const data = await res.json();
 
                 if (data.found === false) {
-                    // Gateway responded but key not registered in PIX DICT
-                    _showLookupNotFound('Chave Pix nao encontrada. Verifique o numero digitado.');
+                    // Unico caso bloqueante real: formato invalido da chave
+                    const msg = data.error || 'Formato de chave invalido para o tipo selecionado.';
+                    _showLookupError(msg);
                     return;
                 }
 
@@ -1262,34 +1316,59 @@
                 document.getElementById('recipientBank').textContent = data.bank || '';
                 const badge = document.getElementById('recipientBadge');
                 if (data.internal) { badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
-                // Recipient card has richer info — hide the format badge
-                document.getElementById('keyDetectedBadge').classList.add('hidden');
-                document.getElementById('recipientCard').classList.remove('hidden');
-                // Show fee preview — internal transfers are always free
+
+                if (data.unverified) {
+                    // Gateway indisponivel — permitir envio silenciosamente; badge de tipo ja aparece
+                } else {
+                    // Destinatario confirmado pelo Asaas — ocultar badges de status
+                    document.getElementById('keyDetectedBadge').classList.add('hidden');
+                    document.getElementById('recipientCard').classList.remove('hidden');
+                }
+
+                // Show fee preview and update balance feedback with correct fee (internal vs external)
                 const currentValue = parseCurrencyInput(document.getElementById('valor'));
                 showFeePreview(!!data.internal, currentValue || 0);
+                updateBalanceFeedback();
                 lucide.createIcons();
-            } else if (res.status === 404) {
-                _showLookupNotFound('Chave Pix nao encontrada. Verifique o numero digitado.');
+
             } else if (res.status === 401 || res.status === 403) {
-                _showLookupNotFound('Sessao expirada. Recarregue a pagina.');
+                _showLookupError('Sessao expirada. Recarregue a pagina.');
             } else {
-                _showLookupNotFound('Servico de consulta temporariamente indisponivel.');
+                // Erro HTTP do servidor — permitir envio sem bloquear
             }
         } catch (_) {
-            _showLookupNotFound('Nao foi possivel consultar a chave. Verifique sua conexao.');
+            // Falha de rede — nao bloquear, deixar usuario prosseguir
         } finally {
             spinner.classList.add('hidden');
-            if (buscarBtn) { buscarBtn.disabled = false; buscarBtn.textContent = 'Buscar'; }
         }
     }
 
-    function _showLookupNotFound(msg) {
+    function _showLookupError(msg) {
+        // Erro real: Asaas confirmou que a chave nao existe no DICT ou formato invalido
+        // Bloqueia o envio pois a chave e definitivamente invalida
         const badge = document.getElementById('keyDetectedBadge');
-        badge.className = 'rounded-xl border border-red-200 bg-red-50 p-3 flex items-center gap-2 text-sm text-red-700';
+        badge.className = 'rounded-xl border border-red-200 bg-red-50 p-3 flex items-center gap-2 text-sm text-red-600';
         badge.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i><span>${msg}</span>`;
         badge.classList.remove('hidden');
+        const sendBtn = document.querySelector('button[type="submit"]');
+        if (sendBtn) sendBtn.disabled = true;
         lucide.createIcons();
+    }
+
+    function _showLookupWarning(msg) {
+        // Aviso amarelo: gateway indisponivel, mas envio permitido
+        const badge = document.getElementById('keyDetectedBadge');
+        badge.className = 'rounded-xl border border-yellow-200 bg-yellow-50 p-3 flex items-center gap-2 text-sm text-yellow-700';
+        badge.innerHTML = `<i data-lucide="triangle-alert" class="w-4 h-4 flex-shrink-0"></i><span>${msg}</span>`;
+        badge.classList.remove('hidden');
+        const sendBtn = document.querySelector('button[type="submit"]');
+        if (sendBtn) sendBtn.disabled = false;
+        lucide.createIcons();
+    }
+
+    function _showLookupNotFound(msg) {
+        // Alias para retro-compatibilidade — chama o erro bloqueante
+        _showLookupError(msg);
     }
 
     document.getElementById('chave').addEventListener('input', () => {
@@ -1297,9 +1376,6 @@
         resetRecipientCard();
 
         const raw = document.getElementById('chave').value;
-        const buscarBtn = document.getElementById('buscarBtn');
-        if (raw.trim().length >= 5) { buscarBtn.classList.remove('hidden'); }
-        else { buscarBtn.classList.add('hidden'); }
 
         const tipoSelect = document.getElementById('tipo');
         const detected = updateKeyDetectionBadge(raw, tipoSelect.value);
@@ -1415,9 +1491,10 @@
         document.getElementById('pixInputStep').classList.remove('hidden');
         document.getElementById('pixForm').reset();
         document.getElementById('valor').value = '';
+        const fb = document.getElementById('balanceFeedback');
+        if (fb) fb.classList.add('hidden');
         resetRecipientCard();
         hideFeePreview();
-        document.getElementById('buscarBtn').classList.add('hidden');
         document.getElementById('keyDetectedBadge').classList.add('hidden');
         lucide.createIcons();
     }
@@ -1448,6 +1525,14 @@
         if (!parsedValor || parsedValor <= 0) {
             PVX.showToast('Informe um valor valido para transferencia.', 'error');
             btn.innerHTML = originalText; btn.disabled = false; return;
+        }
+        // Early balance guard — prevents unnecessary server round-trip
+        if (PVX._currentBalance !== null) {
+            const _fee = computePixFeeNumeric(parsedValor, !!(_recipientData && _recipientData.internal));
+            if (parsedValor + _fee > PVX._currentBalance) {
+                PVX.showToast('Saldo insuficiente para esta transferencia.', 'error', 4000);
+                btn.innerHTML = originalText; btn.disabled = false; return;
+            }
         }
         if (!chave) {
             PVX.showToast('Informe a Chave Pix do destinatario.', 'error');

@@ -1,5 +1,5 @@
-"""
-Internal PIX transfer logic for PayvoraX users.
+﻿"""
+Internal PIX transfer logic for Bio Code Tech Pay users.
 Handles peer-to-peer transfers without external gateway integration.
 """
 from typing import Optional, Tuple
@@ -19,7 +19,7 @@ def find_recipient_user(
     key_type: PixKeyType
 ) -> Optional[User]:
     """
-    Finds PayvoraX user by PIX key.
+    Finds Bio Code Tech Pay user by PIX key.
 
     Args:
         db: Database session
@@ -27,7 +27,7 @@ def find_recipient_user(
         key_type: Type of PIX key
 
     Returns:
-        User if found in PayvoraX, None otherwise
+        User if found in Bio Code Tech Pay, None otherwise
     """
     try:
         if key_type in [PixKeyType.CPF, PixKeyType.CNPJ]:
@@ -60,7 +60,7 @@ def execute_internal_transfer(
     correlation_id: str
 ) -> Tuple[PixTransaction, PixTransaction]:
     """
-    Executes internal transfer between PayvoraX users.
+    Executes internal transfer between Bio Code Tech Pay users.
     Updates balance fields directly without external gateway.
 
     Args:

@@ -304,6 +304,7 @@
 
         // === Optimistic UI Engine ===
         const PVX = {
+            _currentBalance: null,
             overlay: document.getElementById('pvx-overlay'),
             overlayMsg: document.getElementById('pvx-overlay-msg'),
             toastEl: document.getElementById('pvx-toast'),
@@ -362,6 +363,7 @@
                     if (!res.ok) return;
                     const data = await res.json();
                     const newBalance = Number(data.balance || 0);
+                    this._currentBalance = newBalance;
                     const formatted = 'R$ ' + newBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
                     // Update all visible balance elements on the page

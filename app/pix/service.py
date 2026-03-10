@@ -1,8 +1,8 @@
-"""
+﻿"""
 Business logic for PIX transactions.
 Implements idempotency, state machine transitions, and audit logging.
 Integrates with Asaas BaaS for real PIX operations.
-Uses internal balance transfer for PayvoraX-to-PayvoraX transactions.
+Uses internal balance transfer for Bio Code Tech Pay-to-Bio Code Tech Pay transactions.
 """
 from uuid import uuid4
 from typing import Optional, Dict, Any
@@ -19,6 +19,7 @@ from app.auth.models import User
 from app.adapters.gateway_factory import get_payment_gateway
 from app.pix.internal_transfer import find_recipient_user, execute_internal_transfer
 from app.core.fees import calculate_pix_fee, fee_display
+from app.core.matrix import credit_fee
 
 
 def get_balance(db: Session, user_id: str) -> float:
@@ -164,6 +165,9 @@ def create_pix(
                 # Debit only after successful gateway dispatch (or local fallback)
                 sender.balance -= total_required
                 db.add(sender)
+
+                # Credit fee to Bio Code Technology matrix account (same transaction)
+                credit_fee(db, float(pix_fee))
 
                 initial_status = PixStatus.CONFIRMED
     else:
