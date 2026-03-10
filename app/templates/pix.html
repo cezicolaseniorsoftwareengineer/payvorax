@@ -14,23 +14,31 @@
         }
     }
 
-    /* Force video to fill the fullscreen overlay — override lib injected styles */
+    /* Force ALL lib-injected containers to fill #reader — overrides inline width/height set by Html5Qrcode */
+    #reader>div,
+    #reader__scan_region {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+        background: transparent !important;
+    }
+
     #reader video {
         position: absolute !important;
         inset: 0 !important;
         width: 100% !important;
         height: 100% !important;
         object-fit: cover !important;
+        z-index: 1;
     }
 
-    #reader>div {
-        background: transparent !important;
-    }
-
-    /* Hide Html5Qrcode default UI chrome inside fullscreen overlay */
-    #reader__scan_region,
+    /* Hide lib UI chrome — but NOT #reader__scan_region (video lives inside it) */
     #reader__header_message,
-    #reader__dashboard {
+    #reader__dashboard,
+    #reader__scan_region>canvas {
         display: none !important;
     }
 </style>
@@ -389,15 +397,18 @@
      floats centered with corner brackets and scan-line animation.
 ============================================================ -->
 <div id="qr-fullscreen-overlay"
-    style="display:none;position:fixed;inset:0;z-index:9998;background:#000;flex-direction:column;overflow:hidden;-webkit-overflow-scrolling:touch;">
+    style="display:none;position:fixed;inset:0;z-index:9998;background:#000;overflow:hidden;">
 
-    <!-- Top bar -->
+    <!-- Camera fills the ENTIRE overlay — top/bottom bars float above it via z-index -->
+    <div id="reader" style="position:absolute;inset:0;z-index:1;background:#000;overflow:hidden;"></div>
+
+    <!-- Top bar: floats above camera with gradient fade -->
     <div
-        style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;background:#000;padding:max(calc(env(safe-area-inset-top, 0px) + 12px), 22px) 16px 14px;">
+        style="position:absolute;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(to bottom,rgba(0,0,0,0.75) 0%,transparent 100%);padding:max(calc(env(safe-area-inset-top,0px) + 12px),22px) 16px 28px;">
         <div style="width:44px;"></div>
         <span style="color:#fff;font-weight:600;font-size:16px;letter-spacing:0.01em;">Ler QR Code PIX</span>
         <button onclick="stopScanner('idle')"
-            style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.12);border:none;border-radius:50%;cursor:pointer;flex-shrink:0;">
+            style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.15);border:none;border-radius:50%;cursor:pointer;flex-shrink:0;">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                 stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
@@ -406,45 +417,36 @@
         </button>
     </div>
 
-    <!-- Camera area: video fills this; viewfinder floats centered -->
-    <div
-        style="flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000;">
-        <!-- Html5Qrcode renders video here -->
-        <div id="reader" style="position:absolute;inset:0;width:100%;height:100%;background:#000;overflow:hidden;">
+    <!-- Viewfinder: always centered by absolute+transform — independent of video dimensions -->
+    <div id="qr-viewfinder"
+        style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;pointer-events:none;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,0.55);">
+
+        <!-- Corner bracket — top-left -->
+        <div
+            style="position:absolute;top:-2px;left:-2px;width:32px;height:32px;border-top:3.5px solid #fff;border-left:3.5px solid #fff;border-radius:8px 0 0 0;">
+        </div>
+        <!-- Corner bracket — top-right -->
+        <div
+            style="position:absolute;top:-2px;right:-2px;width:32px;height:32px;border-top:3.5px solid #fff;border-right:3.5px solid #fff;border-radius:0 8px 0 0;">
+        </div>
+        <!-- Corner bracket — bottom-left -->
+        <div
+            style="position:absolute;bottom:-2px;left:-2px;width:32px;height:32px;border-bottom:3.5px solid #fff;border-left:3.5px solid #fff;border-radius:0 0 0 8px;">
+        </div>
+        <!-- Corner bracket — bottom-right -->
+        <div
+            style="position:absolute;bottom:-2px;right:-2px;width:32px;height:32px;border-bottom:3.5px solid #fff;border-right:3.5px solid #fff;border-radius:0 0 8px 0;">
         </div>
 
-        <!-- Viewfinder: square, dynamically sized via JS.
-             box-shadow creates the darkened-vignette around the scan area. -->
-        <div id="qr-viewfinder"
-            style="position:relative;z-index:10;pointer-events:none;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,0.60);">
-
-            <!-- Corner bracket — top-left -->
-            <div
-                style="position:absolute;top:-2px;left:-2px;width:32px;height:32px;border-top:3.5px solid #fff;border-left:3.5px solid #fff;border-radius:8px 0 0 0;">
-            </div>
-            <!-- Corner bracket — top-right -->
-            <div
-                style="position:absolute;top:-2px;right:-2px;width:32px;height:32px;border-top:3.5px solid #fff;border-right:3.5px solid #fff;border-radius:0 8px 0 0;">
-            </div>
-            <!-- Corner bracket — bottom-left -->
-            <div
-                style="position:absolute;bottom:-2px;left:-2px;width:32px;height:32px;border-bottom:3.5px solid #fff;border-left:3.5px solid #fff;border-radius:0 0 0 8px;">
-            </div>
-            <!-- Corner bracket — bottom-right -->
-            <div
-                style="position:absolute;bottom:-2px;right:-2px;width:32px;height:32px;border-bottom:3.5px solid #fff;border-right:3.5px solid #fff;border-radius:0 0 8px 0;">
-            </div>
-
-            <!-- Animated scan line -->
-            <div
-                style="position:absolute;left:6px;right:6px;height:2px;background:linear-gradient(90deg,transparent 0%,#3b82f6 35%,#93c5fd 65%,transparent 100%);border-radius:2px;animation:qr-scan-line 1.8s ease-in-out infinite;">
-            </div>
+        <!-- Animated scan line -->
+        <div
+            style="position:absolute;left:6px;right:6px;height:2px;background:linear-gradient(90deg,transparent 0%,#3b82f6 35%,#93c5fd 65%,transparent 100%);border-radius:2px;animation:qr-scan-line 1.8s ease-in-out infinite;">
         </div>
     </div>
 
-    <!-- Bottom bar -->
+    <!-- Bottom bar: floats above camera with gradient fade -->
     <div
-        style="flex-shrink:0;text-align:center;background:#000;padding:20px 24px max(24px, env(safe-area-inset-bottom, 0px));">
+        style="position:absolute;bottom:0;left:0;right:0;z-index:30;text-align:center;background:linear-gradient(to top,rgba(0,0,0,0.75) 0%,transparent 100%);padding:28px 24px max(24px,env(safe-area-inset-bottom,0px));">
         <p style="color:#fff;font-size:14px;font-weight:500;margin:0 0 4px;">Aponte a camera para o QR Code</p>
         <p style="color:#9ca3af;font-size:12px;margin:0 0 20px;">Tempo restante: <span id="qr-countdown"
                 style="color:#fff;font-weight:600;">60s</span></p>
@@ -573,9 +575,9 @@
         // The viewfinder is 72% of the shorter screen dimension, capped at 280px —
         // matching the standard square format used by all PIX apps.
         const _scanOverlay = document.getElementById('qr-fullscreen-overlay');
-        if (_scanOverlay) _scanOverlay.style.display = 'flex';
+        if (_scanOverlay) _scanOverlay.style.display = 'block';
         const _shortSide = Math.min(window.innerWidth, window.innerHeight);
-        const _boxSize = Math.min(Math.round(_shortSide * 0.72), 280);
+        const _boxSize = Math.min(Math.round(_shortSide * 0.75), 300);
         const _vf = document.getElementById('qr-viewfinder');
         if (_vf) { _vf.style.width = _boxSize + 'px'; _vf.style.height = _boxSize + 'px'; }
 
@@ -870,6 +872,9 @@
                 showComprovante(data, chaveDisplay, { name: data.receiver_name || 'Destinatario', bank: 'Rede Bancaria' }, null);
                 PVX.refreshBalance();
                 setTimeout(() => PVX.refreshBalance(), 4000);
+                if (data.id && !['CONFIRMED', 'SCHEDULED', 'FAILED', 'CANCELED'].includes(data.status)) {
+                    startSentTransactionPoller(data.id);
+                }
             } else {
                 const err = await res.json().catch(() => ({}));
                 showQrState('idle');
@@ -893,6 +898,51 @@
         copyText.select();
         document.execCommand("copy");
         alert("Código copiado!");
+    }
+
+    // -------------------------------------------------------------------------
+    // Auto-polling: checks sent transaction status until terminal state
+    // Covers pixForm transfers and QR Code payments (PENDING -> CONFIRMED)
+    // -------------------------------------------------------------------------
+    function startSentTransactionPoller(transactionId) {
+        if (!transactionId) return;
+        let _pollAttempts = 0;
+        const _pollMax = 15; // 75s (15 x 5s)
+        const statusEl = document.getElementById('comprovante_status');
+        const _pollTimer = setInterval(async () => {
+            _pollAttempts++;
+            if (_pollAttempts > _pollMax) { clearInterval(_pollTimer); return; }
+            try {
+                const token = localStorage.getItem('access_token');
+                const res = await fetch(`/pix/transacoes/${transactionId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                const statusMap = {
+                    'CONFIRMED': 'Confirmado', 'PROCESSING': 'Processando',
+                    'CREATED': 'Em analise', 'FAILED': 'Falhou',
+                    'CANCELED': 'Cancelado', 'SCHEDULED': 'Agendado'
+                };
+                if (statusEl) {
+                    statusEl.textContent = statusMap[data.status] || data.status;
+                    statusEl.className = data.status === 'CONFIRMED'
+                        ? 'font-semibold text-green-700'
+                        : (data.status === 'FAILED' || data.status === 'CANCELED')
+                            ? 'font-semibold text-red-600'
+                            : 'font-semibold text-blue-700';
+                }
+                if (['CONFIRMED', 'FAILED', 'CANCELED'].includes(data.status)) {
+                    clearInterval(_pollTimer);
+                    PVX.refreshBalance();
+                    if (data.status === 'CONFIRMED') {
+                        PVX.showToast('Pagamento confirmado pela rede PIX!', 'success', 4000);
+                    } else if (data.status === 'FAILED') {
+                        PVX.showToast('Pagamento nao processado. Verifique seu saldo.', 'error', 5000);
+                    }
+                }
+            } catch (_) { /* ignore transient errors */ }
+        }, 5000);
     }
 
     // -------------------------------------------------------------------------
@@ -1228,6 +1278,9 @@
             if (response.ok) {
                 PVX.showToast(result.status === 'SCHEDULED' ? 'Pix agendado!' : 'Pix enviado!', 'success');
                 showComprovante(result, chave, _recipientData, dataAgendamento);
+                if (result.id && !['CONFIRMED', 'SCHEDULED', 'FAILED', 'CANCELED'].includes(result.status)) {
+                    startSentTransactionPoller(result.id);
+                }
             } else {
                 // result.detail can be a string (app errors) or an array (Pydantic 422 validation errors)
                 const rawDetail = result.detail;
@@ -1303,6 +1356,7 @@
                 const btnText = document.getElementById('btnConfirmarText');
                 if (isReal) {
                     btnText.textContent = 'Confirmar Recebimento Bio Code Tech Pay';
+                    document.getElementById('btnConfirmarRecebimento').classList.add('hidden');
                     startPaymentPolling(result.charge_id);
                 } else {
                     btnText.textContent = 'Confirmar Recebimento';
