@@ -158,6 +158,9 @@ app.include_router(antifraude_router, prefix="/antifraud", tags=["Anti-Fraud"])
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(boleto_router, tags=["Boleto"])
 
+from app.ia.router import router as ia_router
+app.include_router(ia_router)
+
 # Mount Static Files
 static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")

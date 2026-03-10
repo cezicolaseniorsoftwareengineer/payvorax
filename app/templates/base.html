@@ -387,6 +387,518 @@
         })();
     </script>
     {% block scripts %}{% endblock %}
+
+    <!-- ============================================================
+         BIO TECH PAY I.A — Widget flutuante com efeito cosmico
+    ============================================================ -->
+    <style>
+        #btpai-fab-wrapper {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            z-index: 9998;
+            width: 56px;
+            height: 56px;
+        }
+
+        #btpai-canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            width: 120px;
+            height: 120px;
+        }
+
+        #btpai-btn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            z-index: 2;
+        }
+
+        #btpai-btn:hover {
+            transform: translate(-50%, -50%) scale(1.1);
+            box-shadow: 0 6px 32px rgba(139, 92, 246, 0.65);
+        }
+
+        #btpai-btn svg {
+            width: 22px;
+            height: 22px;
+            stroke: white;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        #btpai-tooltip {
+            position: absolute;
+            bottom: calc(100% + 14px);
+            right: 0;
+            background: rgba(10, 13, 17, 0.93);
+            backdrop-filter: blur(10px);
+            color: #e2e8f0;
+            font-size: 11px;
+            font-weight: 500;
+            white-space: nowrap;
+            padding: 5px 11px;
+            border-radius: 8px;
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            opacity: 0;
+            transform: translateY(4px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+        }
+
+        #btpai-fab-wrapper:hover #btpai-tooltip {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Modal overlay */
+        #btpai-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 10001;
+            align-items: flex-end;
+            justify-content: flex-end;
+            padding: 0 16px 90px 16px;
+        }
+
+        #btpai-modal.open {
+            display: flex;
+        }
+
+        #btpai-panel {
+            width: 100%;
+            max-width: 380px;
+            height: 530px;
+            background: rgba(10, 13, 17, 0.97);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(139, 92, 246, 0.22);
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 48px rgba(59, 130, 246, 0.07);
+            overflow: hidden;
+            animation: btpai-slide-up 0.28s ease;
+        }
+
+        @keyframes btpai-slide-up {
+            from {
+                opacity: 0;
+                transform: translateY(18px) scale(0.97);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        #btpai-header {
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.07));
+            flex-shrink: 0;
+        }
+
+        #btpai-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        #btpai-header-info h3 {
+            color: #f1f5f9;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.3;
+            letter-spacing: 0.01em;
+        }
+
+        #btpai-header-info p {
+            color: #10b981;
+            font-size: 10px;
+            font-weight: 500;
+        }
+
+        #btpai-close {
+            margin-left: auto;
+            background: none;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 6px;
+            transition: color 0.15s;
+            display: flex;
+            align-items: center;
+        }
+
+        #btpai-close:hover {
+            color: #f1f5f9;
+        }
+
+        #btpai-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 11px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(139, 92, 246, 0.25) transparent;
+        }
+
+        .btpai-msg {
+            max-width: 86%;
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: 12.5px;
+            line-height: 1.55;
+            word-break: break-word;
+        }
+
+        .btpai-msg.bot {
+            background: rgba(255, 255, 255, 0.055);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            color: #e2e8f0;
+            border-bottom-left-radius: 4px;
+            align-self: flex-start;
+        }
+
+        .btpai-msg.user {
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            color: white;
+            border-bottom-right-radius: 4px;
+            align-self: flex-end;
+        }
+
+        .btpai-typing {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+            align-self: flex-start;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 14px;
+            border-bottom-left-radius: 4px;
+        }
+
+        .btpai-typing span {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #8b5cf6;
+            animation: btpai-bounce 1.2s infinite;
+        }
+
+        .btpai-typing span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .btpai-typing span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes btpai-bounce {
+
+            0%,
+            60%,
+            100% {
+                transform: translateY(0);
+                opacity: 0.4;
+            }
+
+            30% {
+                transform: translateY(-7px);
+                opacity: 1;
+            }
+        }
+
+        #btpai-input-row {
+            padding: 12px 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+            flex-shrink: 0;
+        }
+
+        #btpai-input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 10px 13px;
+            color: #f1f5f9;
+            font-size: 12.5px;
+            font-family: 'Inter', sans-serif;
+            resize: none;
+            max-height: 96px;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        #btpai-input:focus {
+            border-color: rgba(139, 92, 246, 0.5);
+        }
+
+        #btpai-input::placeholder {
+            color: #475569;
+        }
+
+        #btpai-send {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: opacity 0.15s;
+        }
+
+        #btpai-send:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
+
+        #btpai-send svg {
+            width: 15px;
+            height: 15px;
+            stroke: white;
+            fill: none;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+    </style>
+
+    <!-- Floating button + cosmic canvas -->
+    <div id="btpai-fab-wrapper">
+        <canvas id="btpai-canvas" width="120" height="120"></canvas>
+        <button id="btpai-btn" aria-label="BIO TECH PAY I.A" onclick="btpaiOpen()">
+            <svg viewBox="0 0 24 24">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+        </button>
+        <div id="btpai-tooltip">Gerente Ultra Moderno 24h</div>
+    </div>
+
+    <!-- Chat modal -->
+    <div id="btpai-modal" onclick="btpaiBackdropClick(event)">
+        <div id="btpai-panel">
+            <div id="btpai-header">
+                <div id="btpai-avatar">&#129302;</div>
+                <div id="btpai-header-info">
+                    <h3>BIO TECH PAY I.A</h3>
+                    <p>&#9679; Online agora &mdash; Gerente Ultra Moderno</p>
+                </div>
+                <button id="btpai-close" onclick="btpaiClose()" aria-label="Fechar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div id="btpai-messages"></div>
+            <div id="btpai-input-row">
+                <textarea id="btpai-input" rows="1" placeholder="Pergunte sobre investimentos, finanças..."
+                    onkeydown="btpaiKeydown(event)"></textarea>
+                <button id="btpai-send" onclick="btpaiSend()" aria-label="Enviar">
+                    <svg viewBox="0 0 24 24">
+                        <line x1="22" y1="2" x2="11" y2="13" />
+                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ---- Cosmic Particle Engine ----
+        (function () {
+            const canvas = document.getElementById('btpai-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = canvas.width, H = canvas.height;
+            const cx = W / 2, cy = H / 2;
+            const N = 32;
+            const particles = Array.from({ length: N }, function (_, i) {
+                return {
+                    angle: (Math.PI * 2 * i / N) + Math.random() * 0.6,
+                    radius: 28 + Math.random() * 22,
+                    speed: 0.003 + Math.random() * 0.0045,
+                    size: 0.7 + Math.random() * 1.5,
+                    alpha: 0.25 + Math.random() * 0.65,
+                    alphaDir: (Math.random() > 0.5 ? 1 : -1) * 0.007,
+                    hue: Math.random() > 0.5 ? '139, 92, 246' : '59, 130, 246'
+                };
+            });
+
+            function draw() {
+                ctx.clearRect(0, 0, W, H);
+                particles.forEach(function (p) {
+                    p.angle += p.speed;
+                    p.alpha += p.alphaDir;
+                    if (p.alpha >= 0.95) { p.alpha = 0.95; p.alphaDir *= -1; }
+                    if (p.alpha <= 0.12) { p.alpha = 0.12; p.alphaDir *= -1; }
+                    const x = cx + Math.cos(p.angle) * p.radius;
+                    const y = cy + Math.sin(p.angle) * p.radius;
+                    const grd = ctx.createRadialGradient(x, y, 0, x, y, p.size * 3.5);
+                    grd.addColorStop(0, 'rgba(' + p.hue + ', ' + p.alpha + ')');
+                    grd.addColorStop(1, 'rgba(' + p.hue + ', 0)');
+                    ctx.beginPath();
+                    ctx.arc(x, y, p.size * 3.5, 0, Math.PI * 2);
+                    ctx.fillStyle = grd;
+                    ctx.fill();
+                    const coreColor = p.hue === '59, 130, 246' ? '147, 197, 253' : '196, 181, 253';
+                    ctx.beginPath();
+                    ctx.arc(x, y, p.size, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(' + coreColor + ', ' + p.alpha + ')';
+                    ctx.fill();
+                });
+                requestAnimationFrame(draw);
+            }
+            draw();
+        })();
+
+        // ---- BIO TECH PAY I.A Chat State ----
+        var _btpai = { history: [], busy: false, opened: false };
+
+        function btpaiOpen() {
+            document.getElementById('btpai-modal').classList.add('open');
+            if (!_btpai.opened) {
+                _btpai.opened = true;
+                btpaiAddMsg('bot', 'Ola! Sou o **BIO TECH PAY I.A**, seu gerente ultra moderno disponivel 24h.\n\nPosso te ajudar com investimentos, analise de mercado, renda fixa, cripto, imoveis e muito mais.\n\nO que voce quer saber hoje?');
+            }
+            setTimeout(function () {
+                var inp = document.getElementById('btpai-input');
+                if (inp) inp.focus();
+            }, 120);
+        }
+
+        function btpaiClose() {
+            document.getElementById('btpai-modal').classList.remove('open');
+        }
+
+        function btpaiBackdropClick(e) {
+            if (e.target === document.getElementById('btpai-modal')) btpaiClose();
+        }
+
+        function btpaiAddMsg(role, text) {
+            var container = document.getElementById('btpai-messages');
+            var div = document.createElement('div');
+            div.className = 'btpai-msg ' + role;
+            div.innerHTML = text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+            return div;
+        }
+
+        function btpaiShowTyping() {
+            var container = document.getElementById('btpai-messages');
+            var el = document.createElement('div');
+            el.className = 'btpai-typing';
+            el.id = 'btpai-typing-indicator';
+            el.innerHTML = '<span></span><span></span><span></span>';
+            container.appendChild(el);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function btpaiHideTyping() {
+            var el = document.getElementById('btpai-typing-indicator');
+            if (el) el.remove();
+        }
+
+        function btpaiKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                btpaiSend();
+            }
+        }
+
+        async function btpaiSend() {
+            if (_btpai.busy) return;
+            var input = document.getElementById('btpai-input');
+            var text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+            input.style.height = 'auto';
+            btpaiAddMsg('user', text);
+            _btpai.history.push({ role: 'user', content: text });
+            _btpai.busy = true;
+            document.getElementById('btpai-send').disabled = true;
+            btpaiShowTyping();
+            try {
+                var resp = await fetch('/ia/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ messages: _btpai.history.slice(-20) })
+                });
+                btpaiHideTyping();
+                if (!resp.ok) {
+                    var errData = await resp.json().catch(function () { return {}; });
+                    var errMsg = (errData && errData.detail) ? errData.detail : 'Nao foi possivel processar sua mensagem agora. Tente novamente em instantes.';
+                    btpaiAddMsg('bot', errMsg);
+                } else {
+                    var data = await resp.json();
+                    var reply = data.reply || '';
+                    _btpai.history.push({ role: 'assistant', content: reply });
+                    btpaiAddMsg('bot', reply);
+                }
+            } catch (err) {
+                btpaiHideTyping();
+                btpaiAddMsg('bot', 'Falha de conexao. Verifique sua internet e tente novamente.');
+            } finally {
+                _btpai.busy = false;
+                document.getElementById('btpai-send').disabled = false;
+            }
+        }
+
+        // Auto-resize textarea
+        document.addEventListener('DOMContentLoaded', function () {
+            var inp = document.getElementById('btpai-input');
+            if (inp) {
+                inp.addEventListener('input', function () {
+                    this.style.height = 'auto';
+                    this.style.height = Math.min(this.scrollHeight, 96) + 'px';
+                });
+            }
+        });
+    </script>
 </body>
 
 </html>

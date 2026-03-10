@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     MATRIX_ACCOUNT_CNPJ: str = "00000000000100"   # Internal identity — not a real CNPJ
     MATRIX_ACCOUNT_NAME: str = "Bio Code Technology"
 
+    # OpenRouter API key — required for the BIO TECH PAY I.A chat agent.
+    # Set in Render Dashboard as OPENROUTER_API_KEY. Never commit this value.
+    OPENROUTER_API_KEY: Optional[str] = None
+
     # Transactional email via Resend (https://resend.com)
     # CRITICAL: set only via environment variable — never hardcode this value.
     RESEND_API_KEY: Optional[str] = None
