@@ -498,11 +498,16 @@
 
         function tryStart(facingMode, isFallback) {
             if (_scanAborted) return;
+            // Guard: prevent the success callback from firing more than once per scan session.
+            // Html5Qrcode at fps:10 may decode the same frame multiple times before s.stop() resolves.
+            let _callbackHandled = false;
             const scanner = new Html5Qrcode("reader");
             scanner.start(
                 { facingMode },
                 config,
                 (decodedText) => {
+                    if (_callbackHandled) return;
+                    _callbackHandled = true;
                     _scannerStarted = false;
                     html5QrcodeScanner = null;
                     stopScanner(null);
@@ -593,8 +598,14 @@
     // Set only after a successful /pix/qrcode/consultar call. Never populated from client input.
     let _consultedDetails = null;
     let _consultDebounceTimer = null;
+    // Guard: prevents concurrent in-flight requests for the same payload.
+    // Reset to false on each new onCopiaColaInput cycle (new payload or retry).
+    let _consultInProgress = false;
 
     async function consultarQrCode(payload) {
+        // Prevent concurrent requests: if one is already in flight, discard this call.
+        if (_consultInProgress) return;
+        _consultInProgress = true;
         _consultedDetails = null;
         const valueBox = document.getElementById('copiaColaValueBox');
         const loadingBox = document.getElementById('copiaColaLoading');
@@ -621,6 +632,7 @@
             if (res.status === 409) {
                 errorBox?.classList.remove('hidden');
                 document.getElementById('copiaColaErrorMsg').textContent = 'Este QR Code ja foi pago.';
+                _consultInProgress = false;
                 return;
             }
             if (!res.ok) {
@@ -628,6 +640,7 @@
                 errorBox?.classList.remove('hidden');
                 document.getElementById('copiaColaErrorMsg').textContent =
                     (typeof err.detail === 'string' ? err.detail : null) || 'Nao foi possivel verificar este QR Code.';
+                _consultInProgress = false;
                 return;
             }
 
@@ -643,10 +656,12 @@
             btn.disabled = false;
             btn.classList.remove('opacity-40', 'cursor-not-allowed');
             btn.classList.add('cursor-pointer', 'hover:bg-blue-800');
+            _consultInProgress = false;
         } catch (_) {
             loadingBox?.classList.add('hidden');
             errorBox?.classList.remove('hidden');
             document.getElementById('copiaColaErrorMsg').textContent = 'Erro de conexao. Tente novamente.';
+            _consultInProgress = false;
         }
     }
 
@@ -655,8 +670,9 @@
         const btn = document.getElementById('btnCopiaColaContinuar');
         if (!btn) return;
 
-        // Reset on every keystroke
+        // Reset on every keystroke — also resets in-flight guard so next debounce can proceed.
         _consultedDetails = null;
+        _consultInProgress = false;
         document.getElementById('copiaColaValueBox')?.classList.add('hidden');
         document.getElementById('copiaColaLoading')?.classList.add('hidden');
         document.getElementById('copiaColaError')?.classList.add('hidden');
