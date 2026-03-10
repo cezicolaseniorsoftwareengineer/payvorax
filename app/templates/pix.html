@@ -1,1663 +1,1663 @@
-﻿{% extends "base.html" %}
-
-{% block content %}
-<style>
-    @keyframes qr-scan-line {
-
-        0%,
-        100% {
-            top: 8%;
-        }
-
-        50% {
-            top: 86%;
-        }
-    }
-
-    /* Force the lib-injected direct-child container to fill #reader.
-       Only the first-level div is overridden — #reader__scan_region is intentionally
-       left at its default position so it does NOT become a new containing block
-       for the video. The video's position:absolute then anchors to this container,
-       which fills #reader, giving a full-screen camera feed. */
-    #reader>div {
-        position: absolute !important;
-        inset: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        max-width: none !important;
-        max-height: none !important;
-        background: transparent !important;
-    }
-
-    #reader video {
-        display: block !important;
-        position: absolute !important;
-        inset: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-    }
-
-    /* Hide lib UI chrome only — scan_region and its canvases must remain visible
-       so the library can render frames and the JS decoder can read pixel data. */
-    #reader__header_message,
-    #reader__dashboard {
-        display: none !important;
-    }
-</style>
-<div class="max-w-2xl mx-auto">
-    <div class="mb-4">
-        <h1 class="text-2xl font-bold text-gray-900">Área Pix</h1>
-        <p class="text-gray-500">Envie e receba pagamentos a qualquer hora.</p>
-    </div>
-
-    <!-- Tabs -->
-    <div class="flex p-1 bg-gray-100 rounded-xl mb-6">
-        <button onclick="switchTab('pagar')" id="tab-pagar"
-            class="flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium transition-all bg-white text-blue-700 shadow-sm">
-            Transferir
-        </button>
-        <button onclick="switchTab('ler-qr')" id="tab-ler-qr"
-            class="flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all">
-            <span class="hidden sm:inline">Ler </span>QR Code
-        </button>
-        <button onclick="switchTab('cobrar')" id="tab-cobrar"
-            class="flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all">
-            Receber<span class="hidden sm:inline"> (Depositar)</span>
-        </button>
-    </div>
-
-    <!-- Scan QR Code (Ler QR) -->
-    <div id="view-ler-qr" class="hidden bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Pagar com QR Code</h2>
-
-        <!-- State: idle -->
-        <div id="qr-state-idle" class="space-y-3">
-            <button onclick="startScanner()"
-                class="w-full flex items-center justify-center gap-3 py-4 bg-blue-50 border-2 border-blue-200 rounded-xl hover:bg-blue-100 transition-colors">
-                <i data-lucide="camera" class="w-6 h-6 text-blue-600"></i>
-                <span class="font-medium text-blue-700">Ler QRcode</span>
-            </button>
-            <div class="relative flex py-2 items-center">
-                <div class="flex-grow border-t border-gray-200"></div>
-                <span class="flex-shrink-0 mx-4 text-gray-400 text-xs">OU</span>
-                <div class="flex-grow border-t border-gray-200"></div>
-            </div>
-            <button onclick="showCopiaColaInput()"
-                class="w-full flex items-center justify-center gap-3 py-4 bg-gray-50 border-2 border-gray-200 rounded-xl hover:bg-gray-100 transition-colors">
-                <i data-lucide="clipboard-paste" class="w-6 h-6 text-gray-600"></i>
-                <span class="font-medium text-gray-700">Pix Copia e Cola</span>
-            </button>
-        </div>
-
-        <!-- State: scanning — camera opens in fullscreen overlay (#qr-fullscreen-overlay) -->
-        <div id="qr-state-scanning" class="hidden py-10 text-center">
-            <div class="w-10 h-10 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3">
-            </div>
-            <p class="text-sm text-gray-500">Abrindo camera...</p>
-        </div>
-
-        <!-- State: timeout -->
-        <div id="qr-state-timeout" class="hidden text-center space-y-4 py-4">
-            <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
-                <i data-lucide="scan-line" class="w-8 h-8 text-orange-500"></i>
-            </div>
-            <div>
-                <p class="font-semibold text-gray-800">QR code nao encontrado</p>
-                <p class="text-xs text-gray-500 mt-1">Tempo esgotado apos 60 segundos</p>
-            </div>
-            <div class="flex flex-col gap-2 pt-2">
-                <button onclick="startScanner()"
-                    class="w-full py-3 bg-blue-700 text-white rounded-full font-medium text-sm hover:bg-blue-800 transition-colors">
-                    Tentar de novo
-                </button>
-                <button onclick="showCopiaColaInput()"
-                    class="w-full py-3 border border-gray-300 text-gray-700 rounded-full font-medium text-sm hover:bg-gray-50 transition-colors">
-                    Usar Pix Copia e Cola
-                </button>
-            </div>
-        </div>
-
-        <!-- State: copia-cola -->
-        <div id="qr-state-copiacola" class="hidden space-y-4">
-            <div class="text-center mb-1">
-                <p class="font-semibold text-gray-800">Pix Copia e Cola</p>
-                <p class="text-sm text-gray-500">Insira o codigo do Pix Copia e Cola</p>
-            </div>
-            <textarea id="copiaColaInput"
-                class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none text-xs font-mono resize-none h-28"
-                placeholder="Cole o codigo aqui" oninput="onCopiaColaInput()"></textarea>
-
-            <!-- Valor confirmado pelo servidor -->
-            <div id="copiaColaValueBox" class="hidden bg-blue-50 border border-blue-200 rounded-xl p-3">
-                <p class="text-xs text-blue-600 font-medium mb-0.5">Valor confirmado</p>
-                <p id="copiaColaValueDisplay" class="text-xl font-bold text-blue-800"></p>
-                <p id="copiaColaBenefDisplay" class="text-xs text-blue-600 mt-0.5 truncate"></p>
-            </div>
-
-            <!-- Carregando verificacao do servidor -->
-            <div id="copiaColaLoading" class="hidden flex items-center justify-center gap-3 text-sm text-blue-600 py-2">
-                <div
-                    class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0">
-                </div>
-                <span>Verificando valor...</span>
-            </div>
-
-            <!-- Erro na verificacao -->
-            <div id="copiaColaError" class="hidden bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
-                <span id="copiaColaErrorMsg"></span>
-            </div>
-
-            <button id="btnCopiaColaContinuar" onclick="submitCopiaColaPayment()" disabled
-                class="w-full py-3 bg-blue-700 text-white rounded-full font-semibold text-sm opacity-40 cursor-not-allowed transition-all">
-                Confirmar Pagamento
-            </button>
-            <button onclick="showQrState('idle')" class="w-full text-sm text-gray-500 hover:text-gray-700 underline">
-                Voltar
-            </button>
-        </div>
-
-        <!-- State: confirming -->
-        <div id="qr-state-confirming" class="hidden text-center py-10">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p class="text-gray-500 text-sm">Processando pagamento...</p>
-        </div>
-    </div>
-
-    <!-- Send Pix Form (Pagar) -->
-    <div id="view-pagar" class="bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Transferir</h2>
-
-        <!-- Step 1: Input Form -->
-        <div id="pixInputStep">
-            <form id="pixForm" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Valor a transferir</label>
-                    <div class="relative">
-                        <span
-                            class="absolute left-3 top-3.5 text-gray-500 text-sm font-medium pointer-events-none">R$</span>
-                        <input type="text" id="valor" inputmode="numeric" autocomplete="off"
-                            class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none text-lg font-semibold"
-                            placeholder="0,00">
-                    </div>
-                    <div id="balanceFeedback"
-                        class="hidden mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium"></div>
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Chave</label>
-                    <select id="tipo"
-                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none bg-white">
-                        <option value="EMAIL">E-mail</option>
-                        <option value="CPF">CPF</option>
-                        <option value="CNPJ">CNPJ</option>
-                        <option value="TELEFONE">Telefone</option>
-                        <option value="ALEATORIA">Chave Aleatoria</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Chave Pix</label>
-                    <div class="relative">
-                        <input type="text" id="chave"
-                            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none pr-10"
-                            placeholder="CPF, Email ou Telefone">
-                        <div id="chaveSpinner"
-                            class="hidden absolute right-3 top-3.5 w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Recipient validation card -->
-                <div id="recipientCard" class="hidden rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <p class="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">Transferir para</p>
-                    <div class="flex items-center gap-3">
-                        <div id="recipientAvatar"
-                            class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                            <i data-lucide="user" class="w-5 h-5 text-blue-700"></i>
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <p id="recipientName" class="font-semibold text-gray-900 truncate"></p>
-                            <p id="recipientDoc" class="text-xs text-gray-500"></p>
-                            <p id="recipientBank" class="text-xs text-blue-700 font-medium mt-0.5"></p>
-                        </div>
-                        <span id="recipientBadge"
-                            class="hidden text-xs bg-blue-100 text-blue-800 font-semibold px-2 py-1 rounded-full flex-shrink-0">correntista
-                            Bio Code</span>
-                    </div>
-                </div>
-
-                <!-- Key format detected indicator -->
-                <div id="keyDetectedBadge"
-                    class="hidden rounded-xl border border-green-200 bg-green-50 p-3 flex items-center gap-2 text-sm text-green-700">
-                    <i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i>
-                    <span id="keyDetectedLabel">Formato reconhecido</span>
-                </div>
-
-                <!-- Fee preview badge (shown after key resolution) -->
-                <div id="feePreviewBadge"
-                    class="hidden rounded-xl border border-blue-100 bg-blue-50 p-3 flex items-center justify-between gap-2 text-sm">
-                    <div class="flex items-center gap-2 text-blue-700">
-                        <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
-                        <span id="feePreviewLabel">Taxa de servico Bio Code Tech Pay</span>
-                    </div>
-                    <span id="feePreviewValue" class="font-semibold text-blue-800 whitespace-nowrap"></span>
-                </div>
-
-                <!-- Agendamento Toggle -->
-                <div class="flex items-center gap-2 pt-2">
-                    <input type="checkbox" id="toggleAgendamento"
-                        class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-600 cursor-pointer">
-                    <label for="toggleAgendamento"
-                        class="text-sm font-medium text-gray-700 cursor-pointer select-none">Agendar
-                        transferencia</label>
-                </div>
-
-                <!-- Agendamento Input (Hidden by default) -->
-                <div id="agendamentoContainer" class="hidden transition-all duration-300 ease-in-out">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Data do Agendamento</label>
-                    <input type="date" id="data_agendamento"
-                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none text-gray-600">
-                </div>
-
-                <button type="submit"
-                    class="w-full nu-purple text-white font-bold py-4 rounded-full hover:bg-blue-900 transition-colors shadow-md flex justify-center items-center gap-2">
-                    <span>Enviar Pix</span>
-                    <i data-lucide="arrow-right" class="w-5 h-5"></i>
-                </button>
-            </form>
-        </div>
-
-        <!-- Step 2: Comprovante (shown after successful transfer) -->
-        <div id="comprovanteCard" class="hidden">
-
-            <!-- Unified bank-style receipt -->
-            <div class="rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden mb-5">
-
-                <!-- Header: icon + brand + title + date -->
-                <div class="px-6 pt-6 pb-5 border-b border-gray-100">
-                    <div class="flex items-center gap-2.5 mb-3">
-                        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                            <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
-                        </div>
-                        <p class="text-xs font-bold text-blue-700 uppercase tracking-widest">Bio Code Tech Pay</p>
-                    </div>
-                    <h2 class="text-xl font-bold text-gray-900 leading-tight">Comprovante de transferencia</h2>
-                    <p id="comprovante_gerado_em" class="text-sm text-gray-400 mt-1"></p>
-                </div>
-
-                <!-- Transaction summary -->
-                <div class="px-6 py-4 space-y-3.5 border-b border-gray-100">
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm text-gray-500">Valor</span>
-                        <span id="comprovante_valor" class="text-lg font-bold text-gray-900"></span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm text-gray-500">Tipo de transferencia</span>
-                        <span class="text-sm font-medium text-gray-800">Pix</span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm text-gray-500">Data / Hora</span>
-                        <span id="comprovante_data" class="text-sm text-gray-800 text-right"></span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm text-gray-500">Status</span>
-                        <span id="comprovante_status" class="text-sm font-semibold text-green-700"></span>
-                    </div>
-                    <div id="comprovante_taxa_row" class="hidden flex justify-between items-center">
-                        <span class="text-sm text-gray-500">Taxa Bio Code Tech Pay</span>
-                        <span id="comprovante_taxa" class="text-sm font-medium text-orange-700"></span>
-                    </div>
-                </div>
-
-                <!-- Destino section -->
-                <div class="px-6 pt-5 pb-2">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Destino</p>
-                </div>
-                <div class="px-6 pb-5 space-y-3.5 border-b border-gray-100">
-                    <div class="flex justify-between items-start gap-4">
-                        <span class="text-sm text-gray-500 flex-shrink-0">Nome</span>
-                        <span id="comprovante_destinatario"
-                            class="text-sm font-semibold text-gray-900 text-right break-words"></span>
-                    </div>
-                    <div id="comprovante_dest_doc_row" class="flex justify-between items-center">
-                        <span class="text-sm text-gray-500 flex-shrink-0">CPF/CNPJ</span>
-                        <span id="comprovante_dest_doc" class="text-sm text-gray-800 font-mono"></span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm text-gray-500 flex-shrink-0">Instituicao</span>
-                        <span id="comprovante_banco" class="text-sm text-gray-800 text-right"></span>
-                    </div>
-                    <div class="flex justify-between items-start gap-4">
-                        <span class="text-sm text-gray-500 flex-shrink-0">Chave Pix</span>
-                        <span id="comprovante_chave"
-                            class="text-sm text-gray-800 font-mono text-right break-all"></span>
-                    </div>
-                </div>
-
-                <!-- Origem section -->
-                <div class="px-6 pt-5 pb-2">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Origem</p>
-                </div>
-                <div class="px-6 pb-5 space-y-3.5 border-b border-gray-100">
-                    <div class="flex justify-between items-start gap-4">
-                        <span class="text-sm text-gray-500 flex-shrink-0">Nome</span>
-                        <span id="comprovante_pagador_nome"
-                            class="text-sm font-semibold text-gray-900 text-right break-words"></span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm text-gray-500 flex-shrink-0">CPF/CNPJ</span>
-                        <span id="comprovante_pagador_doc" class="text-sm text-gray-800 font-mono"></span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm text-gray-500 flex-shrink-0">Instituicao</span>
-                        <span class="text-sm text-gray-800">Bio Code Tech Pay</span>
-                    </div>
-                </div>
-
-                <!-- Footer: institution + transaction ID -->
-                <div class="px-6 py-4 bg-gray-50">
-                    <p class="text-xs text-gray-400 font-medium">Bio Code Tech Pay — Instituicao de Pagamento</p>
-                    <p class="text-xs text-gray-400 mb-4">CNPJ 61.425.124/0001-03</p>
-                    <p class="text-xs text-gray-400 mb-0.5">ID da transacao</p>
-                    <p id="comprovante_e2e" class="text-xs font-mono text-gray-600 break-all"></p>
-                </div>
-
-            </div>
-
-            <div class="flex gap-3">
-                <button onclick="novaTransferencia()"
-                    class="flex-1 border border-blue-700 text-blue-700 font-semibold py-3 rounded-full hover:bg-blue-50 transition-colors text-sm">
-                    Nova Transferencia
-                </button>
-                <a href="/"
-                    class="flex-1 nu-purple text-white font-semibold py-3 rounded-full hover:bg-blue-900 transition-colors text-sm text-center flex items-center justify-center">
-                    Ver Saldo
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <!-- Receive Pix Form (Cobrar) -->
-    <div id="view-cobrar" class="hidden bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Receber Pix</h2>
-        <p class="text-sm text-gray-500 mb-4">Gere um QR Code para receber transferências na sua conta.</p>
-
-        <form id="cobrarForm" class="space-y-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Valor a receber</label>
-                <div class="relative">
-                    <span
-                        class="absolute left-3 top-3.5 text-gray-500 text-sm font-medium pointer-events-none">R$</span>
-                    <input type="text" id="valorReceber" inputmode="numeric" autocomplete="off"
-                        class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none text-lg font-semibold"
-                        placeholder="0,00">
-                    <p class="text-xs text-gray-400 mt-1">
-                        Valor mínimo R$ 5,00. Valores a partir de R$ 5,00 geram QR Code integrado com a rede bancária
-                        externa.
-                    </p>
-                </div>
-            </div>
-
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Descrição (Opcional)</label>
-                <input type="text" id="descricaoReceber"
-                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
-                    placeholder="Ex: Rachar pizza">
-            </div>
-
-            <button type="submit"
-                class="w-full bg-gray-900 text-white font-bold py-4 rounded-full hover:bg-gray-800 transition-colors shadow-md flex justify-center items-center gap-2">
-                <span>Gerar QR Code</span>
-                <i data-lucide="qr-code" class="w-5 h-5"></i>
-            </button>
-        </form>
-
-        <!-- QR Code Result -->
-        <div id="qrResult" class="hidden mt-6 text-center border-t border-gray-100 pt-6">
-            <input type="hidden" id="currentChargeId">
-            <input type="hidden" id="isRealCharge" value="0">
-            <div id="chargeBadge" class="hidden mb-3 text-xs font-semibold px-3 py-1 rounded-full inline-block"></div>
-            <div class="bg-white p-4 rounded-xl border-2 border-blue-100 inline-block mb-4">
-                <img id="qrImage" src="" alt="QR Code Pix" class="w-48 h-48">
-            </div>
-            <p class="text-sm text-gray-500 mb-2">Pix Copia e Cola</p>
-            <div class="flex gap-2">
-                <input type="text" id="copyPasteCode" readonly
-                    class="w-full p-2 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600 font-mono">
-                <button onclick="copyCode()" class="p-2 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
-                    <i data-lucide="copy" class="w-4 h-4"></i>
-                </button>
-            </div>
-
-            <!-- Simulation: direct confirm -->
-            <button id="btnConfirmarRecebimento" onclick="confirmarRecebimento()"
-                class="mt-4 w-full bg-green-600 text-white font-bold py-3 rounded-full hover:bg-green-700 transition-colors shadow-sm flex justify-center items-center gap-2">
-                <span id="btnConfirmarText">Feito (Simular Pagamento)</span>
-                <i data-lucide="check-circle" class="w-5 h-5"></i>
-            </button>
-
-            <!-- Auto-polling indicator (shown only for real charges) -->
-            <div id="pollingIndicator" class="hidden mt-4 flex items-center justify-center gap-3 text-sm text-gray-500">
-                <div
-                    class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0">
-                </div>
-                <span>Aguardando confirmação do pagamento...</span>
-            </div>
-
-            <!-- Payment confirmed state (hidden until polling detects it) -->
-            <div id="paymentConfirmedState"
-                class="hidden mt-4 bg-green-50 border border-green-200 rounded-xl p-5 text-center">
-                <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i>
-                </div>
-                <h3 class="font-bold text-green-800 text-lg mb-1">Pagamento Recebido!</h3>
-                <p class="text-sm text-green-600 mb-3">O saldo foi creditado na sua conta.</p>
-                <a href="/"
-                    class="inline-block bg-green-600 text-white font-bold py-2 px-6 rounded-full hover:bg-green-700 transition-colors text-sm">Ver
-                    saldo</a>
-            </div>
-        </div>
-    </div>
-
-</div>
-
-<!-- ============================================================
-     QR Scanner fullscreen overlay
-     position:fixed covers the full viewport — no scroll, no card
-     constraints. Camera video fills the background; viewfinder
-     floats centered with corner brackets and scan-line animation.
-============================================================ -->
-<div id="qr-fullscreen-overlay"
-    style="display:none;position:fixed;inset:0;z-index:9998;background:#000;overflow:hidden;">
-
-    <!-- Camera fills the ENTIRE overlay — top/bottom bars float above it via z-index -->
-    <div id="reader"
-        style="position:absolute;inset:0;width:100%;height:100%;z-index:1;background:#000;overflow:hidden;"></div>
-
-    <!-- Top bar: floats above camera with gradient fade -->
-    <div
-        style="position:absolute;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(to bottom,rgba(0,0,0,0.75) 0%,transparent 100%);padding:max(calc(env(safe-area-inset-top,0px) + 12px),22px) 16px 28px;">
-        <div style="width:44px;"></div>
-        <span style="color:#fff;font-weight:600;font-size:16px;letter-spacing:0.01em;">Ler QR Code PIX</span>
-        <button onclick="stopScanner('idle')"
-            style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.15);border:none;border-radius:50%;cursor:pointer;flex-shrink:0;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-        </button>
-    </div>
-
-    <!-- Viewfinder: always centered by absolute+transform — independent of video dimensions -->
-    <div id="qr-viewfinder"
-        style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;pointer-events:none;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,0.55);">
-
-        <!-- Corner bracket — top-left -->
-        <div
-            style="position:absolute;top:-2px;left:-2px;width:32px;height:32px;border-top:3.5px solid #fff;border-left:3.5px solid #fff;border-radius:8px 0 0 0;">
-        </div>
-        <!-- Corner bracket — top-right -->
-        <div
-            style="position:absolute;top:-2px;right:-2px;width:32px;height:32px;border-top:3.5px solid #fff;border-right:3.5px solid #fff;border-radius:0 8px 0 0;">
-        </div>
-        <!-- Corner bracket — bottom-left -->
-        <div
-            style="position:absolute;bottom:-2px;left:-2px;width:32px;height:32px;border-bottom:3.5px solid #fff;border-left:3.5px solid #fff;border-radius:0 0 0 8px;">
-        </div>
-        <!-- Corner bracket — bottom-right -->
-        <div
-            style="position:absolute;bottom:-2px;right:-2px;width:32px;height:32px;border-bottom:3.5px solid #fff;border-right:3.5px solid #fff;border-radius:0 0 8px 0;">
-        </div>
-
-        <!-- Animated scan line -->
-        <div
-            style="position:absolute;left:6px;right:6px;height:2px;background:linear-gradient(90deg,transparent 0%,#3b82f6 35%,#93c5fd 65%,transparent 100%);border-radius:2px;animation:qr-scan-line 1.8s ease-in-out infinite;">
-        </div>
-    </div>
-
-    <!-- Bottom bar: floats above camera with gradient fade -->
-    <div
-        style="position:absolute;bottom:0;left:0;right:0;z-index:30;text-align:center;background:linear-gradient(to top,rgba(0,0,0,0.75) 0%,transparent 100%);padding:28px 24px max(24px,env(safe-area-inset-bottom,0px));">
-        <p style="color:#fff;font-size:14px;font-weight:500;margin:0 0 4px;">Aponte a camera para o QR Code</p>
-        <p style="color:#9ca3af;font-size:12px;margin:0 0 20px;">Tempo restante: <span id="qr-countdown"
-                style="color:#fff;font-weight:600;">60s</span></p>
-        <button onclick="stopScanner('idle')"
-            style="padding:12px 40px;border:1.5px solid rgba(255,255,255,0.35);border-radius:999px;color:#fff;font-size:14px;font-weight:500;background:transparent;cursor:pointer;min-width:160px;">
-            Cancelar
-        </button>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-<script>
-    // -------------------------------------------------------------------------
-    // Currency input: auto-formats as R$ X.XXX,XX while user types only digits
-    // -------------------------------------------------------------------------
-    function setupCurrencyInput(inputId) {
-        const input = document.getElementById(inputId);
-        if (!input) return;
-
-        input.addEventListener('input', () => {
-            // Strip everything except digits
-            const digits = input.value.replace(/\D/g, '');
-            if (!digits) { input.value = ''; return; }
-
-            // Work in centavos (integer)
-            const centavos = parseInt(digits, 10);
-            // Cap at R$ 999.999,99
-            const capped = Math.min(centavos, 99999999);
-
-            const reais = Math.floor(capped / 100);
-            const cents = capped % 100;
-
-            // Thousands separator
-            const reaisStr = reais.toLocaleString('pt-BR');
-            input.value = `${reaisStr},${String(cents).padStart(2, '0')}`;
-        });
-
-        // Allow only digit keys, backspace, delete, arrows, tab
-        input.addEventListener('keydown', (e) => {
-            const allowed = [
-                'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight',
-                'ArrowUp', 'ArrowDown', 'Tab', 'Home', 'End'
-            ];
-            if (!allowed.includes(e.key) && (e.key < '0' || e.key > '9')) {
-                e.preventDefault();
-            }
-        });
-
-        // Paste: strip non-digits
-        input.addEventListener('paste', (e) => {
-            e.preventDefault();
-            const pasted = (e.clipboardData || window.clipboardData).getData('text');
-            const digits = pasted.replace(/\D/g, '');
-            input.value = digits;
-            input.dispatchEvent(new Event('input'));
-        });
-    }
-
-    function parseCurrencyInput(input) {
-        // Converts displayed "1.234,56" -> 1234.56
-        if (!input || !input.value) return 0;
-        const clean = input.value.replace(/\./g, '').replace(',', '.');
-        const val = parseFloat(clean);
-        return isNaN(val) ? 0 : val;
-    }
-
-    // Initialise both fields
-    document.addEventListener('DOMContentLoaded', () => {
-        setupCurrencyInput('valor');
-        setupCurrencyInput('valorReceber');
-        // Seed balance from server-rendered value; PVX.refreshBalance() will keep it updated
-        PVX._currentBalance = {{ user_balance | default (0) }
-    };
-    // Real-time balance validation as user types the amount
-    document.getElementById('valor').addEventListener('input', updateBalanceFeedback);
-    });
-
-    let html5QrcodeScanner = null;
-    let _qrTimeoutTimer = null;
-    let _qrCountdownTimer = null;
-    let _scannerStarted = false; // true only after Html5Qrcode.start() resolves
-    let _scanAborted = false;   // set by stopScanner to cancel in-flight getCameras
-
-    function switchTab(tab) {
-        const viewPagar = document.getElementById('view-pagar');
-        const viewCobrar = document.getElementById('view-cobrar');
-        const viewLerQr = document.getElementById('view-ler-qr');
-
-        const tabPagar = document.getElementById('tab-pagar');
-        const tabCobrar = document.getElementById('tab-cobrar');
-        const tabLerQr = document.getElementById('tab-ler-qr');
-
-        // Reset classes
-        [tabPagar, tabCobrar, tabLerQr].forEach(t => {
-            t.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all";
-        });
-
-        // Hide all views
-        [viewPagar, viewCobrar, viewLerQr].forEach(v => v.classList.add('hidden'));
-
-        // Activate selected
-        if (tab === 'pagar') {
-            viewPagar.classList.remove('hidden');
-            tabPagar.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-white text-blue-700 shadow-sm";
-        } else if (tab === 'cobrar') {
-            viewCobrar.classList.remove('hidden');
-            tabCobrar.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-white text-blue-700 shadow-sm";
-        } else if (tab === 'ler-qr') {
-            viewLerQr.classList.remove('hidden');
-            tabLerQr.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-white text-blue-700 shadow-sm";
-        }
-
-        // Stop scanner if leaving tab
-        if (tab !== 'ler-qr') {
-            stopScanner(null);
-            showQrState('idle');
-        }
-    }
-
-    function startScanner() {
-        // Stop any existing scanner before starting a new one
-        stopScanner(null);
-
-        showQrState('scanning');
-        _scanAborted = false;
-        _scannerStarted = false;
-
-        // Open fullscreen overlay and compute responsive viewfinder size.
-        // The viewfinder is 72% of the shorter screen dimension, capped at 280px —
-        // matching the standard square format used by all PIX apps.
-        const _scanOverlay = document.getElementById('qr-fullscreen-overlay');
-        if (_scanOverlay) _scanOverlay.style.display = 'block';
-        const _shortSide = Math.min(window.innerWidth, window.innerHeight);
-        const _boxSize = Math.min(Math.round(_shortSide * 0.75), 300);
-        const _vf = document.getElementById('qr-viewfinder');
-        if (_vf) { _vf.style.width = _boxSize + 'px'; _vf.style.height = _boxSize + 'px'; }
-
-        let secondsLeft = 60;
-        const countdownEl = document.getElementById('qr-countdown');
-        if (countdownEl) countdownEl.textContent = '60s';
-
-        _qrCountdownTimer = setInterval(() => {
-            secondsLeft = Math.max(0, secondsLeft - 1);
-            if (countdownEl) countdownEl.textContent = `${secondsLeft}s`;
-        }, 1000);
-
-        _qrTimeoutTimer = setTimeout(() => {
-            stopScanner(null);
-            showQrState('timeout');
-        }, 60000);
-
-        // Responsive qrbox matches the viewfinder square — tells the decoder
-        // which region to prioritize, matching what the user sees.
-        const config = { fps: 10, qrbox: { width: _boxSize, height: _boxSize } };
-
-        function tryStart(facingMode, isFallback) {
-            if (_scanAborted) return;
-            // Guard: prevent the success callback from firing more than once per scan session.
-            // Html5Qrcode at fps:10 may decode the same frame multiple times before s.stop() resolves.
-            let _callbackHandled = false;
-            const scanner = new Html5Qrcode("reader");
-            scanner.start(
-                { facingMode },
-                config,
-                (decodedText) => {
-                    if (_callbackHandled) return;
-                    _callbackHandled = true;
-
-                    // Immediately stop MediaStream tracks so the Android camera indicator
-                    // disappears right away, before s.stop() resolves asynchronously.
-                    try {
-                        const _videoEl = document.querySelector('#reader video');
-                        if (_videoEl && _videoEl.srcObject) {
-                            _videoEl.srcObject.getTracks().forEach(t => t.stop());
-                            _videoEl.srcObject = null;
-                        }
-                    } catch (_) { }
-
-                    _scannerStarted = false;
-                    html5QrcodeScanner = null;
-                    stopScanner(null);
-                    // Show copia-e-cola state with the scanned payload; consult server immediately
-                    showQrState('copiacola');
-                    const scanInput = document.getElementById('copiaColaInput');
-                    if (scanInput) { scanInput.value = decodedText; }
-                    consultarQrCode(decodedText);
-                },
-                () => { /* per-frame errors are normal, ignore */ }
-            ).then(() => {
-                if (_scanAborted) {
-                    scanner.stop().catch(() => { }).finally(() => { try { scanner.clear(); } catch (_) { } });
-                } else {
-                    html5QrcodeScanner = scanner;
-                    _scannerStarted = true;
-                }
-            }).catch(() => {
-                try { scanner.clear(); } catch (_) { }
-                if (_scanAborted) return;
-                if (!isFallback) {
-                    // Rear camera failed — try user-facing as last resort
-                    tryStart('user', true);
-                } else {
-                    stopScanner('idle');
-                    PVX.showToast('Camera nao acessivel. Verifique as permissoes do navegador ou use Pix Copia e Cola.', 'error');
-                }
-            });
-        }
-
-        tryStart('environment', false);
-    }
-
-    function stopScanner(goToState) {
-        clearTimeout(_qrTimeoutTimer);
-        clearInterval(_qrCountdownTimer);
-        _qrTimeoutTimer = null;
-        _qrCountdownTimer = null;
-        _scanAborted = true;
-
-        if (html5QrcodeScanner && _scannerStarted) {
-            // Immediately stop MediaStream tracks to release the OS camera indicator on Android.
-            // s.stop() is async and the indicator stays on until tracks are actually stopped.
-            try {
-                const _videoEl = document.querySelector('#reader video');
-                if (_videoEl && _videoEl.srcObject) {
-                    _videoEl.srcObject.getTracks().forEach(t => t.stop());
-                    _videoEl.srcObject = null;
-                }
-            } catch (_) { }
-            // Camera stream is active — stop gracefully
-            const s = html5QrcodeScanner;
-            html5QrcodeScanner = null;
-            _scannerStarted = false;
-            s.stop().catch(() => { }).finally(() => { try { s.clear(); } catch (_) { } });
-        } else if (html5QrcodeScanner) {
-            // Instance exists but camera not yet started — just clear DOM
-            try { html5QrcodeScanner.clear(); } catch (_) { }
-            html5QrcodeScanner = null;
-            _scannerStarted = false;
-        }
-
-        // Close fullscreen scanner overlay
-        const _scanOverlayClose = document.getElementById('qr-fullscreen-overlay');
-        if (_scanOverlayClose) _scanOverlayClose.style.display = 'none';
-
-        if (goToState) showQrState(goToState);
-    }
-
-    function showQrState(state) {
-        ['idle', 'scanning', 'timeout', 'copiacola', 'confirming'].forEach(s => {
-            const el = document.getElementById(`qr-state-${s}`);
-            if (el) el.classList.add('hidden');
-        });
-        const target = document.getElementById(`qr-state-${state}`);
-        if (target) target.classList.remove('hidden');
-        lucide.createIcons();
-    }
-
-    function showCopiaColaInput() {
-        showQrState('copiacola');
-        const input = document.getElementById('copiaColaInput');
-        if (input) { input.value = ''; }
-        onCopiaColaInput();
-        setTimeout(() => { if (input) input.focus(); }, 100);
-    }
-
-    function parseEmvValue(emv) {
-        // BR PIX EMV field 54: Transaction Amount
-        // Format: "54" + 2-digit-length + decimal-string
-        const m = emv.match(/54(\d{2})/);
-        if (!m) return 0;
-        const len = parseInt(m[1]);
-        const start = emv.indexOf(m[0]) + 4;
-        const valStr = emv.substring(start, start + len);
-        const v = parseFloat(valStr);
-        return isNaN(v) ? 0 : v;
-    }
-
-    // _consultedDetails: holds the server-resolved QR Code details (value + beneficiary).
-    // Set only after a successful /pix/qrcode/consultar call. Never populated from client input.
-    let _consultedDetails = null;
-    let _consultDebounceTimer = null;
-    // Guard: prevents concurrent in-flight requests for the same payload.
-    // Reset to false on each new onCopiaColaInput cycle (new payload or retry).
-    let _consultInProgress = false;
-
-    async function consultarQrCode(payload) {
-        // Prevent concurrent requests: if one is already in flight, discard this call.
-        if (_consultInProgress) return;
-        _consultInProgress = true;
-        _consultedDetails = null;
-        const valueBox = document.getElementById('copiaColaValueBox');
-        const loadingBox = document.getElementById('copiaColaLoading');
-        const errorBox = document.getElementById('copiaColaError');
-        const btn = document.getElementById('btnCopiaColaContinuar');
-
-        valueBox?.classList.add('hidden');
-        errorBox?.classList.add('hidden');
-        loadingBox?.classList.remove('hidden');
-        btn.disabled = true;
-        btn.classList.add('opacity-40', 'cursor-not-allowed');
-        btn.classList.remove('cursor-pointer', 'hover:bg-blue-800');
-
-        try {
-            const token = localStorage.getItem('access_token');
-            const res = await fetch('/pix/qrcode/consultar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ payload })
-            });
-
-            loadingBox?.classList.add('hidden');
-
-            if (res.status === 409) {
-                errorBox?.classList.remove('hidden');
-                document.getElementById('copiaColaErrorMsg').textContent = 'Este QR Code ja foi pago.';
-                _consultInProgress = false;
-                return;
-            }
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                errorBox?.classList.remove('hidden');
-                document.getElementById('copiaColaErrorMsg').textContent =
-                    (typeof err.detail === 'string' ? err.detail : null) || 'Nao foi possivel verificar este QR Code.';
-                _consultInProgress = false;
-                return;
-            }
-
-            const data = await res.json();
-            _consultedDetails = data;
-
-            document.getElementById('copiaColaValueDisplay').textContent =
-                'R$ ' + data.value.toFixed(2).replace('.', ',');
-            const benefEl = document.getElementById('copiaColaBenefDisplay');
-            if (benefEl) benefEl.textContent = data.beneficiary_name || '';
-            valueBox?.classList.remove('hidden');
-
-            btn.disabled = false;
-            btn.classList.remove('opacity-40', 'cursor-not-allowed');
-            btn.classList.add('cursor-pointer', 'hover:bg-blue-800');
-            _consultInProgress = false;
-        } catch (_) {
-            loadingBox?.classList.add('hidden');
-            errorBox?.classList.remove('hidden');
-            document.getElementById('copiaColaErrorMsg').textContent = 'Erro de conexao. Tente novamente.';
-            _consultInProgress = false;
-        }
-    }
-
-    function onCopiaColaInput() {
-        const val = (document.getElementById('copiaColaInput')?.value || '').trim();
-        const btn = document.getElementById('btnCopiaColaContinuar');
-        if (!btn) return;
-
-        // Reset on every keystroke — also resets in-flight guard so next debounce can proceed.
-        _consultedDetails = null;
-        _consultInProgress = false;
-        document.getElementById('copiaColaValueBox')?.classList.add('hidden');
-        document.getElementById('copiaColaLoading')?.classList.add('hidden');
-        document.getElementById('copiaColaError')?.classList.add('hidden');
-        btn.disabled = true;
-        btn.classList.add('opacity-40', 'cursor-not-allowed');
-        btn.classList.remove('cursor-pointer', 'hover:bg-blue-800');
-
-        if (val.length < 20) return;
-
-        // Debounce: consult backend 600ms after user stops typing
-        clearTimeout(_consultDebounceTimer);
-        _consultDebounceTimer = setTimeout(() => consultarQrCode(val), 600);
-    }
-
-    async function handleQrPayment(payload) {
-        // Detect simulation URL: /pix/pagar-qrcode?id=xxx (internal charge)
-        if (payload.includes('pagar-qrcode') && payload.includes('id=')) {
-            try {
-                let chargeId = null;
-                try { chargeId = new URL(payload).searchParams.get('id'); } catch (_) { }
-                if (!chargeId) {
-                    const m = payload.match(/id=([^&]+)/);
-                    if (m) chargeId = m[1];
-                }
-                if (chargeId) {
-                    showQrState('confirming');
-                    const token = localStorage.getItem('access_token');
-                    const res = await fetch('/pix/receber/confirmar', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({ charge_id: chargeId })
-                    });
-                    if (res.ok) {
-                        PVX.showToast('Pagamento confirmado!', 'success');
-                        PVX.refreshBalance();
-                        setTimeout(() => { showQrState('idle'); switchTab('pagar'); }, 1800);
-                    } else {
-                        const err = await res.json().catch(() => ({}));
-                        showQrState('idle');
-                        PVX.showToast('Erro: ' + (err.detail || 'Falha ao processar pagamento.'), 'error');
-                    }
-                    return;
-                }
-            } catch (_) { }
-        }
-
-        // Real EMV payload: submit to Asaas via backend
-        showQrState('confirming');
-        try {
-            const token = localStorage.getItem('access_token');
-            const idempotencyKey = `qr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            const body = { payload };
-            const res = await fetch('/pix/qrcode/pagar', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'X-Idempotency-Key': idempotencyKey
-                },
-                body: JSON.stringify(body)
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                switchTab('pagar');
-                const chaveDisplay = payload.length > 40 ? payload.substring(0, 40) + '...' : payload;
-                showComprovante(data, chaveDisplay, { name: data.receiver_name || 'Destinatario', bank: 'Rede Bancaria' }, null);
-                PVX.refreshBalance();
-                setTimeout(() => PVX.refreshBalance(), 4000);
-                if (data.id && !['CONFIRMADO', 'AGENDADO', 'FALHOU', 'CANCELADO'].includes(data.status)) {
-                    startSentTransactionPoller(data.id);
-                }
-            } else {
-                const err = await res.json().catch(() => ({}));
-                showQrState('idle');
-                const msg = typeof err.detail === 'string' ? err.detail : 'Falha ao processar pagamento.';
-                PVX.showToast('Erro: ' + msg, 'error');
-            }
-        } catch (_) {
-            showQrState('idle');
-            PVX.showToast('Erro de conexao. Tente novamente.', 'error');
-        }
-    }
-
-    async function submitCopiaColaPayment() {
-        const payload = (document.getElementById('copiaColaInput')?.value || '').trim();
-        if (!payload || payload.length < 20 || !_consultedDetails) return;
-        await handleQrPayment(payload);
-    }
-
-    function copyCode() {
-        const copyText = document.getElementById("copyPasteCode");
-        copyText.select();
-        document.execCommand("copy");
-        alert("Código copiado!");
-    }
-
-    // -------------------------------------------------------------------------
-    // Auto-polling: checks sent transaction status until terminal state
-    // Covers pixForm transfers and QR Code payments (PENDING -> CONFIRMED)
-    // -------------------------------------------------------------------------
-    function startSentTransactionPoller(transactionId) {
-        if (!transactionId) return;
-        let _pollAttempts = 0;
-        const _pollMax = 15; // 75s (15 x 5s)
-        const statusEl = document.getElementById('comprovante_status');
-        const _pollTimer = setInterval(async () => {
-            _pollAttempts++;
-            if (_pollAttempts > _pollMax) { clearInterval(_pollTimer); return; }
-            try {
-                const token = localStorage.getItem('access_token');
-                const res = await fetch(`/pix/transacoes/${transactionId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                // PixStatus enum values are stored/returned in Portuguese
-                const statusMap = {
-                    'CONFIRMADO': 'Confirmado', 'PROCESSANDO': 'Processando',
-                    'CRIADO': 'Em analise', 'FALHOU': 'Falhou',
-                    'CANCELADO': 'Cancelado', 'AGENDADO': 'Agendado'
-                };
-                if (statusEl) {
-                    statusEl.textContent = statusMap[data.status] || data.status;
-                    statusEl.className = data.status === 'CONFIRMADO'
-                        ? 'font-semibold text-green-700'
-                        : (data.status === 'FALHOU' || data.status === 'CANCELADO')
-                            ? 'font-semibold text-red-600'
-                            : 'font-semibold text-blue-700';
-                }
-                if (['CONFIRMADO', 'FALHOU', 'CANCELADO'].includes(data.status)) {
-                    clearInterval(_pollTimer);
-                    PVX.refreshBalance();
-                    if (data.status === 'CONFIRMADO') {
-                        PVX.showToast('Pagamento confirmado pela rede PIX!', 'success', 4000);
-                    } else if (data.status === 'FALHOU') {
-                        PVX.showToast('Pagamento nao processado. Verifique seu saldo.', 'error', 5000);
-                    }
-                }
-            } catch (_) { /* ignore transient errors */ }
-        }, 5000);
-    }
-
-    // -------------------------------------------------------------------------
-    // Auto-polling: checks payment status every 4s for real charges
-    // -------------------------------------------------------------------------
-    let _pollingTimer = null;
-    let _pollingAttempts = 0;
-    const POLLING_MAX = 75; // 5 minutes (75 × 4s)
-
-    function startPaymentPolling(chargeId) {
-        stopPaymentPolling();
-        _pollingAttempts = 0;
-        document.getElementById('pollingIndicator').classList.remove('hidden');
-
-        _pollingTimer = setInterval(async () => {
-            _pollingAttempts++;
-            if (_pollingAttempts > POLLING_MAX) {
-                stopPaymentPolling();
-                return;
-            }
-            try {
-                const token = localStorage.getItem('access_token');
-                const res = await fetch(`/pix/transacoes/${chargeId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                if (data.status === 'CONFIRMADO') {
-                    stopPaymentPolling();
-                    onPaymentConfirmed();
-                }
-            } catch (_) { /* ignore transient errors */ }
-        }, 4000);
-    }
-
-    function stopPaymentPolling() {
-        if (_pollingTimer) {
-            clearInterval(_pollingTimer);
-            _pollingTimer = null;
-        }
-        document.getElementById('pollingIndicator').classList.add('hidden');
-    }
-
-    function onPaymentConfirmed() {
-        document.getElementById('btnConfirmarRecebimento').classList.add('hidden');
-        document.getElementById('paymentConfirmedState').classList.remove('hidden');
-        lucide.createIcons();
-        PVX.showToast('Pagamento recebido! Saldo atualizado.', 'success', 4000);
-        // Refresh balance immediately after deposit is confirmed
-        PVX.refreshBalance();
-    }
-
-    async function confirmarRecebimento() {
-        const btn = document.getElementById('btnConfirmarRecebimento');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mx-auto"></div>';
-        btn.disabled = true;
-
-        const chargeId = document.getElementById('currentChargeId').value;
-        const isReal = document.getElementById('isRealCharge').value === '1';
-
-        if (!chargeId) {
-            PVX.showToast('Erro: ID da cobran\u00e7a n\u00e3o encontrado.', 'error');
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-            return;
-        }
-
-        try {
-            let response;
-
-            if (isReal) {
-                // Bio Code Tech Pay real charge: verify payment via gateway
-                response = await fetch(`/pix/cobrar/${chargeId}/verificar`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-            } else {
-                // Simulation: direct local confirmation
-                response = await fetch('/pix/receber/confirmar', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ charge_id: chargeId })
-                });
-            }
-
-            if (response.ok) {
-                stopPaymentPolling();
-                PVX.showToast('Dep\u00f3sito confirmado! Redirecionando...', 'success');
-                setTimeout(() => { window.location.href = '/'; }, 1500);
-            } else if (response.status === 202) {
-                // Payment not yet confirmed — polling
-                const err = await response.json();
-                PVX.showToast(err.detail || 'Pagamento ainda n\u00e3o confirmado. Aguarde e tente novamente.', 'info');
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            } else {
-                const err = await response.json();
-                PVX.showToast('Erro: ' + (err.detail || 'Falha ao confirmar pagamento.'), 'error');
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            }
-        } catch (error) {
-            PVX.showToast('Erro de conex\u00e3o.', 'error');
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-        }
-    }
-
-    // Toggle Agendamento
-    document.getElementById('toggleAgendamento').addEventListener('change', (e) => {
-        const container = document.getElementById('agendamentoContainer');
-        const input = document.getElementById('data_agendamento');
-        if (e.target.checked) {
-            container.classList.remove('hidden');
-        } else {
-            container.classList.add('hidden');
-            input.value = '';
-        }
-    });
-
-    // -------------------------------------------------------------------------
-    // Fee logic — user type injected from backend
-    // -------------------------------------------------------------------------
-    const USER_IS_PJ = {{ user_is_pj | lower }};
-
-    function computePixFeeNumeric(valueFloat, isInternal) {
-        if (isInternal || valueFloat <= 0) return 0;
-        if (!USER_IS_PJ) return 0.25;
-        return Math.max(valueFloat * 0.005, 0.50);
-    }
-
-    function updateBalanceFeedback() {
-        const fb = document.getElementById('balanceFeedback');
-        if (!fb) return;
-        const amount = parseCurrencyInput(document.getElementById('valor'));
-        const sendBtn = document.getElementById('pixForm')?.querySelector('button[type="submit"]');
-
-        if (!amount || amount <= 0) {
-            fb.classList.add('hidden');
-            return;
-        }
-
-        const balance = PVX._currentBalance;
-        if (balance === null) {
-            // Balance not yet loaded — skip validation
-            fb.classList.add('hidden');
-            return;
-        }
-
-        const isInternal = !!(_recipientData && _recipientData.internal);
-        const fee = computePixFeeNumeric(amount, isInternal);
-        const total = amount + fee;
-        const fmtBRL = (n) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-        if (total > balance) {
-            fb.className = 'mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium border border-red-200 bg-red-50 text-red-700';
-            const feeText = fee > 0 ? ' (inclui taxa R$ ' + fmtBRL(fee) + ')' : '';
-            fb.innerHTML = '<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>'
-                + '<span>Saldo insuficiente. Disponivel: R$ ' + fmtBRL(balance) + feeText + '</span>';
-            fb.classList.remove('hidden');
-            if (sendBtn) sendBtn.disabled = true;
-            lucide.createIcons();
-        } else {
-            fb.className = 'mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium border border-green-200 bg-green-50 text-green-700';
-            const remaining = balance - total;
-            fb.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i>'
-                + '<span>Saldo OK. Restara: R$ ' + fmtBRL(remaining) + '</span>';
-            fb.classList.remove('hidden');
-            // Re-enable only if no lookup error is blocking
-            const keyBadge = document.getElementById('keyDetectedBadge');
-            const hasLookupError = keyBadge && !keyBadge.classList.contains('hidden')
-                && keyBadge.classList.contains('bg-red-50');
-            if (sendBtn && !hasLookupError) sendBtn.disabled = false;
-            lucide.createIcons();
-        }
-    }
-
-    function computePixFeeDisplay(valueFloat, isInternal) {
-        if (isInternal) return 'Gratuito';
-        if (!USER_IS_PJ) return 'R$ 0,25';
-        const rate = valueFloat * 0.005;
-        const fee = Math.max(rate, 0.50);
-        return 'R$ ' + fee.toFixed(2).replace('.', ',');
-    }
-
-    function showFeePreview(isInternal, valueFloat) {
-        const badge = document.getElementById('feePreviewBadge');
-        const label = document.getElementById('feePreviewLabel');
-        const valueEl = document.getElementById('feePreviewValue');
-        if (!badge) return;
-        if (isInternal) {
-            badge.classList.add('hidden');
-            return;
-        }
-        const feeStr = computePixFeeDisplay(valueFloat || 0, false);
-        label.textContent = USER_IS_PJ ? 'Taxa PJ (0,5% do valor, min R$ 0,50)' : 'Taxa de servico (Pix externo)';
-        valueEl.textContent = feeStr;
-        badge.classList.remove('hidden');
-        lucide.createIcons();
-    }
-
-    function hideFeePreview() {
-        const badge = document.getElementById('feePreviewBadge');
-        if (badge) badge.classList.add('hidden');
-    }
-
-    // -------------------------------------------------------------------------
-    // PIX key: free input, auto-detect type, lookup delegated to Asaas
-    // No masking — the backend normalizes before sending to Asaas.
-    // Asaas is the sole authority on whether a key exists.
-    // -------------------------------------------------------------------------
-    let _lookupTimer = null;
-    let _recipientData = null;
-
-    // Labels for each recognised key type
-    const KEY_TYPE_META = {
-        EMAIL: 'E-mail reconhecido',
-        CPF: 'CPF reconhecido',
-        CNPJ: 'CNPJ reconhecido',
-        TELEFONE: 'Telefone reconhecido',
-        ALEATORIA: 'Chave aleatoria reconhecida',
-    };
-
-    // Detect key type from raw value.
-    // hintType: current SELECT value — used to resolve 11-digit CPF vs Telefone ambiguity.
-    // If user manually selected TELEFONE and typed 11 digits, honour that selection.
-    function detectPixKeyType(raw, hintType) {
-        const v = raw.trim();
-        const digits = v.replace(/\D/g, '');
-        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'EMAIL';
-        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return 'ALEATORIA';
-        if (digits.length === 14) return 'CNPJ';
-        if (v.startsWith('+') || digits.length === 10) return 'TELEFONE';
-        if (digits.length === 11) return (hintType === 'TELEFONE') ? 'TELEFONE' : 'CPF';
-        return null;
-    }
-
-    // Show/hide the keyDetectedBadge based on what is typed.
-    // Returns the detected type string or null.
-    function updateKeyDetectionBadge(raw, currentType) {
-        const detected = detectPixKeyType(raw, currentType);
-        const badge = document.getElementById('keyDetectedBadge');
-        if (detected && raw.trim().length >= 5) {
-            // Reset to green style (may have been red from a failed lookup)
-            badge.className = 'rounded-xl border border-green-200 bg-green-50 p-3 flex items-center gap-2 text-sm text-green-700';
-            badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i><span id="keyDetectedLabel">${KEY_TYPE_META[detected] || 'Formato reconhecido'}</span>`;
-            badge.classList.remove('hidden');
-            lucide.createIcons();
-        } else {
-            badge.classList.add('hidden');
-        }
-        return detected;
-    }
-
-    function resetRecipientCard() {
-        _recipientData = null;
-        document.getElementById('recipientCard').classList.add('hidden');
-        // Reabilitar botao de envio ao resetar (usuario pode estar corrigindo a chave)
-        const sendBtn = document.querySelector('button[type="submit"]');
-        if (sendBtn) sendBtn.disabled = false;
-        // keyDetectedBadge is managed by detection logic, not here
-    }
-
-    async function lookupRecipient() {
-        const chave = document.getElementById('chave').value.trim();
-        const tipo = document.getElementById('tipo').value;
-
-        if (!chave || chave.length < 5) { resetRecipientCard(); return; }
-
-        const spinner = document.getElementById('chaveSpinner');
-        spinner.classList.remove('hidden');
-        resetRecipientCard();
-
-        try {
-            const params = new URLSearchParams({ chave, tipo });
-            const res = await fetch(`/pix/consultar-chave?${params}`, { credentials: 'same-origin' });
-
-            if (res.ok) {
-                const data = await res.json();
-
-                if (data.found === false) {
-                    // Unico caso bloqueante real: formato invalido da chave
-                    const msg = data.error || 'Formato de chave invalido para o tipo selecionado.';
-                    _showLookupError(msg);
-                    return;
-                }
-
-                _recipientData = data;
-                document.getElementById('recipientName').textContent = data.name || 'Destinatario';
-                document.getElementById('recipientDoc').textContent = data.document || '';
-                document.getElementById('recipientBank').textContent = data.bank || '';
-                const badge = document.getElementById('recipientBadge');
-                if (data.internal) { badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
-
-                if (data.unverified) {
-                    // Gateway indisponivel — permitir envio silenciosamente; badge de tipo ja aparece
-                } else {
-                    // Destinatario confirmado pelo Asaas — ocultar badges de status
-                    document.getElementById('keyDetectedBadge').classList.add('hidden');
-                    document.getElementById('recipientCard').classList.remove('hidden');
-                }
-
-                // Show fee preview and update balance feedback with correct fee (internal vs external)
-                const currentValue = parseCurrencyInput(document.getElementById('valor'));
-                showFeePreview(!!data.internal, currentValue || 0);
-                updateBalanceFeedback();
-                lucide.createIcons();
-
-            } else if (res.status === 401 || res.status === 403) {
-                _showLookupError('Sessao expirada. Recarregue a pagina.');
-            } else {
-                // Erro HTTP do servidor — permitir envio sem bloquear
-            }
-        } catch (_) {
-            // Falha de rede — nao bloquear, deixar usuario prosseguir
-        } finally {
-            spinner.classList.add('hidden');
-        }
-    }
-
-    function _showLookupError(msg) {
-        // Erro real: Asaas confirmou que a chave nao existe no DICT ou formato invalido
-        // Bloqueia o envio pois a chave e definitivamente invalida
-        const badge = document.getElementById('keyDetectedBadge');
-        badge.className = 'rounded-xl border border-red-200 bg-red-50 p-3 flex items-center gap-2 text-sm text-red-600';
-        badge.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i><span>${msg}</span>`;
-        badge.classList.remove('hidden');
-        const sendBtn = document.querySelector('button[type="submit"]');
-        if (sendBtn) sendBtn.disabled = true;
-        lucide.createIcons();
-    }
-
-    function _showLookupWarning(msg) {
-        // Aviso amarelo: gateway indisponivel, mas envio permitido
-        const badge = document.getElementById('keyDetectedBadge');
-        badge.className = 'rounded-xl border border-yellow-200 bg-yellow-50 p-3 flex items-center gap-2 text-sm text-yellow-700';
-        badge.innerHTML = `<i data-lucide="triangle-alert" class="w-4 h-4 flex-shrink-0"></i><span>${msg}</span>`;
-        badge.classList.remove('hidden');
-        const sendBtn = document.querySelector('button[type="submit"]');
-        if (sendBtn) sendBtn.disabled = false;
-        lucide.createIcons();
-    }
-
-    function _showLookupNotFound(msg) {
-        // Alias para retro-compatibilidade — chama o erro bloqueante
-        _showLookupError(msg);
-    }
-
-    document.getElementById('chave').addEventListener('input', () => {
-        clearTimeout(_lookupTimer);
-        resetRecipientCard();
-
-        const raw = document.getElementById('chave').value;
-
-        const tipoSelect = document.getElementById('tipo');
-        const detected = updateKeyDetectionBadge(raw, tipoSelect.value);
-        // Auto-update SELECT only when detection is unambiguous.
-        // detectPixKeyType already uses the current SELECT as hint, so detected
-        // already honours the user's manual selection — safe to apply directly.
-        if (detected && tipoSelect.value !== detected) {
-            tipoSelect.value = detected;
-        }
-
-        _lookupTimer = setTimeout(lookupRecipient, 900);
-    });
-
-    document.getElementById('tipo').addEventListener('change', () => {
-        clearTimeout(_lookupTimer);
-        resetRecipientCard();
-        // Re-evaluate badge using the newly selected type as hint
-        const raw = document.getElementById('chave').value;
-        updateKeyDetectionBadge(raw, document.getElementById('tipo').value);
-        _lookupTimer = setTimeout(lookupRecipient, 400);
-    });
-
-    // -------------------------------------------------------------------------
-    // Comprovante shown after successful PIX transfer
-    // -------------------------------------------------------------------------
-    function showComprovante(result, chave, recipientData, dataAgendamento) {
-        document.getElementById('pixInputStep').classList.add('hidden');
-        document.getElementById('comprovanteCard').classList.remove('hidden');
-
-        // Refresh balance immediately after transfer is registered
-        PVX.refreshBalance();
-        // Refresh again after 4s to catch webhook TRANSFER_DONE confirmation
-        setTimeout(() => PVX.refreshBalance(), 4000);
-        setTimeout(() => PVX.refreshBalance(), 10000);
-
-        // Header date — bank format: "10 MAR 2026 - 05:58:48"
-        const now = new Date();
-        const months = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-        const dd = String(now.getDate()).padStart(2, '0');
-        const mmm = months[now.getMonth()];
-        const yyyy = now.getFullYear();
-        const hh = String(now.getHours()).padStart(2, '0');
-        const mi = String(now.getMinutes()).padStart(2, '0');
-        const ss = String(now.getSeconds()).padStart(2, '0');
-        document.getElementById('comprovante_gerado_em').textContent =
-            dd + ' ' + mmm + ' ' + yyyy + ' - ' + hh + ':' + mi + ':' + ss;
-
-        // Value
-        const valor = result.value
-            ? 'R$ ' + Number(result.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-            : '';
-        document.getElementById('comprovante_valor').textContent = valor;
-
-        // Date/time from API response (backend-formatted pt-BR)
-        const apiTime = result.formatted_time
-            || now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-        document.getElementById('comprovante_data').textContent = dataAgendamento
-            ? 'Agendado para ' + dataAgendamento
-            : apiTime;
-
-        // Status
-        const statusMap = {
-            'CONFIRMADO': 'Confirmado',
-            'AGENDADO': 'Agendado',
-            'CRIADO': 'Processando',
-            'PROCESSANDO': 'Em processamento',
-            'FALHOU': 'Falhou',
-            'CANCELADO': 'Cancelado'
-        };
-        document.getElementById('comprovante_status').textContent =
-            statusMap[result.status] || result.status;
-
-        // Recipient (Destino)
-        const destName = recipientData?.name || result.receiver_name || 'Destinatario';
-        const destDoc = recipientData?.document || result.receiver_doc || '';
-        const destBank = recipientData?.bank
-            || (recipientData?.internal ? 'Bio Code Tech Pay' : 'Rede Bancaria');
-
-        document.getElementById('comprovante_destinatario').textContent = destName;
-        document.getElementById('comprovante_banco').textContent = destBank;
-        document.getElementById('comprovante_chave').textContent = chave;
-
-        const destDocRow = document.getElementById('comprovante_dest_doc_row');
-        if (destDoc) {
-            document.getElementById('comprovante_dest_doc').textContent = destDoc;
-            destDocRow.classList.remove('hidden');
-        } else {
-            destDocRow.classList.add('hidden');
-        }
-
-        // Sender (Origem)
-        document.getElementById('comprovante_pagador_nome').textContent = result.sender_name || '';
-        document.getElementById('comprovante_pagador_doc').textContent = result.sender_doc || '';
-
-        // Transaction ID (E2E)
-        document.getElementById('comprovante_e2e').textContent = result.correlation_id || result.id || '';
-
-        // Fee row
-        const taxaRow = document.getElementById('comprovante_taxa_row');
-        const taxaEl = document.getElementById('comprovante_taxa');
-        if (result.fee_amount && result.fee_amount > 0) {
-            taxaEl.textContent = result.fee_description || ('R$ ' + Number(result.fee_amount).toFixed(2).replace('.', ','));
-            taxaRow.classList.remove('hidden');
-        } else {
-            taxaRow.classList.add('hidden');
-        }
-
-        lucide.createIcons();
-    }
-
-    function novaTransferencia() {
-        document.getElementById('comprovanteCard').classList.add('hidden');
-        document.getElementById('pixInputStep').classList.remove('hidden');
-        document.getElementById('pixForm').reset();
-        document.getElementById('valor').value = '';
-        const fb = document.getElementById('balanceFeedback');
-        if (fb) fb.classList.add('hidden');
-        resetRecipientCard();
-        hideFeePreview();
-        document.getElementById('keyDetectedBadge').classList.add('hidden');
-        lucide.createIcons();
-    }
-
-    // -------------------------------------------------------------------------
-    // Handle Send Pix — recipient validation + comprovante
-    // -------------------------------------------------------------------------
-    document.getElementById('pixForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const btn = e.target.querySelector('button');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div><span>Enviando...</span></div>';
-        btn.disabled = true;
-
-        PVX.showToast('Processando seu Pix...', 'info', 10000);
-
-        const dataAgendamento = document.getElementById('data_agendamento').value;
-        const chave = document.getElementById('chave').value.trim();
-        const tipoEl = document.getElementById('tipo');
-        // Ensure key-type is always consistent with what is typed — prevents stale selection
-        const detectedOnSubmit = detectPixKeyType(chave, tipoEl.value);
-        if (detectedOnSubmit && tipoEl.value !== detectedOnSubmit) {
-            tipoEl.value = detectedOnSubmit;
-        }
-        const tipo = tipoEl.value;
-        const parsedValor = parseCurrencyInput(document.getElementById('valor'));
-
-        if (!parsedValor || parsedValor <= 0) {
-            PVX.showToast('Informe um valor valido para transferencia.', 'error');
-            btn.innerHTML = originalText; btn.disabled = false; return;
-        }
-        // Early balance guard — prevents unnecessary server round-trip
-        if (PVX._currentBalance !== null) {
-            const _fee = computePixFeeNumeric(parsedValor, !!(_recipientData && _recipientData.internal));
-            if (parsedValor + _fee > PVX._currentBalance) {
-                PVX.showToast('Saldo insuficiente para esta transferencia.', 'error', 4000);
-                btn.innerHTML = originalText; btn.disabled = false; return;
-            }
-        }
-        if (!chave) {
-            PVX.showToast('Informe a Chave Pix do destinatario.', 'error');
-            btn.innerHTML = originalText; btn.disabled = false; return;
-        }
-        // Key lookup is informational only — Asaas is the sole validation authority.
-        // Do NOT block the transfer here; if the key is invalid, Asaas will reject
-        // the transfer and the user will receive a clear error from the backend.
-
-        const payload = {
-            value: parsedValor,
-            pix_key: chave,
-            key_type: tipo,
-            description: "Transfer via Bio Code Tech Pay",
-            scheduled_date: dataAgendamento || null,
-            recipient_name: _recipientData?.name || null
-        };
-
-        try {
-            const response = await fetch('/pix/transacoes', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Idempotency-Key': 'web-' + Date.now()
-                },
-                body: JSON.stringify(payload)
-            });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                PVX.showToast(result.status === 'AGENDADO' ? 'Pix agendado!' : 'Pix enviado!', 'success');
-                showComprovante(result, chave, _recipientData, dataAgendamento);
-                if (result.id && !['CONFIRMADO', 'AGENDADO', 'FALHOU', 'CANCELADO'].includes(result.status)) {
-                    startSentTransactionPoller(result.id);
-                }
-            } else {
-                // result.detail can be a string (app errors) or an array (Pydantic 422 validation errors)
-                const rawDetail = result.detail;
-                const detail = Array.isArray(rawDetail)
-                    ? rawDetail.map(e => e.msg || e.message || String(e)).join(' | ')
-                    : (rawDetail || '');
-                if (detail.toLowerCase().includes('insufficient') || detail.toLowerCase().includes('saldo')) {
-                    PVX.showToast('Saldo insuficiente. Considere agendar para outra data.', 'error', 5000);
-                    const toggle = document.getElementById('toggleAgendamento');
-                    if (!toggle.checked) {
-                        toggle.checked = true;
-                        document.getElementById('agendamentoContainer').classList.remove('hidden');
-                        document.getElementById('data_agendamento').focus();
-                    }
-                } else {
-                    PVX.showToast('Erro: ' + (detail || 'Falha ao enviar'), 'error', 5000);
-                }
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            }
-        } catch (error) {
-            console.error('Erro:', error);
-            PVX.showToast('Erro de conexao com o servidor. Tente novamente.', 'error');
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-        }
-    });
-
-    // Handle Receive Pix (Cobrar) — Instant feedback
-    document.getElementById('cobrarForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const btn = e.target.querySelector('button');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div><span>Gerando...</span></div>';
-        btn.disabled = true;
-        PVX.showToast('Gerando QR Code...', 'info', 10000);
-
-        const parsedReceber = parseCurrencyInput(document.getElementById('valorReceber'));
-        if (!parsedReceber || parsedReceber < 5.00) {
-            PVX.showToast('O valor mínimo para gerar cobrança é R$ 5,00.', 'error');
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-            return;
-        }
-
-        const data = {
-            value: parsedReceber,
-            description: document.getElementById('descricaoReceber').value
-        };
-
-        try {
-            const response = await fetch('/pix/cobrar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                PVX.showToast('QR Code gerado!', 'success');
-                document.getElementById('qrResult').classList.remove('hidden');
-                document.getElementById('qrImage').src = result.qr_code_url;
-                document.getElementById('copyPasteCode').value = result.copy_and_paste;
-                document.getElementById('currentChargeId').value = result.charge_id;
-
-                const isReal = result.is_real_charge === true;
-                document.getElementById('isRealCharge').value = isReal ? '1' : '0';
-
-                const badge = document.getElementById('chargeBadge');
-                badge.classList.add('hidden');
-
-                const btnText = document.getElementById('btnConfirmarText');
-                if (isReal) {
-                    btnText.textContent = 'Confirmar Recebimento Bio Code Tech Pay';
-                    document.getElementById('btnConfirmarRecebimento').classList.add('hidden');
-                    startPaymentPolling(result.charge_id);
-                } else {
-                    btnText.textContent = 'Confirmar Recebimento';
-                }
-                lucide.createIcons();
-            }
-
-        } catch (error) {
-            alert('Erro ao gerar cobrança');
-        } finally {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-        }
-    });
-</script>
-{% endblock %}
+﻿{% extends "base.html" %}
+
+{% block content %}
+<style>
+    @keyframes qr-scan-line {
+
+        0%,
+        100% {
+            top: 8%;
+        }
+
+        50% {
+            top: 86%;
+        }
+    }
+
+    /* Force the lib-injected direct-child container to fill #reader.
+       Only the first-level div is overridden — #reader__scan_region is intentionally
+       left at its default position so it does NOT become a new containing block
+       for the video. The video's position:absolute then anchors to this container,
+       which fills #reader, giving a full-screen camera feed. */
+    #reader>div {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+        background: transparent !important;
+    }
+
+    #reader video {
+        display: block !important;
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+    }
+
+    /* Hide lib UI chrome only — scan_region and its canvases must remain visible
+       so the library can render frames and the JS decoder can read pixel data. */
+    #reader__header_message,
+    #reader__dashboard {
+        display: none !important;
+    }
+</style>
+<div class="max-w-2xl mx-auto">
+    <div class="mb-4">
+        <h1 class="text-2xl font-bold text-gray-900">Área Pix</h1>
+        <p class="text-gray-500">Envie e receba pagamentos a qualquer hora.</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex p-1 bg-gray-100 rounded-xl mb-6">
+        <button onclick="switchTab('pagar')" id="tab-pagar"
+            class="flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium transition-all bg-white text-blue-700 shadow-sm">
+            Transferir
+        </button>
+        <button onclick="switchTab('ler-qr')" id="tab-ler-qr"
+            class="flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all">
+            <span class="hidden sm:inline">Ler </span>QR Code
+        </button>
+        <button onclick="switchTab('cobrar')" id="tab-cobrar"
+            class="flex-1 py-2 px-2 sm:px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all">
+            Receber<span class="hidden sm:inline"> (Depositar)</span>
+        </button>
+    </div>
+
+    <!-- Scan QR Code (Ler QR) -->
+    <div id="view-ler-qr" class="hidden bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Pagar com QR Code</h2>
+
+        <!-- State: idle -->
+        <div id="qr-state-idle" class="space-y-3">
+            <button onclick="startScanner()"
+                class="w-full flex items-center justify-center gap-3 py-4 bg-blue-50 border-2 border-blue-200 rounded-xl hover:bg-blue-100 transition-colors">
+                <i data-lucide="camera" class="w-6 h-6 text-blue-600"></i>
+                <span class="font-medium text-blue-700">Ler QRcode</span>
+            </button>
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-gray-200"></div>
+                <span class="flex-shrink-0 mx-4 text-gray-400 text-xs">OU</span>
+                <div class="flex-grow border-t border-gray-200"></div>
+            </div>
+            <button onclick="showCopiaColaInput()"
+                class="w-full flex items-center justify-center gap-3 py-4 bg-gray-50 border-2 border-gray-200 rounded-xl hover:bg-gray-100 transition-colors">
+                <i data-lucide="clipboard-paste" class="w-6 h-6 text-gray-600"></i>
+                <span class="font-medium text-gray-700">Pix Copia e Cola</span>
+            </button>
+        </div>
+
+        <!-- State: scanning — camera opens in fullscreen overlay (#qr-fullscreen-overlay) -->
+        <div id="qr-state-scanning" class="hidden py-10 text-center">
+            <div class="w-10 h-10 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3">
+            </div>
+            <p class="text-sm text-gray-500">Abrindo camera...</p>
+        </div>
+
+        <!-- State: timeout -->
+        <div id="qr-state-timeout" class="hidden text-center space-y-4 py-4">
+            <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
+                <i data-lucide="scan-line" class="w-8 h-8 text-orange-500"></i>
+            </div>
+            <div>
+                <p class="font-semibold text-gray-800">QR code nao encontrado</p>
+                <p class="text-xs text-gray-500 mt-1">Tempo esgotado apos 60 segundos</p>
+            </div>
+            <div class="flex flex-col gap-2 pt-2">
+                <button onclick="startScanner()"
+                    class="w-full py-3 bg-blue-700 text-white rounded-full font-medium text-sm hover:bg-blue-800 transition-colors">
+                    Tentar de novo
+                </button>
+                <button onclick="showCopiaColaInput()"
+                    class="w-full py-3 border border-gray-300 text-gray-700 rounded-full font-medium text-sm hover:bg-gray-50 transition-colors">
+                    Usar Pix Copia e Cola
+                </button>
+            </div>
+        </div>
+
+        <!-- State: copia-cola -->
+        <div id="qr-state-copiacola" class="hidden space-y-4">
+            <div class="text-center mb-1">
+                <p class="font-semibold text-gray-800">Pix Copia e Cola</p>
+                <p class="text-sm text-gray-500">Insira o codigo do Pix Copia e Cola</p>
+            </div>
+            <textarea id="copiaColaInput"
+                class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none text-xs font-mono resize-none h-28"
+                placeholder="Cole o codigo aqui" oninput="onCopiaColaInput()"></textarea>
+
+            <!-- Valor confirmado pelo servidor -->
+            <div id="copiaColaValueBox" class="hidden bg-blue-50 border border-blue-200 rounded-xl p-3">
+                <p class="text-xs text-blue-600 font-medium mb-0.5">Valor confirmado</p>
+                <p id="copiaColaValueDisplay" class="text-xl font-bold text-blue-800"></p>
+                <p id="copiaColaBenefDisplay" class="text-xs text-blue-600 mt-0.5 truncate"></p>
+            </div>
+
+            <!-- Carregando verificacao do servidor -->
+            <div id="copiaColaLoading" class="hidden flex items-center justify-center gap-3 text-sm text-blue-600 py-2">
+                <div
+                    class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0">
+                </div>
+                <span>Verificando valor...</span>
+            </div>
+
+            <!-- Erro na verificacao -->
+            <div id="copiaColaError" class="hidden bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+                <span id="copiaColaErrorMsg"></span>
+            </div>
+
+            <button id="btnCopiaColaContinuar" onclick="submitCopiaColaPayment()" disabled
+                class="w-full py-3 bg-blue-700 text-white rounded-full font-semibold text-sm opacity-40 cursor-not-allowed transition-all">
+                Confirmar Pagamento
+            </button>
+            <button onclick="showQrState('idle')" class="w-full text-sm text-gray-500 hover:text-gray-700 underline">
+                Voltar
+            </button>
+        </div>
+
+        <!-- State: confirming -->
+        <div id="qr-state-confirming" class="hidden text-center py-10">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p class="text-gray-500 text-sm">Processando pagamento...</p>
+        </div>
+    </div>
+
+    <!-- Send Pix Form (Pagar) -->
+    <div id="view-pagar" class="bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Transferir</h2>
+
+        <!-- Step 1: Input Form -->
+        <div id="pixInputStep">
+            <form id="pixForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Valor a transferir</label>
+                    <div class="relative">
+                        <span
+                            class="absolute left-3 top-3.5 text-gray-500 text-sm font-medium pointer-events-none">R$</span>
+                        <input type="text" id="valor" inputmode="numeric" autocomplete="off"
+                            class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none text-lg font-semibold"
+                            placeholder="0,00">
+                    </div>
+                    <div id="balanceFeedback"
+                        class="hidden mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium"></div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Chave</label>
+                    <select id="tipo"
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none bg-white">
+                        <option value="EMAIL">E-mail</option>
+                        <option value="CPF">CPF</option>
+                        <option value="CNPJ">CNPJ</option>
+                        <option value="TELEFONE">Telefone</option>
+                        <option value="ALEATORIA">Chave Aleatoria</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Chave Pix</label>
+                    <div class="relative">
+                        <input type="text" id="chave"
+                            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none pr-10"
+                            placeholder="CPF, Email ou Telefone">
+                        <div id="chaveSpinner"
+                            class="hidden absolute right-3 top-3.5 w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recipient validation card -->
+                <div id="recipientCard" class="hidden rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">Transferir para</p>
+                    <div class="flex items-center gap-3">
+                        <div id="recipientAvatar"
+                            class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="user" class="w-5 h-5 text-blue-700"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p id="recipientName" class="font-semibold text-gray-900 truncate"></p>
+                            <p id="recipientDoc" class="text-xs text-gray-500"></p>
+                            <p id="recipientBank" class="text-xs text-blue-700 font-medium mt-0.5"></p>
+                        </div>
+                        <span id="recipientBadge"
+                            class="hidden text-xs bg-blue-100 text-blue-800 font-semibold px-2 py-1 rounded-full flex-shrink-0">correntista
+                            Bio Code</span>
+                    </div>
+                </div>
+
+                <!-- Key format detected indicator -->
+                <div id="keyDetectedBadge"
+                    class="hidden rounded-xl border border-green-200 bg-green-50 p-3 flex items-center gap-2 text-sm text-green-700">
+                    <i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i>
+                    <span id="keyDetectedLabel">Formato reconhecido</span>
+                </div>
+
+                <!-- Fee preview badge (shown after key resolution) -->
+                <div id="feePreviewBadge"
+                    class="hidden rounded-xl border border-blue-100 bg-blue-50 p-3 flex items-center justify-between gap-2 text-sm">
+                    <div class="flex items-center gap-2 text-blue-700">
+                        <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
+                        <span id="feePreviewLabel">Taxa de servico Bio Code Tech Pay</span>
+                    </div>
+                    <span id="feePreviewValue" class="font-semibold text-blue-800 whitespace-nowrap"></span>
+                </div>
+
+                <!-- Agendamento Toggle -->
+                <div class="flex items-center gap-2 pt-2">
+                    <input type="checkbox" id="toggleAgendamento"
+                        class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-600 cursor-pointer">
+                    <label for="toggleAgendamento"
+                        class="text-sm font-medium text-gray-700 cursor-pointer select-none">Agendar
+                        transferencia</label>
+                </div>
+
+                <!-- Agendamento Input (Hidden by default) -->
+                <div id="agendamentoContainer" class="hidden transition-all duration-300 ease-in-out">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Data do Agendamento</label>
+                    <input type="date" id="data_agendamento"
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none text-gray-600">
+                </div>
+
+                <button type="submit"
+                    class="w-full nu-purple text-white font-bold py-4 rounded-full hover:bg-blue-900 transition-colors shadow-md flex justify-center items-center gap-2">
+                    <span>Enviar Pix</span>
+                    <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                </button>
+            </form>
+        </div>
+
+        <!-- Step 2: Comprovante (shown after successful transfer) -->
+        <div id="comprovanteCard" class="hidden">
+
+            <!-- Unified bank-style receipt -->
+            <div class="rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden mb-5">
+
+                <!-- Header: icon + brand + title + date -->
+                <div class="px-6 pt-6 pb-5 border-b border-gray-100">
+                    <div class="flex items-center gap-2.5 mb-3">
+                        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+                        </div>
+                        <p class="text-xs font-bold text-blue-700 uppercase tracking-widest">Bio Code Tech Pay</p>
+                    </div>
+                    <h2 class="text-xl font-bold text-gray-900 leading-tight">Comprovante de transferencia</h2>
+                    <p id="comprovante_gerado_em" class="text-sm text-gray-400 mt-1"></p>
+                </div>
+
+                <!-- Transaction summary -->
+                <div class="px-6 py-4 space-y-3.5 border-b border-gray-100">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-500">Valor</span>
+                        <span id="comprovante_valor" class="text-lg font-bold text-gray-900"></span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-500">Tipo de transferencia</span>
+                        <span class="text-sm font-medium text-gray-800">Pix</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-500">Data / Hora</span>
+                        <span id="comprovante_data" class="text-sm text-gray-800 text-right"></span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-500">Status</span>
+                        <span id="comprovante_status" class="text-sm font-semibold text-green-700"></span>
+                    </div>
+                    <div id="comprovante_taxa_row" class="hidden flex justify-between items-center">
+                        <span class="text-sm text-gray-500">Taxa Bio Code Tech Pay</span>
+                        <span id="comprovante_taxa" class="text-sm font-medium text-orange-700"></span>
+                    </div>
+                </div>
+
+                <!-- Destino section -->
+                <div class="px-6 pt-5 pb-2">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Destino</p>
+                </div>
+                <div class="px-6 pb-5 space-y-3.5 border-b border-gray-100">
+                    <div class="flex justify-between items-start gap-4">
+                        <span class="text-sm text-gray-500 flex-shrink-0">Nome</span>
+                        <span id="comprovante_destinatario"
+                            class="text-sm font-semibold text-gray-900 text-right break-words"></span>
+                    </div>
+                    <div id="comprovante_dest_doc_row" class="flex justify-between items-center">
+                        <span class="text-sm text-gray-500 flex-shrink-0">CPF/CNPJ</span>
+                        <span id="comprovante_dest_doc" class="text-sm text-gray-800 font-mono"></span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-500 flex-shrink-0">Instituicao</span>
+                        <span id="comprovante_banco" class="text-sm text-gray-800 text-right"></span>
+                    </div>
+                    <div class="flex justify-between items-start gap-4">
+                        <span class="text-sm text-gray-500 flex-shrink-0">Chave Pix</span>
+                        <span id="comprovante_chave"
+                            class="text-sm text-gray-800 font-mono text-right break-all"></span>
+                    </div>
+                </div>
+
+                <!-- Origem section -->
+                <div class="px-6 pt-5 pb-2">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Origem</p>
+                </div>
+                <div class="px-6 pb-5 space-y-3.5 border-b border-gray-100">
+                    <div class="flex justify-between items-start gap-4">
+                        <span class="text-sm text-gray-500 flex-shrink-0">Nome</span>
+                        <span id="comprovante_pagador_nome"
+                            class="text-sm font-semibold text-gray-900 text-right break-words"></span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-500 flex-shrink-0">CPF/CNPJ</span>
+                        <span id="comprovante_pagador_doc" class="text-sm text-gray-800 font-mono"></span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-500 flex-shrink-0">Instituicao</span>
+                        <span class="text-sm text-gray-800">Bio Code Tech Pay</span>
+                    </div>
+                </div>
+
+                <!-- Footer: institution + transaction ID -->
+                <div class="px-6 py-4 bg-gray-50">
+                    <p class="text-xs text-gray-400 font-medium">Bio Code Tech Pay — Instituicao de Pagamento</p>
+                    <p class="text-xs text-gray-400 mb-4">CNPJ 61.425.124/0001-03</p>
+                    <p class="text-xs text-gray-400 mb-0.5">ID da transacao</p>
+                    <p id="comprovante_e2e" class="text-xs font-mono text-gray-600 break-all"></p>
+                </div>
+
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="novaTransferencia()"
+                    class="flex-1 border border-blue-700 text-blue-700 font-semibold py-3 rounded-full hover:bg-blue-50 transition-colors text-sm">
+                    Nova Transferencia
+                </button>
+                <a href="/"
+                    class="flex-1 nu-purple text-white font-semibold py-3 rounded-full hover:bg-blue-900 transition-colors text-sm text-center flex items-center justify-center">
+                    Ver Saldo
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receive Pix Form (Cobrar) -->
+    <div id="view-cobrar" class="hidden bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Receber Pix</h2>
+        <p class="text-sm text-gray-500 mb-4">Gere um QR Code para receber transferências na sua conta.</p>
+
+        <form id="cobrarForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Valor a receber</label>
+                <div class="relative">
+                    <span
+                        class="absolute left-3 top-3.5 text-gray-500 text-sm font-medium pointer-events-none">R$</span>
+                    <input type="text" id="valorReceber" inputmode="numeric" autocomplete="off"
+                        class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none text-lg font-semibold"
+                        placeholder="0,00">
+                    <p class="text-xs text-gray-400 mt-1">
+                        Valor mínimo R$ 5,00. Valores a partir de R$ 5,00 geram QR Code integrado com a rede bancária
+                        externa.
+                    </p>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Descrição (Opcional)</label>
+                <input type="text" id="descricaoReceber"
+                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                    placeholder="Ex: Rachar pizza">
+            </div>
+
+            <button type="submit"
+                class="w-full bg-gray-900 text-white font-bold py-4 rounded-full hover:bg-gray-800 transition-colors shadow-md flex justify-center items-center gap-2">
+                <span>Gerar QR Code</span>
+                <i data-lucide="qr-code" class="w-5 h-5"></i>
+            </button>
+        </form>
+
+        <!-- QR Code Result -->
+        <div id="qrResult" class="hidden mt-6 text-center border-t border-gray-100 pt-6">
+            <input type="hidden" id="currentChargeId">
+            <input type="hidden" id="isRealCharge" value="0">
+            <div id="chargeBadge" class="hidden mb-3 text-xs font-semibold px-3 py-1 rounded-full inline-block"></div>
+            <div class="bg-white p-4 rounded-xl border-2 border-blue-100 inline-block mb-4">
+                <img id="qrImage" src="" alt="QR Code Pix" class="w-48 h-48">
+            </div>
+            <p class="text-sm text-gray-500 mb-2">Pix Copia e Cola</p>
+            <div class="flex gap-2">
+                <input type="text" id="copyPasteCode" readonly
+                    class="w-full p-2 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600 font-mono">
+                <button onclick="copyCode()" class="p-2 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                    <i data-lucide="copy" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Simulation: direct confirm -->
+            <button id="btnConfirmarRecebimento" onclick="confirmarRecebimento()"
+                class="mt-4 w-full bg-green-600 text-white font-bold py-3 rounded-full hover:bg-green-700 transition-colors shadow-sm flex justify-center items-center gap-2">
+                <span id="btnConfirmarText">Feito (Simular Pagamento)</span>
+                <i data-lucide="check-circle" class="w-5 h-5"></i>
+            </button>
+
+            <!-- Auto-polling indicator (shown only for real charges) -->
+            <div id="pollingIndicator" class="hidden mt-4 flex items-center justify-center gap-3 text-sm text-gray-500">
+                <div
+                    class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0">
+                </div>
+                <span>Aguardando confirmação do pagamento...</span>
+            </div>
+
+            <!-- Payment confirmed state (hidden until polling detects it) -->
+            <div id="paymentConfirmedState"
+                class="hidden mt-4 bg-green-50 border border-green-200 rounded-xl p-5 text-center">
+                <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i>
+                </div>
+                <h3 class="font-bold text-green-800 text-lg mb-1">Pagamento Recebido!</h3>
+                <p class="text-sm text-green-600 mb-3">O saldo foi creditado na sua conta.</p>
+                <a href="/"
+                    class="inline-block bg-green-600 text-white font-bold py-2 px-6 rounded-full hover:bg-green-700 transition-colors text-sm">Ver
+                    saldo</a>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ============================================================
+     QR Scanner fullscreen overlay
+     position:fixed covers the full viewport — no scroll, no card
+     constraints. Camera video fills the background; viewfinder
+     floats centered with corner brackets and scan-line animation.
+============================================================ -->
+<div id="qr-fullscreen-overlay"
+    style="display:none;position:fixed;inset:0;z-index:9998;background:#000;overflow:hidden;">
+
+    <!-- Camera fills the ENTIRE overlay — top/bottom bars float above it via z-index -->
+    <div id="reader"
+        style="position:absolute;inset:0;width:100%;height:100%;z-index:1;background:#000;overflow:hidden;"></div>
+
+    <!-- Top bar: floats above camera with gradient fade -->
+    <div
+        style="position:absolute;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(to bottom,rgba(0,0,0,0.75) 0%,transparent 100%);padding:max(calc(env(safe-area-inset-top,0px) + 12px),22px) 16px 28px;">
+        <div style="width:44px;"></div>
+        <span style="color:#fff;font-weight:600;font-size:16px;letter-spacing:0.01em;">Ler QR Code PIX</span>
+        <button onclick="stopScanner('idle')"
+            style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.15);border:none;border-radius:50%;cursor:pointer;flex-shrink:0;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Viewfinder: always centered by absolute+transform — independent of video dimensions -->
+    <div id="qr-viewfinder"
+        style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;pointer-events:none;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,0.55);">
+
+        <!-- Corner bracket — top-left -->
+        <div
+            style="position:absolute;top:-2px;left:-2px;width:32px;height:32px;border-top:3.5px solid #fff;border-left:3.5px solid #fff;border-radius:8px 0 0 0;">
+        </div>
+        <!-- Corner bracket — top-right -->
+        <div
+            style="position:absolute;top:-2px;right:-2px;width:32px;height:32px;border-top:3.5px solid #fff;border-right:3.5px solid #fff;border-radius:0 8px 0 0;">
+        </div>
+        <!-- Corner bracket — bottom-left -->
+        <div
+            style="position:absolute;bottom:-2px;left:-2px;width:32px;height:32px;border-bottom:3.5px solid #fff;border-left:3.5px solid #fff;border-radius:0 0 0 8px;">
+        </div>
+        <!-- Corner bracket — bottom-right -->
+        <div
+            style="position:absolute;bottom:-2px;right:-2px;width:32px;height:32px;border-bottom:3.5px solid #fff;border-right:3.5px solid #fff;border-radius:0 0 8px 0;">
+        </div>
+
+        <!-- Animated scan line -->
+        <div
+            style="position:absolute;left:6px;right:6px;height:2px;background:linear-gradient(90deg,transparent 0%,#3b82f6 35%,#93c5fd 65%,transparent 100%);border-radius:2px;animation:qr-scan-line 1.8s ease-in-out infinite;">
+        </div>
+    </div>
+
+    <!-- Bottom bar: floats above camera with gradient fade -->
+    <div
+        style="position:absolute;bottom:0;left:0;right:0;z-index:30;text-align:center;background:linear-gradient(to top,rgba(0,0,0,0.75) 0%,transparent 100%);padding:28px 24px max(24px,env(safe-area-inset-bottom,0px));">
+        <p style="color:#fff;font-size:14px;font-weight:500;margin:0 0 4px;">Aponte a camera para o QR Code</p>
+        <p style="color:#9ca3af;font-size:12px;margin:0 0 20px;">Tempo restante: <span id="qr-countdown"
+                style="color:#fff;font-weight:600;">60s</span></p>
+        <button onclick="stopScanner('idle')"
+            style="padding:12px 40px;border:1.5px solid rgba(255,255,255,0.35);border-radius:999px;color:#fff;font-size:14px;font-weight:500;background:transparent;cursor:pointer;min-width:160px;">
+            Cancelar
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<script>
+    // -------------------------------------------------------------------------
+    // Currency input: auto-formats as R$ X.XXX,XX while user types only digits
+    // -------------------------------------------------------------------------
+    function setupCurrencyInput(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+
+        input.addEventListener('input', () => {
+            // Strip everything except digits
+            const digits = input.value.replace(/\D/g, '');
+            if (!digits) { input.value = ''; return; }
+
+            // Work in centavos (integer)
+            const centavos = parseInt(digits, 10);
+            // Cap at R$ 999.999,99
+            const capped = Math.min(centavos, 99999999);
+
+            const reais = Math.floor(capped / 100);
+            const cents = capped % 100;
+
+            // Thousands separator
+            const reaisStr = reais.toLocaleString('pt-BR');
+            input.value = `${reaisStr},${String(cents).padStart(2, '0')}`;
+        });
+
+        // Allow only digit keys, backspace, delete, arrows, tab
+        input.addEventListener('keydown', (e) => {
+            const allowed = [
+                'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight',
+                'ArrowUp', 'ArrowDown', 'Tab', 'Home', 'End'
+            ];
+            if (!allowed.includes(e.key) && (e.key < '0' || e.key > '9')) {
+                e.preventDefault();
+            }
+        });
+
+        // Paste: strip non-digits
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pasted = (e.clipboardData || window.clipboardData).getData('text');
+            const digits = pasted.replace(/\D/g, '');
+            input.value = digits;
+            input.dispatchEvent(new Event('input'));
+        });
+    }
+
+    function parseCurrencyInput(input) {
+        // Converts displayed "1.234,56" -> 1234.56
+        if (!input || !input.value) return 0;
+        const clean = input.value.replace(/\./g, '').replace(',', '.');
+        const val = parseFloat(clean);
+        return isNaN(val) ? 0 : val;
+    }
+
+    // Initialise both fields
+    document.addEventListener('DOMContentLoaded', () => {
+        setupCurrencyInput('valor');
+        setupCurrencyInput('valorReceber');
+        // Seed balance from server-rendered value; PVX.refreshBalance() will keep it updated
+        PVX._currentBalance = {{ user_balance | default(0) }};
+    };
+    // Real-time balance validation as user types the amount
+    document.getElementById('valor').addEventListener('input', updateBalanceFeedback);
+    });
+
+    let html5QrcodeScanner = null;
+    let _qrTimeoutTimer = null;
+    let _qrCountdownTimer = null;
+    let _scannerStarted = false; // true only after Html5Qrcode.start() resolves
+    let _scanAborted = false;   // set by stopScanner to cancel in-flight getCameras
+
+    function switchTab(tab) {
+        const viewPagar = document.getElementById('view-pagar');
+        const viewCobrar = document.getElementById('view-cobrar');
+        const viewLerQr = document.getElementById('view-ler-qr');
+
+        const tabPagar = document.getElementById('tab-pagar');
+        const tabCobrar = document.getElementById('tab-cobrar');
+        const tabLerQr = document.getElementById('tab-ler-qr');
+
+        // Reset classes
+        [tabPagar, tabCobrar, tabLerQr].forEach(t => {
+            t.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 transition-all";
+        });
+
+        // Hide all views
+        [viewPagar, viewCobrar, viewLerQr].forEach(v => v.classList.add('hidden'));
+
+        // Activate selected
+        if (tab === 'pagar') {
+            viewPagar.classList.remove('hidden');
+            tabPagar.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-white text-blue-700 shadow-sm";
+        } else if (tab === 'cobrar') {
+            viewCobrar.classList.remove('hidden');
+            tabCobrar.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-white text-blue-700 shadow-sm";
+        } else if (tab === 'ler-qr') {
+            viewLerQr.classList.remove('hidden');
+            tabLerQr.className = "flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-white text-blue-700 shadow-sm";
+        }
+
+        // Stop scanner if leaving tab
+        if (tab !== 'ler-qr') {
+            stopScanner(null);
+            showQrState('idle');
+        }
+    }
+
+    function startScanner() {
+        // Stop any existing scanner before starting a new one
+        stopScanner(null);
+
+        showQrState('scanning');
+        _scanAborted = false;
+        _scannerStarted = false;
+
+        // Open fullscreen overlay and compute responsive viewfinder size.
+        // The viewfinder is 72% of the shorter screen dimension, capped at 280px —
+        // matching the standard square format used by all PIX apps.
+        const _scanOverlay = document.getElementById('qr-fullscreen-overlay');
+        if (_scanOverlay) _scanOverlay.style.display = 'block';
+        const _shortSide = Math.min(window.innerWidth, window.innerHeight);
+        const _boxSize = Math.min(Math.round(_shortSide * 0.75), 300);
+        const _vf = document.getElementById('qr-viewfinder');
+        if (_vf) { _vf.style.width = _boxSize + 'px'; _vf.style.height = _boxSize + 'px'; }
+
+        let secondsLeft = 60;
+        const countdownEl = document.getElementById('qr-countdown');
+        if (countdownEl) countdownEl.textContent = '60s';
+
+        _qrCountdownTimer = setInterval(() => {
+            secondsLeft = Math.max(0, secondsLeft - 1);
+            if (countdownEl) countdownEl.textContent = `${secondsLeft}s`;
+        }, 1000);
+
+        _qrTimeoutTimer = setTimeout(() => {
+            stopScanner(null);
+            showQrState('timeout');
+        }, 60000);
+
+        // Responsive qrbox matches the viewfinder square — tells the decoder
+        // which region to prioritize, matching what the user sees.
+        const config = { fps: 10, qrbox: { width: _boxSize, height: _boxSize } };
+
+        function tryStart(facingMode, isFallback) {
+            if (_scanAborted) return;
+            // Guard: prevent the success callback from firing more than once per scan session.
+            // Html5Qrcode at fps:10 may decode the same frame multiple times before s.stop() resolves.
+            let _callbackHandled = false;
+            const scanner = new Html5Qrcode("reader");
+            scanner.start(
+                { facingMode },
+                config,
+                (decodedText) => {
+                    if (_callbackHandled) return;
+                    _callbackHandled = true;
+
+                    // Immediately stop MediaStream tracks so the Android camera indicator
+                    // disappears right away, before s.stop() resolves asynchronously.
+                    try {
+                        const _videoEl = document.querySelector('#reader video');
+                        if (_videoEl && _videoEl.srcObject) {
+                            _videoEl.srcObject.getTracks().forEach(t => t.stop());
+                            _videoEl.srcObject = null;
+                        }
+                    } catch (_) { }
+
+                    _scannerStarted = false;
+                    html5QrcodeScanner = null;
+                    stopScanner(null);
+                    // Show copia-e-cola state with the scanned payload; consult server immediately
+                    showQrState('copiacola');
+                    const scanInput = document.getElementById('copiaColaInput');
+                    if (scanInput) { scanInput.value = decodedText; }
+                    consultarQrCode(decodedText);
+                },
+                () => { /* per-frame errors are normal, ignore */ }
+            ).then(() => {
+                if (_scanAborted) {
+                    scanner.stop().catch(() => { }).finally(() => { try { scanner.clear(); } catch (_) { } });
+                } else {
+                    html5QrcodeScanner = scanner;
+                    _scannerStarted = true;
+                }
+            }).catch(() => {
+                try { scanner.clear(); } catch (_) { }
+                if (_scanAborted) return;
+                if (!isFallback) {
+                    // Rear camera failed — try user-facing as last resort
+                    tryStart('user', true);
+                } else {
+                    stopScanner('idle');
+                    PVX.showToast('Camera nao acessivel. Verifique as permissoes do navegador ou use Pix Copia e Cola.', 'error');
+                }
+            });
+        }
+
+        tryStart('environment', false);
+    }
+
+    function stopScanner(goToState) {
+        clearTimeout(_qrTimeoutTimer);
+        clearInterval(_qrCountdownTimer);
+        _qrTimeoutTimer = null;
+        _qrCountdownTimer = null;
+        _scanAborted = true;
+
+        if (html5QrcodeScanner && _scannerStarted) {
+            // Immediately stop MediaStream tracks to release the OS camera indicator on Android.
+            // s.stop() is async and the indicator stays on until tracks are actually stopped.
+            try {
+                const _videoEl = document.querySelector('#reader video');
+                if (_videoEl && _videoEl.srcObject) {
+                    _videoEl.srcObject.getTracks().forEach(t => t.stop());
+                    _videoEl.srcObject = null;
+                }
+            } catch (_) { }
+            // Camera stream is active — stop gracefully
+            const s = html5QrcodeScanner;
+            html5QrcodeScanner = null;
+            _scannerStarted = false;
+            s.stop().catch(() => { }).finally(() => { try { s.clear(); } catch (_) { } });
+        } else if (html5QrcodeScanner) {
+            // Instance exists but camera not yet started — just clear DOM
+            try { html5QrcodeScanner.clear(); } catch (_) { }
+            html5QrcodeScanner = null;
+            _scannerStarted = false;
+        }
+
+        // Close fullscreen scanner overlay
+        const _scanOverlayClose = document.getElementById('qr-fullscreen-overlay');
+        if (_scanOverlayClose) _scanOverlayClose.style.display = 'none';
+
+        if (goToState) showQrState(goToState);
+    }
+
+    function showQrState(state) {
+        ['idle', 'scanning', 'timeout', 'copiacola', 'confirming'].forEach(s => {
+            const el = document.getElementById(`qr-state-${s}`);
+            if (el) el.classList.add('hidden');
+        });
+        const target = document.getElementById(`qr-state-${state}`);
+        if (target) target.classList.remove('hidden');
+        lucide.createIcons();
+    }
+
+    function showCopiaColaInput() {
+        showQrState('copiacola');
+        const input = document.getElementById('copiaColaInput');
+        if (input) { input.value = ''; }
+        onCopiaColaInput();
+        setTimeout(() => { if (input) input.focus(); }, 100);
+    }
+
+    function parseEmvValue(emv) {
+        // BR PIX EMV field 54: Transaction Amount
+        // Format: "54" + 2-digit-length + decimal-string
+        const m = emv.match(/54(\d{2})/);
+        if (!m) return 0;
+        const len = parseInt(m[1]);
+        const start = emv.indexOf(m[0]) + 4;
+        const valStr = emv.substring(start, start + len);
+        const v = parseFloat(valStr);
+        return isNaN(v) ? 0 : v;
+    }
+
+    // _consultedDetails: holds the server-resolved QR Code details (value + beneficiary).
+    // Set only after a successful /pix/qrcode/consultar call. Never populated from client input.
+    let _consultedDetails = null;
+    let _consultDebounceTimer = null;
+    // Guard: prevents concurrent in-flight requests for the same payload.
+    // Reset to false on each new onCopiaColaInput cycle (new payload or retry).
+    let _consultInProgress = false;
+
+    async function consultarQrCode(payload) {
+        // Prevent concurrent requests: if one is already in flight, discard this call.
+        if (_consultInProgress) return;
+        _consultInProgress = true;
+        _consultedDetails = null;
+        const valueBox = document.getElementById('copiaColaValueBox');
+        const loadingBox = document.getElementById('copiaColaLoading');
+        const errorBox = document.getElementById('copiaColaError');
+        const btn = document.getElementById('btnCopiaColaContinuar');
+
+        valueBox?.classList.add('hidden');
+        errorBox?.classList.add('hidden');
+        loadingBox?.classList.remove('hidden');
+        btn.disabled = true;
+        btn.classList.add('opacity-40', 'cursor-not-allowed');
+        btn.classList.remove('cursor-pointer', 'hover:bg-blue-800');
+
+        try {
+            const token = localStorage.getItem('access_token');
+            const res = await fetch('/pix/qrcode/consultar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ payload })
+            });
+
+            loadingBox?.classList.add('hidden');
+
+            if (res.status === 409) {
+                errorBox?.classList.remove('hidden');
+                document.getElementById('copiaColaErrorMsg').textContent = 'Este QR Code ja foi pago.';
+                _consultInProgress = false;
+                return;
+            }
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                errorBox?.classList.remove('hidden');
+                document.getElementById('copiaColaErrorMsg').textContent =
+                    (typeof err.detail === 'string' ? err.detail : null) || 'Nao foi possivel verificar este QR Code.';
+                _consultInProgress = false;
+                return;
+            }
+
+            const data = await res.json();
+            _consultedDetails = data;
+
+            document.getElementById('copiaColaValueDisplay').textContent =
+                'R$ ' + data.value.toFixed(2).replace('.', ',');
+            const benefEl = document.getElementById('copiaColaBenefDisplay');
+            if (benefEl) benefEl.textContent = data.beneficiary_name || '';
+            valueBox?.classList.remove('hidden');
+
+            btn.disabled = false;
+            btn.classList.remove('opacity-40', 'cursor-not-allowed');
+            btn.classList.add('cursor-pointer', 'hover:bg-blue-800');
+            _consultInProgress = false;
+        } catch (_) {
+            loadingBox?.classList.add('hidden');
+            errorBox?.classList.remove('hidden');
+            document.getElementById('copiaColaErrorMsg').textContent = 'Erro de conexao. Tente novamente.';
+            _consultInProgress = false;
+        }
+    }
+
+    function onCopiaColaInput() {
+        const val = (document.getElementById('copiaColaInput')?.value || '').trim();
+        const btn = document.getElementById('btnCopiaColaContinuar');
+        if (!btn) return;
+
+        // Reset on every keystroke — also resets in-flight guard so next debounce can proceed.
+        _consultedDetails = null;
+        _consultInProgress = false;
+        document.getElementById('copiaColaValueBox')?.classList.add('hidden');
+        document.getElementById('copiaColaLoading')?.classList.add('hidden');
+        document.getElementById('copiaColaError')?.classList.add('hidden');
+        btn.disabled = true;
+        btn.classList.add('opacity-40', 'cursor-not-allowed');
+        btn.classList.remove('cursor-pointer', 'hover:bg-blue-800');
+
+        if (val.length < 20) return;
+
+        // Debounce: consult backend 600ms after user stops typing
+        clearTimeout(_consultDebounceTimer);
+        _consultDebounceTimer = setTimeout(() => consultarQrCode(val), 600);
+    }
+
+    async function handleQrPayment(payload) {
+        // Detect simulation URL: /pix/pagar-qrcode?id=xxx (internal charge)
+        if (payload.includes('pagar-qrcode') && payload.includes('id=')) {
+            try {
+                let chargeId = null;
+                try { chargeId = new URL(payload).searchParams.get('id'); } catch (_) { }
+                if (!chargeId) {
+                    const m = payload.match(/id=([^&]+)/);
+                    if (m) chargeId = m[1];
+                }
+                if (chargeId) {
+                    showQrState('confirming');
+                    const token = localStorage.getItem('access_token');
+                    const res = await fetch('/pix/receber/confirmar', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ charge_id: chargeId })
+                    });
+                    if (res.ok) {
+                        PVX.showToast('Pagamento confirmado!', 'success');
+                        PVX.refreshBalance();
+                        setTimeout(() => { showQrState('idle'); switchTab('pagar'); }, 1800);
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        showQrState('idle');
+                        PVX.showToast('Erro: ' + (err.detail || 'Falha ao processar pagamento.'), 'error');
+                    }
+                    return;
+                }
+            } catch (_) { }
+        }
+
+        // Real EMV payload: submit to Asaas via backend
+        showQrState('confirming');
+        try {
+            const token = localStorage.getItem('access_token');
+            const idempotencyKey = `qr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const body = { payload };
+            const res = await fetch('/pix/qrcode/pagar', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-Idempotency-Key': idempotencyKey
+                },
+                body: JSON.stringify(body)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                switchTab('pagar');
+                const chaveDisplay = payload.length > 40 ? payload.substring(0, 40) + '...' : payload;
+                showComprovante(data, chaveDisplay, { name: data.receiver_name || 'Destinatario', bank: 'Rede Bancaria' }, null);
+                PVX.refreshBalance();
+                setTimeout(() => PVX.refreshBalance(), 4000);
+                if (data.id && !['CONFIRMADO', 'AGENDADO', 'FALHOU', 'CANCELADO'].includes(data.status)) {
+                    startSentTransactionPoller(data.id);
+                }
+            } else {
+                const err = await res.json().catch(() => ({}));
+                showQrState('idle');
+                const msg = typeof err.detail === 'string' ? err.detail : 'Falha ao processar pagamento.';
+                PVX.showToast('Erro: ' + msg, 'error');
+            }
+        } catch (_) {
+            showQrState('idle');
+            PVX.showToast('Erro de conexao. Tente novamente.', 'error');
+        }
+    }
+
+    async function submitCopiaColaPayment() {
+        const payload = (document.getElementById('copiaColaInput')?.value || '').trim();
+        if (!payload || payload.length < 20 || !_consultedDetails) return;
+        await handleQrPayment(payload);
+    }
+
+    function copyCode() {
+        const copyText = document.getElementById("copyPasteCode");
+        copyText.select();
+        document.execCommand("copy");
+        alert("Código copiado!");
+    }
+
+    // -------------------------------------------------------------------------
+    // Auto-polling: checks sent transaction status until terminal state
+    // Covers pixForm transfers and QR Code payments (PENDING -> CONFIRMED)
+    // -------------------------------------------------------------------------
+    function startSentTransactionPoller(transactionId) {
+        if (!transactionId) return;
+        let _pollAttempts = 0;
+        const _pollMax = 15; // 75s (15 x 5s)
+        const statusEl = document.getElementById('comprovante_status');
+        const _pollTimer = setInterval(async () => {
+            _pollAttempts++;
+            if (_pollAttempts > _pollMax) { clearInterval(_pollTimer); return; }
+            try {
+                const token = localStorage.getItem('access_token');
+                const res = await fetch(`/pix/transacoes/${transactionId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                // PixStatus enum values are stored/returned in Portuguese
+                const statusMap = {
+                    'CONFIRMADO': 'Confirmado', 'PROCESSANDO': 'Processando',
+                    'CRIADO': 'Em analise', 'FALHOU': 'Falhou',
+                    'CANCELADO': 'Cancelado', 'AGENDADO': 'Agendado'
+                };
+                if (statusEl) {
+                    statusEl.textContent = statusMap[data.status] || data.status;
+                    statusEl.className = data.status === 'CONFIRMADO'
+                        ? 'font-semibold text-green-700'
+                        : (data.status === 'FALHOU' || data.status === 'CANCELADO')
+                            ? 'font-semibold text-red-600'
+                            : 'font-semibold text-blue-700';
+                }
+                if (['CONFIRMADO', 'FALHOU', 'CANCELADO'].includes(data.status)) {
+                    clearInterval(_pollTimer);
+                    PVX.refreshBalance();
+                    if (data.status === 'CONFIRMADO') {
+                        PVX.showToast('Pagamento confirmado pela rede PIX!', 'success', 4000);
+                    } else if (data.status === 'FALHOU') {
+                        PVX.showToast('Pagamento nao processado. Verifique seu saldo.', 'error', 5000);
+                    }
+                }
+            } catch (_) { /* ignore transient errors */ }
+        }, 5000);
+    }
+
+    // -------------------------------------------------------------------------
+    // Auto-polling: checks payment status every 4s for real charges
+    // -------------------------------------------------------------------------
+    let _pollingTimer = null;
+    let _pollingAttempts = 0;
+    const POLLING_MAX = 75; // 5 minutes (75 × 4s)
+
+    function startPaymentPolling(chargeId) {
+        stopPaymentPolling();
+        _pollingAttempts = 0;
+        document.getElementById('pollingIndicator').classList.remove('hidden');
+
+        _pollingTimer = setInterval(async () => {
+            _pollingAttempts++;
+            if (_pollingAttempts > POLLING_MAX) {
+                stopPaymentPolling();
+                return;
+            }
+            try {
+                const token = localStorage.getItem('access_token');
+                const res = await fetch(`/pix/transacoes/${chargeId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.status === 'CONFIRMADO') {
+                    stopPaymentPolling();
+                    onPaymentConfirmed();
+                }
+            } catch (_) { /* ignore transient errors */ }
+        }, 4000);
+    }
+
+    function stopPaymentPolling() {
+        if (_pollingTimer) {
+            clearInterval(_pollingTimer);
+            _pollingTimer = null;
+        }
+        document.getElementById('pollingIndicator').classList.add('hidden');
+    }
+
+    function onPaymentConfirmed() {
+        document.getElementById('btnConfirmarRecebimento').classList.add('hidden');
+        document.getElementById('paymentConfirmedState').classList.remove('hidden');
+        lucide.createIcons();
+        PVX.showToast('Pagamento recebido! Saldo atualizado.', 'success', 4000);
+        // Refresh balance immediately after deposit is confirmed
+        PVX.refreshBalance();
+    }
+
+    async function confirmarRecebimento() {
+        const btn = document.getElementById('btnConfirmarRecebimento');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mx-auto"></div>';
+        btn.disabled = true;
+
+        const chargeId = document.getElementById('currentChargeId').value;
+        const isReal = document.getElementById('isRealCharge').value === '1';
+
+        if (!chargeId) {
+            PVX.showToast('Erro: ID da cobran\u00e7a n\u00e3o encontrado.', 'error');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            return;
+        }
+
+        try {
+            let response;
+
+            if (isReal) {
+                // Bio Code Tech Pay real charge: verify payment via gateway
+                response = await fetch(`/pix/cobrar/${chargeId}/verificar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            } else {
+                // Simulation: direct local confirmation
+                response = await fetch('/pix/receber/confirmar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ charge_id: chargeId })
+                });
+            }
+
+            if (response.ok) {
+                stopPaymentPolling();
+                PVX.showToast('Dep\u00f3sito confirmado! Redirecionando...', 'success');
+                setTimeout(() => { window.location.href = '/'; }, 1500);
+            } else if (response.status === 202) {
+                // Payment not yet confirmed — polling
+                const err = await response.json();
+                PVX.showToast(err.detail || 'Pagamento ainda n\u00e3o confirmado. Aguarde e tente novamente.', 'info');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            } else {
+                const err = await response.json();
+                PVX.showToast('Erro: ' + (err.detail || 'Falha ao confirmar pagamento.'), 'error');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        } catch (error) {
+            PVX.showToast('Erro de conex\u00e3o.', 'error');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+
+    // Toggle Agendamento
+    document.getElementById('toggleAgendamento').addEventListener('change', (e) => {
+        const container = document.getElementById('agendamentoContainer');
+        const input = document.getElementById('data_agendamento');
+        if (e.target.checked) {
+            container.classList.remove('hidden');
+        } else {
+            container.classList.add('hidden');
+            input.value = '';
+        }
+    });
+
+    // -------------------------------------------------------------------------
+    // Fee logic — user type injected from backend
+    // -------------------------------------------------------------------------
+    const USER_IS_PJ = {{ user_is_pj | lower }};
+
+    function computePixFeeNumeric(valueFloat, isInternal) {
+        if (isInternal || valueFloat <= 0) return 0;
+        if (!USER_IS_PJ) return 0.25;
+        return Math.max(valueFloat * 0.005, 0.50);
+    }
+
+    function updateBalanceFeedback() {
+        const fb = document.getElementById('balanceFeedback');
+        if (!fb) return;
+        const amount = parseCurrencyInput(document.getElementById('valor'));
+        const sendBtn = document.getElementById('pixForm')?.querySelector('button[type="submit"]');
+
+        if (!amount || amount <= 0) {
+            fb.classList.add('hidden');
+            return;
+        }
+
+        const balance = PVX._currentBalance;
+        if (balance === null) {
+            // Balance not yet loaded — skip validation
+            fb.classList.add('hidden');
+            return;
+        }
+
+        const isInternal = !!(_recipientData && _recipientData.internal);
+        const fee = computePixFeeNumeric(amount, isInternal);
+        const total = amount + fee;
+        const fmtBRL = (n) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        if (total > balance) {
+            fb.className = 'mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium border border-red-200 bg-red-50 text-red-700';
+            const feeText = fee > 0 ? ' (inclui taxa R$ ' + fmtBRL(fee) + ')' : '';
+            fb.innerHTML = '<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>'
+                + '<span>Saldo insuficiente. Disponivel: R$ ' + fmtBRL(balance) + feeText + '</span>';
+            fb.classList.remove('hidden');
+            if (sendBtn) sendBtn.disabled = true;
+            lucide.createIcons();
+        } else {
+            fb.className = 'mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium border border-green-200 bg-green-50 text-green-700';
+            const remaining = balance - total;
+            fb.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i>'
+                + '<span>Saldo OK. Restara: R$ ' + fmtBRL(remaining) + '</span>';
+            fb.classList.remove('hidden');
+            // Re-enable only if no lookup error is blocking
+            const keyBadge = document.getElementById('keyDetectedBadge');
+            const hasLookupError = keyBadge && !keyBadge.classList.contains('hidden')
+                && keyBadge.classList.contains('bg-red-50');
+            if (sendBtn && !hasLookupError) sendBtn.disabled = false;
+            lucide.createIcons();
+        }
+    }
+
+    function computePixFeeDisplay(valueFloat, isInternal) {
+        if (isInternal) return 'Gratuito';
+        if (!USER_IS_PJ) return 'R$ 0,25';
+        const rate = valueFloat * 0.005;
+        const fee = Math.max(rate, 0.50);
+        return 'R$ ' + fee.toFixed(2).replace('.', ',');
+    }
+
+    function showFeePreview(isInternal, valueFloat) {
+        const badge = document.getElementById('feePreviewBadge');
+        const label = document.getElementById('feePreviewLabel');
+        const valueEl = document.getElementById('feePreviewValue');
+        if (!badge) return;
+        if (isInternal) {
+            badge.classList.add('hidden');
+            return;
+        }
+        const feeStr = computePixFeeDisplay(valueFloat || 0, false);
+        label.textContent = USER_IS_PJ ? 'Taxa PJ (0,5% do valor, min R$ 0,50)' : 'Taxa de servico (Pix externo)';
+        valueEl.textContent = feeStr;
+        badge.classList.remove('hidden');
+        lucide.createIcons();
+    }
+
+    function hideFeePreview() {
+        const badge = document.getElementById('feePreviewBadge');
+        if (badge) badge.classList.add('hidden');
+    }
+
+    // -------------------------------------------------------------------------
+    // PIX key: free input, auto-detect type, lookup delegated to Asaas
+    // No masking — the backend normalizes before sending to Asaas.
+    // Asaas is the sole authority on whether a key exists.
+    // -------------------------------------------------------------------------
+    let _lookupTimer = null;
+    let _recipientData = null;
+
+    // Labels for each recognised key type
+    const KEY_TYPE_META = {
+        EMAIL: 'E-mail reconhecido',
+        CPF: 'CPF reconhecido',
+        CNPJ: 'CNPJ reconhecido',
+        TELEFONE: 'Telefone reconhecido',
+        ALEATORIA: 'Chave aleatoria reconhecida',
+    };
+
+    // Detect key type from raw value.
+    // hintType: current SELECT value — used to resolve 11-digit CPF vs Telefone ambiguity.
+    // If user manually selected TELEFONE and typed 11 digits, honour that selection.
+    function detectPixKeyType(raw, hintType) {
+        const v = raw.trim();
+        const digits = v.replace(/\D/g, '');
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'EMAIL';
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return 'ALEATORIA';
+        if (digits.length === 14) return 'CNPJ';
+        if (v.startsWith('+') || digits.length === 10) return 'TELEFONE';
+        if (digits.length === 11) return (hintType === 'TELEFONE') ? 'TELEFONE' : 'CPF';
+        return null;
+    }
+
+    // Show/hide the keyDetectedBadge based on what is typed.
+    // Returns the detected type string or null.
+    function updateKeyDetectionBadge(raw, currentType) {
+        const detected = detectPixKeyType(raw, currentType);
+        const badge = document.getElementById('keyDetectedBadge');
+        if (detected && raw.trim().length >= 5) {
+            // Reset to green style (may have been red from a failed lookup)
+            badge.className = 'rounded-xl border border-green-200 bg-green-50 p-3 flex items-center gap-2 text-sm text-green-700';
+            badge.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i><span id="keyDetectedLabel">${KEY_TYPE_META[detected] || 'Formato reconhecido'}</span>`;
+            badge.classList.remove('hidden');
+            lucide.createIcons();
+        } else {
+            badge.classList.add('hidden');
+        }
+        return detected;
+    }
+
+    function resetRecipientCard() {
+        _recipientData = null;
+        document.getElementById('recipientCard').classList.add('hidden');
+        // Reabilitar botao de envio ao resetar (usuario pode estar corrigindo a chave)
+        const sendBtn = document.querySelector('button[type="submit"]');
+        if (sendBtn) sendBtn.disabled = false;
+        // keyDetectedBadge is managed by detection logic, not here
+    }
+
+    async function lookupRecipient() {
+        const chave = document.getElementById('chave').value.trim();
+        const tipo = document.getElementById('tipo').value;
+
+        if (!chave || chave.length < 5) { resetRecipientCard(); return; }
+
+        const spinner = document.getElementById('chaveSpinner');
+        spinner.classList.remove('hidden');
+        resetRecipientCard();
+
+        try {
+            const params = new URLSearchParams({ chave, tipo });
+            const res = await fetch(`/pix/consultar-chave?${params}`, { credentials: 'same-origin' });
+
+            if (res.ok) {
+                const data = await res.json();
+
+                if (data.found === false) {
+                    // Unico caso bloqueante real: formato invalido da chave
+                    const msg = data.error || 'Formato de chave invalido para o tipo selecionado.';
+                    _showLookupError(msg);
+                    return;
+                }
+
+                _recipientData = data;
+                document.getElementById('recipientName').textContent = data.name || 'Destinatario';
+                document.getElementById('recipientDoc').textContent = data.document || '';
+                document.getElementById('recipientBank').textContent = data.bank || '';
+                const badge = document.getElementById('recipientBadge');
+                if (data.internal) { badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
+
+                if (data.unverified) {
+                    // Gateway indisponivel — permitir envio silenciosamente; badge de tipo ja aparece
+                } else {
+                    // Destinatario confirmado pelo Asaas — ocultar badges de status
+                    document.getElementById('keyDetectedBadge').classList.add('hidden');
+                    document.getElementById('recipientCard').classList.remove('hidden');
+                }
+
+                // Show fee preview and update balance feedback with correct fee (internal vs external)
+                const currentValue = parseCurrencyInput(document.getElementById('valor'));
+                showFeePreview(!!data.internal, currentValue || 0);
+                updateBalanceFeedback();
+                lucide.createIcons();
+
+            } else if (res.status === 401 || res.status === 403) {
+                _showLookupError('Sessao expirada. Recarregue a pagina.');
+            } else {
+                // Erro HTTP do servidor — permitir envio sem bloquear
+            }
+        } catch (_) {
+            // Falha de rede — nao bloquear, deixar usuario prosseguir
+        } finally {
+            spinner.classList.add('hidden');
+        }
+    }
+
+    function _showLookupError(msg) {
+        // Erro real: Asaas confirmou que a chave nao existe no DICT ou formato invalido
+        // Bloqueia o envio pois a chave e definitivamente invalida
+        const badge = document.getElementById('keyDetectedBadge');
+        badge.className = 'rounded-xl border border-red-200 bg-red-50 p-3 flex items-center gap-2 text-sm text-red-600';
+        badge.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i><span>${msg}</span>`;
+        badge.classList.remove('hidden');
+        const sendBtn = document.querySelector('button[type="submit"]');
+        if (sendBtn) sendBtn.disabled = true;
+        lucide.createIcons();
+    }
+
+    function _showLookupWarning(msg) {
+        // Aviso amarelo: gateway indisponivel, mas envio permitido
+        const badge = document.getElementById('keyDetectedBadge');
+        badge.className = 'rounded-xl border border-yellow-200 bg-yellow-50 p-3 flex items-center gap-2 text-sm text-yellow-700';
+        badge.innerHTML = `<i data-lucide="triangle-alert" class="w-4 h-4 flex-shrink-0"></i><span>${msg}</span>`;
+        badge.classList.remove('hidden');
+        const sendBtn = document.querySelector('button[type="submit"]');
+        if (sendBtn) sendBtn.disabled = false;
+        lucide.createIcons();
+    }
+
+    function _showLookupNotFound(msg) {
+        // Alias para retro-compatibilidade — chama o erro bloqueante
+        _showLookupError(msg);
+    }
+
+    document.getElementById('chave').addEventListener('input', () => {
+        clearTimeout(_lookupTimer);
+        resetRecipientCard();
+
+        const raw = document.getElementById('chave').value;
+
+        const tipoSelect = document.getElementById('tipo');
+        const detected = updateKeyDetectionBadge(raw, tipoSelect.value);
+        // Auto-update SELECT only when detection is unambiguous.
+        // detectPixKeyType already uses the current SELECT as hint, so detected
+        // already honours the user's manual selection — safe to apply directly.
+        if (detected && tipoSelect.value !== detected) {
+            tipoSelect.value = detected;
+        }
+
+        _lookupTimer = setTimeout(lookupRecipient, 900);
+    });
+
+    document.getElementById('tipo').addEventListener('change', () => {
+        clearTimeout(_lookupTimer);
+        resetRecipientCard();
+        // Re-evaluate badge using the newly selected type as hint
+        const raw = document.getElementById('chave').value;
+        updateKeyDetectionBadge(raw, document.getElementById('tipo').value);
+        _lookupTimer = setTimeout(lookupRecipient, 400);
+    });
+
+    // -------------------------------------------------------------------------
+    // Comprovante shown after successful PIX transfer
+    // -------------------------------------------------------------------------
+    function showComprovante(result, chave, recipientData, dataAgendamento) {
+        document.getElementById('pixInputStep').classList.add('hidden');
+        document.getElementById('comprovanteCard').classList.remove('hidden');
+
+        // Refresh balance immediately after transfer is registered
+        PVX.refreshBalance();
+        // Refresh again after 4s to catch webhook TRANSFER_DONE confirmation
+        setTimeout(() => PVX.refreshBalance(), 4000);
+        setTimeout(() => PVX.refreshBalance(), 10000);
+
+        // Header date — bank format: "10 MAR 2026 - 05:58:48"
+        const now = new Date();
+        const months = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+        const dd = String(now.getDate()).padStart(2, '0');
+        const mmm = months[now.getMonth()];
+        const yyyy = now.getFullYear();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mi = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        document.getElementById('comprovante_gerado_em').textContent =
+            dd + ' ' + mmm + ' ' + yyyy + ' - ' + hh + ':' + mi + ':' + ss;
+
+        // Value
+        const valor = result.value
+            ? 'R$ ' + Number(result.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+            : '';
+        document.getElementById('comprovante_valor').textContent = valor;
+
+        // Date/time from API response (backend-formatted pt-BR)
+        const apiTime = result.formatted_time
+            || now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        document.getElementById('comprovante_data').textContent = dataAgendamento
+            ? 'Agendado para ' + dataAgendamento
+            : apiTime;
+
+        // Status
+        const statusMap = {
+            'CONFIRMADO': 'Confirmado',
+            'AGENDADO': 'Agendado',
+            'CRIADO': 'Processando',
+            'PROCESSANDO': 'Em processamento',
+            'FALHOU': 'Falhou',
+            'CANCELADO': 'Cancelado'
+        };
+        document.getElementById('comprovante_status').textContent =
+            statusMap[result.status] || result.status;
+
+        // Recipient (Destino)
+        const destName = recipientData?.name || result.receiver_name || 'Destinatario';
+        const destDoc = recipientData?.document || result.receiver_doc || '';
+        const destBank = recipientData?.bank
+            || (recipientData?.internal ? 'Bio Code Tech Pay' : 'Rede Bancaria');
+
+        document.getElementById('comprovante_destinatario').textContent = destName;
+        document.getElementById('comprovante_banco').textContent = destBank;
+        document.getElementById('comprovante_chave').textContent = chave;
+
+        const destDocRow = document.getElementById('comprovante_dest_doc_row');
+        if (destDoc) {
+            document.getElementById('comprovante_dest_doc').textContent = destDoc;
+            destDocRow.classList.remove('hidden');
+        } else {
+            destDocRow.classList.add('hidden');
+        }
+
+        // Sender (Origem)
+        document.getElementById('comprovante_pagador_nome').textContent = result.sender_name || '';
+        document.getElementById('comprovante_pagador_doc').textContent = result.sender_doc || '';
+
+        // Transaction ID (E2E)
+        document.getElementById('comprovante_e2e').textContent = result.correlation_id || result.id || '';
+
+        // Fee row
+        const taxaRow = document.getElementById('comprovante_taxa_row');
+        const taxaEl = document.getElementById('comprovante_taxa');
+        if (result.fee_amount && result.fee_amount > 0) {
+            taxaEl.textContent = result.fee_description || ('R$ ' + Number(result.fee_amount).toFixed(2).replace('.', ','));
+            taxaRow.classList.remove('hidden');
+        } else {
+            taxaRow.classList.add('hidden');
+        }
+
+        lucide.createIcons();
+    }
+
+    function novaTransferencia() {
+        document.getElementById('comprovanteCard').classList.add('hidden');
+        document.getElementById('pixInputStep').classList.remove('hidden');
+        document.getElementById('pixForm').reset();
+        document.getElementById('valor').value = '';
+        const fb = document.getElementById('balanceFeedback');
+        if (fb) fb.classList.add('hidden');
+        resetRecipientCard();
+        hideFeePreview();
+        document.getElementById('keyDetectedBadge').classList.add('hidden');
+        lucide.createIcons();
+    }
+
+    // -------------------------------------------------------------------------
+    // Handle Send Pix — recipient validation + comprovante
+    // -------------------------------------------------------------------------
+    document.getElementById('pixForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div><span>Enviando...</span></div>';
+        btn.disabled = true;
+
+        PVX.showToast('Processando seu Pix...', 'info', 10000);
+
+        const dataAgendamento = document.getElementById('data_agendamento').value;
+        const chave = document.getElementById('chave').value.trim();
+        const tipoEl = document.getElementById('tipo');
+        // Ensure key-type is always consistent with what is typed — prevents stale selection
+        const detectedOnSubmit = detectPixKeyType(chave, tipoEl.value);
+        if (detectedOnSubmit && tipoEl.value !== detectedOnSubmit) {
+            tipoEl.value = detectedOnSubmit;
+        }
+        const tipo = tipoEl.value;
+        const parsedValor = parseCurrencyInput(document.getElementById('valor'));
+
+        if (!parsedValor || parsedValor <= 0) {
+            PVX.showToast('Informe um valor valido para transferencia.', 'error');
+            btn.innerHTML = originalText; btn.disabled = false; return;
+        }
+        // Early balance guard — prevents unnecessary server round-trip
+        if (PVX._currentBalance !== null) {
+            const _fee = computePixFeeNumeric(parsedValor, !!(_recipientData && _recipientData.internal));
+            if (parsedValor + _fee > PVX._currentBalance) {
+                PVX.showToast('Saldo insuficiente para esta transferencia.', 'error', 4000);
+                btn.innerHTML = originalText; btn.disabled = false; return;
+            }
+        }
+        if (!chave) {
+            PVX.showToast('Informe a Chave Pix do destinatario.', 'error');
+            btn.innerHTML = originalText; btn.disabled = false; return;
+        }
+        // Key lookup is informational only — Asaas is the sole validation authority.
+        // Do NOT block the transfer here; if the key is invalid, Asaas will reject
+        // the transfer and the user will receive a clear error from the backend.
+
+        const payload = {
+            value: parsedValor,
+            pix_key: chave,
+            key_type: tipo,
+            description: "Transfer via Bio Code Tech Pay",
+            scheduled_date: dataAgendamento || null,
+            recipient_name: _recipientData?.name || null
+        };
+
+        try {
+            const response = await fetch('/pix/transacoes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Idempotency-Key': 'web-' + Date.now()
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                PVX.showToast(result.status === 'AGENDADO' ? 'Pix agendado!' : 'Pix enviado!', 'success');
+                showComprovante(result, chave, _recipientData, dataAgendamento);
+                if (result.id && !['CONFIRMADO', 'AGENDADO', 'FALHOU', 'CANCELADO'].includes(result.status)) {
+                    startSentTransactionPoller(result.id);
+                }
+            } else {
+                // result.detail can be a string (app errors) or an array (Pydantic 422 validation errors)
+                const rawDetail = result.detail;
+                const detail = Array.isArray(rawDetail)
+                    ? rawDetail.map(e => e.msg || e.message || String(e)).join(' | ')
+                    : (rawDetail || '');
+                if (detail.toLowerCase().includes('insufficient') || detail.toLowerCase().includes('saldo')) {
+                    PVX.showToast('Saldo insuficiente. Considere agendar para outra data.', 'error', 5000);
+                    const toggle = document.getElementById('toggleAgendamento');
+                    if (!toggle.checked) {
+                        toggle.checked = true;
+                        document.getElementById('agendamentoContainer').classList.remove('hidden');
+                        document.getElementById('data_agendamento').focus();
+                    }
+                } else {
+                    PVX.showToast('Erro: ' + (detail || 'Falha ao enviar'), 'error', 5000);
+                }
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        } catch (error) {
+            console.error('Erro:', error);
+            PVX.showToast('Erro de conexao com o servidor. Tente novamente.', 'error');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    });
+
+    // Handle Receive Pix (Cobrar) — Instant feedback
+    document.getElementById('cobrarForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div><span>Gerando...</span></div>';
+        btn.disabled = true;
+        PVX.showToast('Gerando QR Code...', 'info', 10000);
+
+        const parsedReceber = parseCurrencyInput(document.getElementById('valorReceber'));
+        if (!parsedReceber || parsedReceber < 5.00) {
+            PVX.showToast('O valor mínimo para gerar cobrança é R$ 5,00.', 'error');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            return;
+        }
+
+        const data = {
+            value: parsedReceber,
+            description: document.getElementById('descricaoReceber').value
+        };
+
+        try {
+            const response = await fetch('/pix/cobrar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                PVX.showToast('QR Code gerado!', 'success');
+                document.getElementById('qrResult').classList.remove('hidden');
+                document.getElementById('qrImage').src = result.qr_code_url;
+                document.getElementById('copyPasteCode').value = result.copy_and_paste;
+                document.getElementById('currentChargeId').value = result.charge_id;
+
+                const isReal = result.is_real_charge === true;
+                document.getElementById('isRealCharge').value = isReal ? '1' : '0';
+
+                const badge = document.getElementById('chargeBadge');
+                badge.classList.add('hidden');
+
+                const btnText = document.getElementById('btnConfirmarText');
+                if (isReal) {
+                    btnText.textContent = 'Confirmar Recebimento Bio Code Tech Pay';
+                    document.getElementById('btnConfirmarRecebimento').classList.add('hidden');
+                    startPaymentPolling(result.charge_id);
+                } else {
+                    btnText.textContent = 'Confirmar Recebimento';
+                }
+                lucide.createIcons();
+            }
+
+        } catch (error) {
+            alert('Erro ao gerar cobrança');
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    });
+</script>
+{% endblock %}
