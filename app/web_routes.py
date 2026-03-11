@@ -449,6 +449,7 @@ async def matrix_audit(
         elif diff > 0:
             # internal > asaas: Asaas charged us gateway fees or a transfer was debited
             direction = "internal_above_asaas"
+            _AUTO_CORRECTION_MAX = 20.0  # only auto-correct diffs up to R$20 (max ~10 gateway fees)
             if abs_diff < 10:
                 status = "WARN"
                 status_label = "Divergencia detectada — taxa Asaas absorvida"
@@ -463,8 +464,8 @@ async def matrix_audit(
                 "Auto-correcao: debitar diferenca da Conta Matrix para sincronizar."
             )
 
-            # ── Auto-correction: debit diff from Matrix so internal = Asaas ──
-            if matrix_user and matrix_user.balance >= abs_diff:
+            # ── Auto-correction: only for small diffs (gateway fees). Large diffs need manual action.
+            if matrix_user and matrix_user.balance >= abs_diff and abs_diff <= _AUTO_CORRECTION_MAX:
                 old_matrix = matrix_user.balance
                 matrix_user.balance = round(matrix_user.balance - abs_diff, 2)
                 db.add(matrix_user)
@@ -501,8 +502,8 @@ async def matrix_audit(
                 breakdown[2]["value"] = total_internal
             else:
                 messages.append(
-                    f"Saldo Matrix (R$ {matrix_balance:.2f}) insuficiente para absorver diferenca. "
-                    "Recarregue a Conta Matrix ou revise manualmente."
+                    f"Divergencia de R$ {abs_diff:.2f} fora do limite de autocorrecao automatica (max R$20.00) "
+                    f"ou saldo Matrix (R$ {matrix_balance:.2f}) insuficiente. Verifique manualmente."
                 )
 
         else:
@@ -532,7 +533,7 @@ async def matrix_audit(
             f"- Saldo clientes: R$ {internal_sum:.2f}\n"
             f"- Saldo Conta Matrix (taxa): R$ {matrix_balance:.2f}\n"
             f"- Total interno: R$ {total_internal:.2f}\n"
-            f"- Saldo Asaas (conta real): R$ {asaas_balance:.2f if asaas_balance is not None else 'indisponivel'}\n"
+            f"- Saldo Asaas (conta real): R$ {f'{asaas_balance:.2f}' if asaas_balance is not None else 'indisponivel'}\n"
             f"- Diferenca: R$ {abs(diff):.2f} | Direcao: {direction}\n"
             f"- Status: {status_label}\n"
             f"- Correcao aplicada: {'sim, Matrix debitada em R$ ' + str(correction_applied['amount']) if correction_applied else 'nao'}\n\n"

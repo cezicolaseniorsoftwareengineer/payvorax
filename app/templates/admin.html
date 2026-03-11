@@ -659,12 +659,15 @@
             const modal = document.getElementById('delete-confirm-modal');
             document.getElementById('delete-user-name').textContent = userName;
             document.getElementById('delete-confirm-btn').onclick = () => executeDeleteUser(userId, userName);
-            modal.style.display = 'flex';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
             document.body.style.overflow = 'hidden';
         }
 
         function closeDeleteModal() {
-            document.getElementById('delete-confirm-modal').style.display = 'none';
+            const modal = document.getElementById('delete-confirm-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
             document.body.style.overflow = '';
         }
 

@@ -83,8 +83,9 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
             )
         else:
             # Divergence detected — attempt auto-correction when internal > asaas
-            if signed_diff > 0.01 and matrix_user is not None:
-                # Internal exceeds Asaas: gateway fees consumed Asaas balance.
+            _AUTO_CORRECTION_MAX = 20.0  # only auto-correct diffs up to R$20 (max ~10 Asaas fees)
+            if signed_diff > 0.01 and abs_diff <= _AUTO_CORRECTION_MAX and matrix_user is not None:
+                # Internal exceeds Asaas by a small amount: Asaas gateway fees consumed balance.
                 # Debit Matrix to reconcile.
                 db2 = db_factory()
                 try:
@@ -123,11 +124,11 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
                 finally:
                     db2.close()
             else:
-                # Asaas exceeds internal (webhook not yet reconciled) — log only, no auto-correct
+                # diff > R$20 (structural imbalance) or Asaas > internal — log only, no auto-correct
                 result["status"] = "ERROR" if abs_diff >= 10 else "WARN"
                 logger.warning(
-                    f"[audit-worker] DIVERGENCE (asaas_above_internal) — diff=R${abs_diff:.2f} "
-                    f"internal=R${total_internal:.2f} asaas=R${asaas_balance:.2f}"
+                    f"[audit-worker] DIVERGENCE (no-autocorrect) direction={direction if signed_diff > 0 else 'asaas_above_internal'} "
+                    f"diff=R${abs_diff:.2f} internal=R${total_internal:.2f} asaas=R${asaas_balance:.2f}"
                 )
 
         return result
