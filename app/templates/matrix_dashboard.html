@@ -147,6 +147,88 @@
             <div id="audit-content" class="space-y-3 text-sm"></div>
         </div>
 
+        <!-- Financial Projections Panel -->
+        <div class="card-glass rounded-2xl p-5 sm:p-6 shadow-xl">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="trending-up" class="w-4 h-4 text-purple-400"></i>
+                    <h2 class="font-semibold text-white text-sm">Projecoes Financeiras</h2>
+                </div>
+                <button onclick="toggleProjections()"
+                    class="tap-target flex items-center justify-center gap-2 bg-purple-900/40 hover:bg-purple-900/70 border border-purple-700/50 text-purple-300 px-4 py-2 rounded-xl text-xs font-medium transition-colors whitespace-nowrap"
+                    id="proj-toggle-btn">
+                    <i data-lucide="calculator" class="w-3.5 h-3.5"></i>
+                    Calcular modelo
+                </button>
+            </div>
+
+            <!-- Inputs -->
+            <div id="proj-inputs" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Usuarios ativos</label>
+                    <input id="p-users" type="number" value="50" min="1"
+                        class="w-full bg-gray-900/80 border border-gray-700 focus:border-purple-500 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Transacoes/usuario/mes</label>
+                    <input id="p-tx" type="number" value="3" step="0.5" min="0.1"
+                        class="w-full bg-gray-900/80 border border-gray-700 focus:border-purple-500 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">% contas PJ</label>
+                    <input id="p-pj" type="number" value="20" step="5" min="0" max="100"
+                        class="w-full bg-gray-900/80 border border-gray-700 focus:border-purple-500 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Valor medio envio (R$)</label>
+                    <input id="p-out" type="number" value="150" min="1"
+                        class="w-full bg-gray-900/80 border border-gray-700 focus:border-purple-500 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Valor medio recebimento (R$)</label>
+                    <input id="p-in" type="number" value="100" min="1"
+                        class="w-full bg-gray-900/80 border border-gray-700 focus:border-purple-500 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Crescimento MoM (%)</label>
+                    <input id="p-growth" type="number" value="25" step="5" min="0" max="500"
+                        class="w-full bg-gray-900/80 border border-gray-700 focus:border-purple-500 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors">
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div id="proj-result" class="hidden space-y-4">
+                <!-- KPIs -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="proj-kpis"></div>
+                <!-- Unit economics -->
+                <div class="bg-blue-950/30 border border-blue-900/30 rounded-xl p-4">
+                    <p class="text-xs font-semibold text-blue-400 uppercase tracking-widest mb-3">Economia unitaria</p>
+                    <div id="proj-unit" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-300"></div>
+                </div>
+                <!-- Growth table -->
+                <div>
+                    <p class="text-xs font-semibold text-purple-400 uppercase tracking-widest mb-3">Projecao 12 meses
+                    </p>
+                    <div class="overflow-x-auto rounded-xl border border-blue-900/30">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="border-b border-blue-900/30 bg-blue-950/40">
+                                    <th class="text-left px-3 py-2.5 text-gray-500 font-medium">Mes</th>
+                                    <th class="text-right px-3 py-2.5 text-gray-500 font-medium">Usuarios</th>
+                                    <th class="text-right px-3 py-2.5 text-gray-500 font-medium">Receita bruta</th>
+                                    <th class="text-right px-3 py-2.5 text-gray-500 font-medium">Custo Asaas</th>
+                                    <th class="text-right px-3 py-2.5 text-gray-500 font-medium">Lucro liq.</th>
+                                    <th class="text-right px-3 py-2.5 text-gray-500 font-medium">Matrix acum.</th>
+                                    <th class="text-right px-3 py-2.5 text-gray-500 font-medium">Margem</th>
+                                </tr>
+                            </thead>
+                            <tbody id="proj-table-body" class="divide-y divide-blue-900/20"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Transfer Form -->
         <div class="card-glass rounded-2xl p-5 sm:p-6 shadow-xl">
             <div class="flex items-center gap-2 mb-5">
@@ -529,6 +611,101 @@
         document.addEventListener('DOMContentLoaded', () => {
             setupCurrencyInput('m-amount');
         });
+
+        // -------------------------------------------------------------------
+        // Financial Projections
+        // -------------------------------------------------------------------
+        let _projLoaded = false;
+
+        function toggleProjections() {
+            const result = document.getElementById('proj-result');
+            if (!_projLoaded) {
+                loadProjections();
+            } else {
+                result.classList.toggle('hidden');
+            }
+        }
+
+        async function loadProjections() {
+            const btn = document.getElementById('proj-toggle-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<svg class="w-3.5 h-3.5 spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg><span>Calculando...</span>';
+
+            const users = document.getElementById('p-users').value || 50;
+            const tx = document.getElementById('p-tx').value || 3;
+            const pj = document.getElementById('p-pj').value || 20;
+            const avgOut = document.getElementById('p-out').value || 150;
+            const avgIn = document.getElementById('p-in').value || 100;
+            const growth = document.getElementById('p-growth').value || 25;
+
+            try {
+                const res = await fetch(
+                    `/admin/matrix/projections?users=${users}&tx=${tx}&pj_pct=${pj}&avg_out=${avgOut}&avg_in=${avgIn}&months=12&growth=${growth / 100}`,
+                    { credentials: 'same-origin' }
+                );
+                if (!res.ok) throw new Error('Erro na requisicao');
+                const data = await res.json();
+                renderProjections(data);
+                _projLoaded = true;
+                document.getElementById('proj-result').classList.remove('hidden');
+            } catch (err) {
+                alert('Erro ao carregar projecoes: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>Recalcular';
+                lucide.createIcons();
+            }
+        }
+
+        function renderProjections(data) {
+            const fmtBRL = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const fmtPct = (n) => Number(n).toFixed(1) + '%';
+            const snap = data.snapshot;
+            const mc = data.model_constants;
+            const ms = data.milestones;
+
+            // KPIs
+            const kpis = [
+                { label: 'Receita mensal', value: fmtBRL(snap.revenue.gross), color: 'text-green-400' },
+                { label: 'Custo Asaas', value: fmtBRL(snap.costs.total), color: 'text-red-400' },
+                { label: 'Lucro liquido', value: fmtBRL(snap.profit.net), color: snap.profit.net >= 0 ? 'text-green-300' : 'text-red-300' },
+                { label: 'Matrix em 12 meses', value: fmtBRL(ms.cumulative_matrix_end), color: 'text-purple-300' },
+            ];
+            document.getElementById('proj-kpis').innerHTML = kpis.map(k => `
+                <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-3">
+                    <p class="text-xs text-gray-500 mb-1">${k.label}</p>
+                    <p class="text-base font-bold font-mono ${k.color}">${k.value}</p>
+                </div>`).join('');
+
+            // Unit economics
+            const units = [
+                `PF envio: <span class="text-white font-mono">${fmtBRL(mc.pf_outbound_fee)}</span> (margem apos cota: <span class="text-green-400">R$ 0,50</span>)`,
+                `PF envio primeiras 30 tx: <span class="text-green-400 font-mono">R$ 2,50 (100% margem)</span>`,
+                `PJ envio (media R$${document.getElementById('p-out').value || 150}): <span class="text-white font-mono">${fmtBRL(mc.pj_outbound_fee_at_avg)}</span> (margem: <span class="text-green-400">${fmtBRL(mc.pj_margin_at_avg)}</span>)`,
+                `PJ recebimento: <span class="text-purple-300 font-mono">receita pura (custo Asaas = R$ 0,00)</span>`,
+                `Custo Asaas apos cota: <span class="text-red-400 font-mono">R$ 2,00/tx</span>`,
+                `Primeiras 30 transferencias/mes: <span class="text-green-400 font-mono">GRATUITAS no Asaas</span>`,
+            ];
+            document.getElementById('proj-unit').innerHTML = units.map(u => `<div class="py-1">${u}</div>`).join('');
+
+            // Growth table
+            const tbody = document.getElementById('proj-table-body');
+            tbody.innerHTML = data.growth_curve.map((m, i) => {
+                const highlight = i === 0 ? 'bg-blue-950/20' : '';
+                const profitColor = m.net_profit >= 0 ? 'text-green-400' : 'text-red-400';
+                return `<tr class="${highlight} hover:bg-blue-950/10 transition-colors">
+                    <td class="px-3 py-2.5 font-medium text-gray-300">Mes ${m.month}</td>
+                    <td class="px-3 py-2.5 text-right text-blue-300">${m.users.toLocaleString('pt-BR')}</td>
+                    <td class="px-3 py-2.5 text-right text-white font-mono">${fmtBRL(m.gross_revenue)}</td>
+                    <td class="px-3 py-2.5 text-right text-red-400/80 font-mono">${fmtBRL(m.total_cost)}</td>
+                    <td class="px-3 py-2.5 text-right ${profitColor} font-mono font-semibold">${fmtBRL(m.net_profit)}</td>
+                    <td class="px-3 py-2.5 text-right text-purple-300 font-mono">${fmtBRL(m.cumulative_matrix)}</td>
+                    <td class="px-3 py-2.5 text-right text-gray-400">${fmtPct(m.margin_pct)}</td>
+                </tr>`;
+            }).join('');
+
+            lucide.createIcons();
+        }
     </script>
 </body>
 

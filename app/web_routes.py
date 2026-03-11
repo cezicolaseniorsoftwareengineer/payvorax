@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Request, Depends, HTTPException
+﻿from fastapi import APIRouter, Request, Depends, HTTPException, Query
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -517,16 +517,64 @@ async def matrix_audit(
                 )
 
         else:
-            # asaas > internal: credit not yet reconciled or webhook double-credit
+            # asaas > internal: credit Matrix to restore parity
             direction = "asaas_above_internal"
-            status = "WARN"
-            status_label = "Asaas com saldo superior ao interno — verificar"
+            _AUTO_CORRECTION_MAX = 20.0
+            if abs_diff < 10:
+                status = "WARN"
+                status_label = "Asaas com saldo superior ao interno — corrigindo"
+            else:
+                status = "ERROR"
+                status_label = "Divergencia critica — reconciliacao necessaria"
+
             messages.append(
                 f"Asaas (R$ {asaas_balance:.2f}) e maior que total interno (R$ {total_internal:.2f}). "
                 f"Diferenca: R$ {abs_diff:.2f}. "
-                "Causa provavel: deposito recebido no Asaas ainda nao confirmado internamente via webhook. "
-                "Nao sera feita autocorrecao automatica — verifique manualmente."
+                "Causa provavel: saldo Asaas nao refletido internamente (transacao ou ajuste nao registrado). "
+                "Auto-correcao: creditar diferenca na Conta Matrix para sincronizar."
             )
+
+            if matrix_user and abs_diff <= _AUTO_CORRECTION_MAX:
+                old_matrix = matrix_user.balance
+                matrix_user.balance = round(matrix_user.balance + abs_diff, 2)
+                db.add(matrix_user)
+                db.commit()
+                db.refresh(matrix_user)
+                matrix_balance = round(matrix_user.balance, 2)
+                total_internal = round(internal_sum + matrix_balance, 2)
+                correction_applied = {
+                    "action": "matrix_credited",
+                    "amount": abs_diff,
+                    "matrix_before": round(old_matrix, 2),
+                    "matrix_balance_after": matrix_balance,
+                    "reason": "asaas_balance_above_internal",
+                }
+                messages.append(
+                    f"Conta Matrix ajustada: R$ {old_matrix:.2f} -> R$ {matrix_balance:.2f} "
+                    f"(credito de R$ {abs_diff:.2f} para sincronizar com Asaas)."
+                )
+                status = "AUTO_CORRECTED"
+                status_label = "Saldos sincronizados automaticamente"
+                audit_log(
+                    action="AUDIT_AUTO_CORRECTION",
+                    user=current_user.id,
+                    resource="matrix_account",
+                    details={
+                        "diff": abs_diff,
+                        "direction": direction,
+                        "matrix_before": round(old_matrix, 2),
+                        "matrix_after": matrix_balance,
+                        "asaas_balance": asaas_balance,
+                        "total_internal_after": total_internal,
+                    },
+                )
+                breakdown[1]["value"] = matrix_balance
+                breakdown[2]["value"] = total_internal
+            else:
+                messages.append(
+                    f"Divergencia de R$ {abs_diff:.2f} fora do limite de autocorrecao automatica (max R$20.00). "
+                    "Verifique manualmente."
+                )
 
     else:
         messages.append("Asaas indisponivel ou nao configurado. Auditoria parcial (apenas saldos internos).")
@@ -546,7 +594,7 @@ async def matrix_audit(
             f"- Saldo Asaas (conta real): R$ {f'{asaas_balance:.2f}' if asaas_balance is not None else 'indisponivel'}\n"
             f"- Diferenca: R$ {abs(diff):.2f} | Direcao: {direction}\n"
             f"- Status: {status_label}\n"
-            f"- Correcao aplicada: {'sim, Matrix debitada em R$ ' + str(correction_applied['amount']) if correction_applied else 'nao'}\n\n"
+            f"- Correcao aplicada: {'sim, Matrix ' + ('debitada' if correction_applied['action'] == 'matrix_debited' else 'creditada') + ' em R$ ' + str(correction_applied['amount']) if correction_applied else 'nao'}\n\n"
             "Em 2 a 4 frases curtas, explique em portugues brasileiro o que provavelmente causou esta divergencia, "
             "o que foi feito automaticamente e o que o admin deve verificar. Seja tecnico e preciso."
         )
@@ -581,5 +629,88 @@ async def matrix_audit(
         "asaas_available": asaas_balance is not None,
         "correction_applied": correction_applied,
         "ai_explanation": ai_explanation,
+    }
+
+
+@router.get("/admin/matrix/projections")
+async def matrix_projections(
+    users: int = Query(default=50, ge=1, le=500000),
+    tx: float = Query(default=3.0, ge=0.1, le=1000.0),
+    pj_pct: float = Query(default=20.0, ge=0.0, le=100.0),
+    avg_out: float = Query(default=150.0, ge=1.0),
+    avg_in: float = Query(default=100.0, ge=1.0),
+    months: int = Query(default=12, ge=1, le=60),
+    growth: float = Query(default=0.25, ge=0.0, le=5.0),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns monthly revenue projection and compound growth model for the admin panel.
+
+    Query params:
+        users   : Active users on platform (default 50)
+        tx      : Avg transactions per user per month (default 3.0)
+        pj_pct  : Percentage of PJ accounts (default 20.0)
+        avg_out : Average outbound PIX value in BRL (default R$150)
+        avg_in  : Average inbound PIX value in BRL (default R$100)
+        months  : Number of months to project (default 12)
+        growth  : Monthly user growth rate as decimal — 0.25 = 25% MoM (default 0.25)
+
+    Admin-only endpoint.
+    """
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso restrito.")
+
+    from app.core.fees import monthly_revenue_projection, growth_projection, ASAAS_PIX_OUTBOUND_FREE_MONTHLY
+
+    pj_ratio = pj_pct / 100.0
+
+    # Single-month snapshot at configured user count
+    snapshot = monthly_revenue_projection(
+        active_users=users,
+        tx_per_user_per_month=tx,
+        pj_ratio=pj_ratio,
+        avg_outbound_value=avg_out,
+        avg_inbound_value=avg_in,
+    )
+
+    # Compound growth curve over N months
+    curve = growth_projection(
+        months=months,
+        initial_users=users,
+        monthly_user_growth_rate=growth,
+        tx_per_user_per_month=tx,
+        pj_ratio=pj_ratio,
+        avg_outbound_value=avg_out,
+        avg_inbound_value=avg_in,
+    )
+
+    # Key financial milestones from the growth curve
+    first_profitable = next((m for m in curve if m["net_profit"] > 0), None)
+    peak = max(curve, key=lambda m: m["net_profit"]) if curve else None
+    total_12m = sum(m["net_profit"] for m in curve)
+
+    pj_out_fee_each = max(3.0, 0.0080 * avg_out)
+
+    return {
+        "snapshot": snapshot,
+        "growth_curve": curve,
+        "milestones": {
+            "first_profitable_month": first_profitable["month"] if first_profitable else None,
+            "peak_monthly_profit": peak["net_profit"] if peak else 0,
+            "peak_month": peak["month"] if peak else None,
+            "cumulative_matrix_end": curve[-1]["cumulative_matrix"] if curve else 0,
+            "total_projected_profit": round(total_12m, 2),
+        },
+        "model_constants": {
+            "asaas_free_outbound_per_month": ASAAS_PIX_OUTBOUND_FREE_MONTHLY,
+            "asaas_outbound_cost_after_quota": 2.00,
+            "asaas_inbound_net_cost": 0.00,
+            "pf_outbound_fee": 2.50,
+            "pf_margin_per_tx_after_quota": 0.50,
+            "pf_margin_first_30_tx": 2.50,
+            "pj_outbound_fee_at_avg": round(pj_out_fee_each, 2),
+            "pj_margin_at_avg": round(pj_out_fee_each - 2.0, 2),
+            "pj_inbound_pure_revenue": True,
+        },
     }
 

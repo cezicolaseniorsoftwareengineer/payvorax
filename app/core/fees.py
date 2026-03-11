@@ -254,6 +254,171 @@ def fee_breakdown(cpf_cnpj: str, amount: float, *, is_external: bool, is_receive
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Monthly quota constants (verified from Asaas account statement 11/03/2026)
+# ─────────────────────────────────────────────────────────────────────────────
+# The first 30 outbound PIX transfers per month incur ZERO Asaas cost.
+# Every subsequent transfer costs R$2.00 (confirmed: two R$2.00 charges on 11/03
+# after ~30 outbound transactions were exhausted in the same month).
+# The first 100 inbound PIX charges per month are also fully discounted (R$0.00 net).
+# Partial mensageria discount (R$0.32 vs R$0.99) observed on the last inbound of
+# 11/03 signals the messaging quota reaching near-exhaustion.
+ASAAS_PIX_OUTBOUND_FREE_MONTHLY = 30   # free outbound PIX transfers per month
+ASAAS_PIX_INBOUND_FREE_MONTHLY  = 100  # free inbound PIX charges per month
+
+
+def monthly_revenue_projection(
+    *,
+    active_users: int,
+    tx_per_user_per_month: float,
+    pj_ratio: float = 0.20,
+    avg_outbound_value: float = 150.0,
+    avg_inbound_value: float = 100.0,
+    inbound_tx_ratio: float = 0.50,
+    outbound_free_quota_used: int = 0,
+) -> dict:
+    """
+    Computes a monthly revenue projection for the platform.
+
+    Revenue model:
+      PF outbound  : R$2.50 fixed per transaction
+      PJ outbound  : max(R$3.00, 0.80% x avg_value) per transaction
+      PJ inbound   : max(R$0.49, 0.49% x avg_value) per transaction — pure revenue (no Asaas cost)
+      PF inbound   : R$0.00 — free by design
+
+    Cost model:
+      Outbound Asaas: R$0.00 for first (30 - outbound_free_quota_used) transfers,
+                      R$2.00 flat for all subsequent.
+      Inbound Asaas:  R$0.00 (within free quota).
+
+    Args:
+        active_users             : Total active users on the platform.
+        tx_per_user_per_month    : Average outbound transactions per user per month.
+        pj_ratio                 : Fraction of PJ accounts (0.0 – 1.0). Default 0.20.
+        avg_outbound_value       : Average value of an outbound PIX (BRL). Default R$150.
+        avg_inbound_value        : Average value of an inbound PIX charge (BRL). Default R$100.
+        inbound_tx_ratio         : Fraction of users who also receive. Default 0.50.
+        outbound_free_quota_used : Free outbound slots already consumed this month.
+    """
+    pf_ratio = 1.0 - pj_ratio
+
+    pf_out_count = active_users * pf_ratio * tx_per_user_per_month
+    pj_out_count = active_users * pj_ratio * tx_per_user_per_month
+    total_out_count = pf_out_count + pj_out_count
+    pj_in_count = active_users * pj_ratio * inbound_tx_ratio * tx_per_user_per_month
+
+    remaining_free = max(0, ASAAS_PIX_OUTBOUND_FREE_MONTHLY - outbound_free_quota_used)
+    free_used = min(remaining_free, total_out_count)
+    paid_out_count = max(0.0, total_out_count - free_used)
+
+    pf_out_fee_each = float(_PIX_SENT_PF)
+    pj_out_fee_each = max(float(_PIX_SENT_MIN_PJ), float(_PIX_SENT_RATE_PJ) * avg_outbound_value)
+    pj_in_fee_each  = max(float(_PIX_RECV_MIN_PJ), float(_PIX_RECV_RATE_PJ) * avg_inbound_value)
+
+    pf_out_revenue  = pf_out_count * pf_out_fee_each
+    pj_out_revenue  = pj_out_count * pj_out_fee_each
+    outbound_revenue = pf_out_revenue + pj_out_revenue
+    inbound_revenue  = pj_in_count * pj_in_fee_each
+
+    asaas_outbound_cost = paid_out_count * float(ASAAS_PIX_OUTBOUND_COST)
+    gross_revenue = outbound_revenue + inbound_revenue
+    net_profit    = gross_revenue - asaas_outbound_cost
+    margin_pct    = (net_profit / gross_revenue * 100.0) if gross_revenue > 0 else 0.0
+
+    pf_margin_per_tx = pf_out_fee_each - float(ASAAS_PIX_OUTBOUND_COST)
+    pj_margin_per_tx = pj_out_fee_each - float(ASAAS_PIX_OUTBOUND_COST)
+
+    return {
+        "inputs": {
+            "active_users": active_users,
+            "tx_per_user_per_month": tx_per_user_per_month,
+            "pj_ratio_pct": round(pj_ratio * 100, 1),
+            "avg_outbound_value": avg_outbound_value,
+            "avg_inbound_value": avg_inbound_value,
+        },
+        "transactions": {
+            "pf_outbound": round(pf_out_count),
+            "pj_outbound": round(pj_out_count),
+            "total_outbound": round(total_out_count),
+            "pj_inbound": round(pj_in_count),
+            "free_outbound_used": round(free_used),
+            "paid_outbound": round(paid_out_count),
+        },
+        "revenue": {
+            "pf_outbound": round(pf_out_revenue, 2),
+            "pj_outbound": round(pj_out_revenue, 2),
+            "outbound_total": round(outbound_revenue, 2),
+            "pj_inbound": round(inbound_revenue, 2),
+            "gross": round(gross_revenue, 2),
+        },
+        "costs": {
+            "asaas_outbound": round(asaas_outbound_cost, 2),
+            "asaas_inbound": 0.0,
+            "total": round(asaas_outbound_cost, 2),
+        },
+        "profit": {
+            "net": round(net_profit, 2),
+            "margin_pct": round(margin_pct, 1),
+        },
+        "unit_economics": {
+            "pf_outbound_fee": round(pf_out_fee_each, 2),
+            "pj_outbound_fee": round(pj_out_fee_each, 2),
+            "pj_inbound_fee": round(pj_in_fee_each, 2),
+            "asaas_cost_per_paid_tx": float(ASAAS_PIX_OUTBOUND_COST),
+            "pf_margin_per_tx": round(pf_margin_per_tx, 2),
+            "pj_margin_per_tx": round(pj_margin_per_tx, 2),
+            "first_30_margin_pct": 100.0,
+        },
+    }
+
+
+def growth_projection(
+    *,
+    months: int = 12,
+    initial_users: int = 10,
+    monthly_user_growth_rate: float = 0.25,
+    tx_per_user_per_month: float = 3.0,
+    pj_ratio: float = 0.20,
+    avg_outbound_value: float = 150.0,
+    avg_inbound_value: float = 100.0,
+) -> list:
+    """
+    Compound growth projection over N months.
+
+    Users grow at `monthly_user_growth_rate` per month (compounding):
+        users(n) = initial_users x (1 + monthly_user_growth_rate)^(n-1)
+
+    Returns a list of monthly snapshots. Each snapshot records users, revenue,
+    cost, net profit, and cumulative Matrix balance (sum of all prior profits).
+    The cumulative Matrix balance is the platform's retained earns available
+    for operational withdrawal or reinvestment.
+    """
+    snapshots = []
+    cumulative_matrix = 0.0
+    for month in range(1, months + 1):
+        users_this_month = max(1, int(initial_users * ((1.0 + monthly_user_growth_rate) ** (month - 1))))
+        p = monthly_revenue_projection(
+            active_users=users_this_month,
+            tx_per_user_per_month=tx_per_user_per_month,
+            pj_ratio=pj_ratio,
+            avg_outbound_value=avg_outbound_value,
+            avg_inbound_value=avg_inbound_value,
+        )
+        net = p["profit"]["net"]
+        cumulative_matrix = round(cumulative_matrix + net, 2)
+        snapshots.append({
+            "month": month,
+            "users": users_this_month,
+            "gross_revenue": p["revenue"]["gross"],
+            "total_cost": p["costs"]["total"],
+            "net_profit": net,
+            "cumulative_matrix": cumulative_matrix,
+            "margin_pct": p["profit"]["margin_pct"],
+            "total_outbound_tx": p["transactions"]["total_outbound"],
+        })
+    return snapshots
+
+
 def calculate_boleto_fee(cpf_cnpj: str) -> Decimal:
     """
     Returns the fixed fee for boleto payments based on account type.
