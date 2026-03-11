@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+﻿name: CI/CD Pipeline
 
 on:
     push:
@@ -8,7 +8,7 @@ on:
 
 env:
     PYTHON_VERSION: "3.11"
-    DOCKER_IMAGE: payvorax
+    DOCKER_IMAGE: Bio Code Tech Pay
 
 jobs:
     quality-assurance:
@@ -51,7 +51,7 @@ jobs:
 
             - name: Run Tests (Pytest)
               env:
-                  PAYVORAX_ALLOWED_START: "true"
+                  BIO_CODE_TECH_PAY_ALLOWED_START: "true"
               run: |
                   # Running tests with coverage
                   # Reduced coverage threshold temporarily to allow for incremental improvement
