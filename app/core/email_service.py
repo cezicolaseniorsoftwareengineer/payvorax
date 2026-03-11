@@ -10,13 +10,17 @@ Architecture decision:
 Resend docs: https://resend.com/docs/send-with-python
 """
 
-import resend
+try:
+    import resend as _resend
+except ImportError:  # pragma: no cover — resend is in requirements.txt for production
+    _resend = None  # type: ignore[assignment]
+
 from app.core.config import settings
 from app.core.logger import logger
 
 
 def _configured() -> bool:
-    return bool(settings.RESEND_API_KEY)
+    return bool(settings.RESEND_API_KEY) and _resend is not None
 
 
 def _from_address() -> str:
@@ -43,9 +47,9 @@ def send_email(to: str, subject: str, html_body: str) -> bool:
         return False
 
     try:
-        resend.api_key = settings.RESEND_API_KEY  # injected from env at call time
+        _resend.api_key = settings.RESEND_API_KEY  # injected from env at call time
 
-        resend.Emails.send({
+        _resend.Emails.send({
             "from": _from_address(),
             "to": [to],
             "subject": subject,
