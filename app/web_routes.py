@@ -139,6 +139,8 @@ async def admin_panel(
         "verified_docs": sum(1 for u in users if u.document_verified),
         "verified_emails": sum(1 for u in users if u.email_verified),
         "matrix_balance": matrix_balance,
+        "admin_email": settings.ADMIN_EMAIL,
+        "matrix_email": settings.MATRIX_ACCOUNT_EMAIL,
     })
 
 

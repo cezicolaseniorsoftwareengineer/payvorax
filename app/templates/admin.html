@@ -311,8 +311,7 @@
                                         class="text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors whitespace-nowrap">
                                         Detalhes
                                     </button>
-                                    {% if u.email != settings.ADMIN_EMAIL and u.email != settings.MATRIX_ACCOUNT_EMAIL
-                                    %}
+                                    {% if u.email != admin_email and u.email != matrix_email %}
                                     <button onclick="confirmDeleteUser('{{ u.id }}', {{ u.name | tojson }})"
                                         class="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-400 hover:bg-red-950/50 px-1.5 py-0.5 rounded transition-colors whitespace-nowrap">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"
@@ -405,7 +404,7 @@
                             </svg>
                             Ver detalhes
                         </button>
-                        {% if u.email != settings.ADMIN_EMAIL and u.email != settings.MATRIX_ACCOUNT_EMAIL %}
+                        {% if u.email != admin_email and u.email != matrix_email %}
                         <button onclick="confirmDeleteUser('{{ u.id }}', {{ u.name | tojson }})"
                             class="tap-target flex items-center justify-center gap-1.5 bg-red-950/60 hover:bg-red-900/80 active:bg-red-950 text-red-400 text-xs font-medium rounded-lg px-3 py-2 transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
