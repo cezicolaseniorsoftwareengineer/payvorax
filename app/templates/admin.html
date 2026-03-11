@@ -247,7 +247,7 @@
                             <th class="px-4 py-3 text-center font-medium">Email</th>
                             <th class="px-4 py-3 text-right font-medium">Saldo</th>
                             <th class="px-4 py-3 text-left font-medium">Cadastro</th>
-                            <th class="px-4 py-3 text-center font-medium">Acao</th>
+                            <th class="px-4 py-3 text-center font-medium">Acoes</th>
                         </tr>
                     </thead>
                     <tbody id="table-body">
@@ -305,11 +305,29 @@
                             <td class="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
                                 {{ u.created_at.strftime('%d/%m/%Y') if u.created_at else 'â€”' }}
                             </td>
-                            <td class="px-4 py-3 text-center">
-                                <button onclick="openDetail('{{ u.id }}')"
-                                    class="text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors whitespace-nowrap">
-                                    Detalhes
-                                </button>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center justify-center gap-2">
+                                    <button onclick="openDetail('{{ u.id }}')"
+                                        class="text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors whitespace-nowrap">
+                                        Detalhes
+                                    </button>
+                                    {% if u.email != settings.ADMIN_EMAIL and u.email != settings.MATRIX_ACCOUNT_EMAIL
+                                    %}
+                                    <button onclick="confirmDeleteUser('{{ u.id }}', {{ u.name | tojson }})"
+                                        class="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-400 hover:bg-red-950/50 px-1.5 py-0.5 rounded transition-colors whitespace-nowrap">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="3 6 5 6 21 6" />
+                                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                            <path d="M10 11v6" />
+                                            <path d="M14 11v6" />
+                                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                        </svg>
+                                        Excluir
+                                    </button>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -375,12 +393,34 @@
                         </span>
                     </div>
 
-                    <!-- Action -->
-                    <button onclick="openDetail('{{ u.id }}')"
-                        class="tap-target w-full flex items-center justify-center gap-2 bg-gray-800/60 hover:bg-gray-800 active:bg-gray-700 text-blue-400 text-xs font-medium rounded-lg py-2 transition-colors">
-                        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
-                        Ver detalhes
-                    </button>
+                    <!-- Actions -->
+                    <div class="flex gap-2">
+                        <button onclick="openDetail('{{ u.id }}')"
+                            class="tap-target flex-1 flex items-center justify-center gap-1.5 bg-gray-800/60 hover:bg-gray-800 active:bg-gray-700 text-blue-400 text-xs font-medium rounded-lg py-2 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            Ver detalhes
+                        </button>
+                        {% if u.email != settings.ADMIN_EMAIL and u.email != settings.MATRIX_ACCOUNT_EMAIL %}
+                        <button onclick="confirmDeleteUser('{{ u.id }}', {{ u.name | tojson }})"
+                            class="tap-target flex items-center justify-center gap-1.5 bg-red-950/60 hover:bg-red-900/80 active:bg-red-950 text-red-400 text-xs font-medium rounded-lg px-3 py-2 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                <path d="M10 11v6" />
+                                <path d="M14 11v6" />
+                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                            </svg>
+                            Excluir
+                        </button>
+                        {% endif %}
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -391,6 +431,47 @@
                 <p class="text-sm">Nenhum correntista cadastrado ainda.</p>
             </div>
             {% endif %}
+        </div>
+    </div>
+
+    <!-- Delete User Confirmation Modal -->
+    <div id="delete-confirm-modal" class="fixed inset-0 z-50 bg-black/80 hidden items-center justify-center p-4"
+        style="backdrop-filter: blur(4px);">
+        <div class="bg-gray-900 rounded-2xl border border-red-800/60 w-full max-w-md shadow-2xl">
+            <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-800">
+                <div
+                    class="w-9 h-9 rounded-full bg-red-950/80 border border-red-800/50 flex items-center justify-center flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="#f87171" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path
+                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="font-bold text-white text-sm">Excluir usuario permanentemente</h3>
+                    <p class="text-xs text-gray-500">Esta acao nao tem volta</p>
+                </div>
+            </div>
+            <div class="px-6 py-5">
+                <p class="text-sm text-gray-300 mb-2">Voce esta prestes a excluir o usuario:</p>
+                <p id="delete-user-name" class="text-base font-bold text-white mb-4 truncate"></p>
+                <div class="bg-red-950/40 border border-red-800/40 rounded-xl p-3 mb-5">
+                    <p class="text-xs text-red-300 leading-relaxed">Todos os dados serao removidos permanentemente:
+                        transacoes PIX, boletos, cartoes e o proprio cadastro. Nao e possivel desfazer.</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="closeDeleteModal()"
+                        class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors">
+                        Cancelar
+                    </button>
+                    <button id="delete-confirm-btn"
+                        class="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 active:bg-red-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        Sim, excluir permanentemente
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -573,6 +654,47 @@
             await fetch('/auth/logout', { method: 'POST' });
             window.location.href = '/login';
         }
+
+        // ── Delete User ──────────────────────────────────────────────────────
+        function confirmDeleteUser(userId, userName) {
+            const modal = document.getElementById('delete-confirm-modal');
+            document.getElementById('delete-user-name').textContent = userName;
+            document.getElementById('delete-confirm-btn').onclick = () => executeDeleteUser(userId, userName);
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-confirm-modal').style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        async function executeDeleteUser(userId, userName) {
+            const btn = document.getElementById('delete-confirm-btn');
+            btn.disabled = true;
+            btn.textContent = 'Excluindo...';
+            try {
+                const res = await fetch(`/admin/users/${userId}`, { method: 'DELETE' });
+                if (res.ok) {
+                    closeDeleteModal();
+                    window.location.reload();
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    alert('Erro ao excluir: ' + (data.detail || 'Tente novamente.'));
+                    btn.disabled = false;
+                    btn.textContent = 'Sim, excluir permanentemente';
+                }
+            } catch (e) {
+                alert('Erro de conexao ao tentar excluir o usuario.');
+                btn.disabled = false;
+                btn.textContent = 'Sim, excluir permanentemente';
+            }
+        }
+
+        document.getElementById('delete-confirm-modal').addEventListener('click', function (e) {
+            if (e.target === this) closeDeleteModal();
+        });
+        // ─────────────────────────────────────────────────────────────────────
 
         // Close modal on backdrop click
         document.getElementById('detail-modal').addEventListener('click', function (e) {

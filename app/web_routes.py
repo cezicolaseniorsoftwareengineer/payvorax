@@ -13,6 +13,8 @@ from app.core.fees import is_pj as _is_pj, calculate_pix_fee, calculate_boleto_f
 from app.pix.internal_transfer import find_recipient_user, execute_internal_transfer
 from app.pix.schemas import PixKeyType
 from app.pix.models import PixTransaction, TransactionType
+from app.boleto.models import BoletoTransaction
+from app.cards.models import CreditCard
 from decimal import Decimal as _Decimal
 import os
 
@@ -193,6 +195,59 @@ async def toggle_user_active(
     target.is_active = payload.active
     db.commit()
     return {"ok": True, "user_id": user_id, "is_active": payload.active}
+
+
+@router.delete("/admin/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Hard delete a user and all their orphaned records. Admin only. Irreversible."""
+    from app.core.logger import logger, audit_log
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso restrito.")
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuario nao encontrado.")
+    if target.email == settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=400, detail="Conta admin nao pode ser excluida.")
+    if target.email == settings.MATRIX_ACCOUNT_EMAIL:
+        raise HTTPException(status_code=400, detail="Conta matriz nao pode ser excluida.")
+    if target.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Nao e possivel excluir a propria conta.")
+
+    deleted_name = target.name
+    deleted_email = target.email
+
+    # Hard delete all orphaned records in dependency order
+    pix_count = db.query(PixTransaction).filter(PixTransaction.user_id == user_id).delete(synchronize_session=False)
+    boleto_count = db.query(BoletoTransaction).filter(BoletoTransaction.user_id == user_id).delete(synchronize_session=False)
+    card_count = db.query(CreditCard).filter(CreditCard.user_id == user_id).delete(synchronize_session=False)
+
+    db.delete(target)
+    db.commit()
+
+    audit_log(
+        action="ADMIN_USER_DELETED",
+        user=current_user.id,
+        resource=f"user_id={user_id}",
+        details={
+            "deleted_name": deleted_name,
+            "deleted_email": deleted_email,
+            "orphans_removed": {"pix": pix_count, "boleto": boleto_count, "cards": card_count},
+        },
+    )
+    logger.warning(
+        f"ADMIN hard-deleted user: id={user_id}, name={deleted_name}, "
+        f"orphans=pix:{pix_count} boleto:{boleto_count} cards:{card_count}"
+    )
+    return {
+        "ok": True,
+        "deleted": {"user_id": user_id, "name": deleted_name},
+        "orphans_removed": {"pix": pix_count, "boleto": boleto_count, "cards": card_count},
+    }
 
 
 @router.post("/admin/matrix/transfer")
