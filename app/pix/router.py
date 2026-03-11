@@ -288,6 +288,8 @@ def get_pix_fee_preview(
         "fee":           float(breakdown["platform_fee"]),
         "fee_display":   breakdown["fee_display"],
         "fee_label":     breakdown["fee_label"],
+        "network_fee":   float(breakdown["network_fee"]),
+        "service_fee":   float(breakdown["service_fee"]),
         "net_margin":    float(breakdown["net_margin"]),
         "gateway_cost":  float(breakdown["gateway_cost"]),
         "is_zero_cost":  breakdown["is_zero_cost"],
@@ -575,7 +577,7 @@ def lookup_pix_key_endpoint(
         try:
             key_type_enum = _PKT[tipo]  # e.g. "PHONE" -> PixKeyType.PHONE
         except KeyError:
-            raise HTTPException(status_code=400, detail=f"Tipo de chave invalido: '{tipo}'. Valores aceitos: CPF, CNPJ, EMAIL, TELEFONE, ALEATORIA")
+            raise HTTPException(status_code=400, detail=f"Tipo de chave inválido: '{tipo}'. Valores aceitos: CPF, CNPJ, EMAIL, TELEFONE, ALEATORIA")
 
     # 2. Normalize the raw key to its canonical form
     chave_normalizada = _normalize_pix_key(chave.strip(), tipo)
@@ -605,9 +607,9 @@ def lookup_pix_key_endpoint(
                 # Gateway indisponivel (rede, sandbox, erro 5xx) — soft pass: nao bloquear envio
                 return {
                     "found": True,
-                    "name": "Destinatario nao identificado",
+                    "name": "Destinatário não identificado",
                     "document": "***",
-                    "bank": "Transferencia via rede PIX",
+                    "bank": "Transferência via rede PIX",
                     "internal": False,
                     "unverified": True,
                 }
@@ -617,15 +619,15 @@ def lookup_pix_key_endpoint(
                 if reason == "invalid_format":
                     return {
                         "found": False,
-                        "error": "Formato de chave invalido para o tipo selecionado.",
+                        "error": "Formato de chave inválido para o tipo selecionado.",
                     }
                 # 404 do DICT: chave nao cadastrada no Asaas sandbox, mas pode existir em outro banco.
                 # Soft pass — nao bloquear; a rede PIX valida no momento do envio.
                 return {
                     "found": True,
-                    "name": "Destinatario nao identificado",
+                    "name": "Destinatário não identificado",
                     "document": "***",
-                    "bank": "Transferencia via rede PIX",
+                    "bank": "Transferência via rede PIX",
                     "internal": False,
                     "unverified": True,
                 }
@@ -635,7 +637,7 @@ def lookup_pix_key_endpoint(
                     "found": True,
                     "name": info["name"],
                     "document": info.get("document", "***"),
-                    "bank": info.get("bank", "Rede Bancaria"),
+                    "bank": info.get("bank", "Rede Bancária"),
                     "internal": False,
                 }
 
@@ -645,9 +647,9 @@ def lookup_pix_key_endpoint(
     # 5. Sem gateway configurado ou erro inesperado — soft pass para nao bloquear envio
     return {
         "found": True,
-        "name": "Destinatario nao identificado",
+        "name": "Destinatário não identificado",
         "document": "***",
-        "bank": "Transferencia via rede PIX",
+        "bank": "Transferência via rede PIX",
         "internal": False,
         "unverified": True,
     }
@@ -865,7 +867,7 @@ def verify_pix_charge_payment(
 
     gateway = get_payment_gateway()
     if not gateway:
-        raise HTTPException(status_code=503, detail="Servico de pagamento temporariamente indisponivel.")
+        raise HTTPException(status_code=503, detail="Serviço de pagamento temporariamente indisponível.")
 
     try:
         charge_status = gateway.get_charge_status(charge_id)
@@ -894,7 +896,7 @@ def verify_pix_charge_payment(
         # Not paid yet
         raise HTTPException(
             status_code=202,
-            detail=f"Pagamento ainda nao confirmado. Status: {charge_status.get('status', 'PENDING')}. Aguarde e tente novamente."
+            detail=f"Pagamento ainda não confirmado. Status: {charge_status.get('status', 'PENDING')}. Aguarde e tente novamente."
         )
 
     except HTTPException:
@@ -923,7 +925,7 @@ def consultar_pix_qrcode(
     internal_charge, is_already_paid = _find_internal_qrcode_charge(data.payload, db, logger)
 
     if is_already_paid:
-        raise HTTPException(status_code=409, detail="Esta cobranca ja foi paga.")
+        raise HTTPException(status_code=409, detail="Esta cobrança já foi paga.")
 
     if internal_charge:
         receiver = db.query(User).filter(User.id == internal_charge.user_id).first()
@@ -962,7 +964,7 @@ def consultar_pix_qrcode(
 
     raise HTTPException(
         status_code=422,
-        detail="Nao foi possivel determinar o valor deste QR Code. Verifique se o codigo e valido."
+        detail="Não foi possível determinar o valor deste QR Code. Verifique se o código é válido."
     )
 
 
@@ -1005,12 +1007,12 @@ def pay_pix_qrcode(
 
     sender = db.query(User).filter(User.id == current_user.id).first()
     if not sender:
-        raise HTTPException(status_code=404, detail="Usuario nao encontrado.")
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
 
     # Resolve internal/external routing — shared helper used by /consultar and /pagar
     internal_charge, is_already_paid = _find_internal_qrcode_charge(data.payload, db, logger)
     if is_already_paid:
-        raise HTTPException(status_code=409, detail="Esta cobranca ja foi paga.")
+        raise HTTPException(status_code=409, detail="Esta cobrança já foi paga.")
 
     if internal_charge:
         charge_value = float(internal_charge.value)
@@ -1024,7 +1026,7 @@ def pay_pix_qrcode(
         )
 
         if internal_charge.status != PixStatus.CREATED:
-            raise HTTPException(status_code=409, detail="Esta cobranca ja foi paga.")
+            raise HTTPException(status_code=409, detail="Esta cobrança já foi paga.")
 
         is_self_deposit = (internal_charge.user_id == current_user.id)
 
@@ -1032,7 +1034,7 @@ def pay_pix_qrcode(
             if sender.balance < charge_value:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Saldo insuficiente. Disponivel: R$ {sender.balance:.2f}, Necessario: R$ {charge_value:.2f}"
+                    detail=f"Saldo insuficiente. Disponível: R$ {sender.balance:.2f}, Necessário: R$ {charge_value:.2f}"
                 )
             previous_balance = sender.balance
             sender.balance -= charge_value
@@ -1090,14 +1092,14 @@ def pay_pix_qrcode(
     if sender.balance <= 0:
         raise HTTPException(
             status_code=400,
-            detail=f"Saldo insuficiente. Disponivel: R$ {sender.balance:.2f}"
+            detail=f"Saldo insuficiente. Disponível: R$ {sender.balance:.2f}"
         )
 
     gateway = get_payment_gateway()
     if not gateway:
         raise HTTPException(
             status_code=503,
-            detail="Servico de pagamento temporariamente indisponivel."
+            detail="Serviço de pagamento temporariamente indisponível."
         )
 
     try:
@@ -1138,13 +1140,13 @@ def pay_pix_qrcode(
     if payment_value <= 0:
         raise HTTPException(
             status_code=422,
-            detail="Nao foi possivel determinar o valor do pagamento. Verifique o codigo QR."
+            detail="Não foi possível determinar o valor do pagamento. Verifique o código QR."
         )
 
     if sender.balance < payment_value:
         raise HTTPException(
             status_code=400,
-            detail=f"Saldo insuficiente. Disponivel: R$ {sender.balance:.2f}, Necessario: R$ {payment_value:.2f}"
+            detail=f"Saldo insuficiente. Disponível: R$ {sender.balance:.2f}, Necessário: R$ {payment_value:.2f}"
         )
 
     payment_id = result.get("payment_id") or str(uuid4())

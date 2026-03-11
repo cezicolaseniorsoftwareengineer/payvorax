@@ -85,13 +85,15 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
             # Divergence detected — attempt auto-correction when internal > asaas
             _AUTO_CORRECTION_MAX = 20.0  # only auto-correct diffs up to R$20 (max ~10 Asaas fees)
             if signed_diff > 0.01 and abs_diff <= _AUTO_CORRECTION_MAX and matrix_user is not None:
-                # Internal exceeds Asaas by a small amount: Asaas gateway fees consumed balance.
-                # Debit Matrix to reconcile.
+                # Internal exceeds Asaas — gateway fees consumed Asaas balance without
+                # a corresponding internal deduction. Debit Matrix to reconcile.
+                # Matrix is allowed to go negative: it represents a gateway cost debt
+                # that will be offset by future service-fee revenue.
                 db2 = db_factory()
                 try:
                     from app.auth.models import User as _User
                     live_matrix = db2.query(_User).filter(_User.email == settings.MATRIX_ACCOUNT_EMAIL).first()
-                    if live_matrix and float(live_matrix.balance) >= abs_diff:
+                    if live_matrix is not None:
                         live_matrix.balance = round(float(live_matrix.balance) - abs_diff, 2)
                         db2.commit()
                         result["correction_applied"] = {
@@ -116,15 +118,48 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
                         )
                         result["status"] = "AUTO_CORRECTED"
                     else:
-                        result["status"] = "ERROR" if abs_diff >= 10 else "WARN"
-                        logger.warning(
-                            f"[audit-worker] Cannot auto-correct: insufficient Matrix balance "
-                            f"(matrix=R${float(live_matrix.balance) if live_matrix else 0:.2f} diff=R${abs_diff:.2f})"
+                        result["status"] = "ERROR"
+                        logger.error("[audit-worker] Cannot auto-correct: Matrix account not found")
+                finally:
+                    db2.close()
+            elif signed_diff < -0.01 and abs_diff <= _AUTO_CORRECTION_MAX and matrix_user is not None:
+                # Asaas exceeds internal: credit Matrix to restore parity.
+                db2 = db_factory()
+                try:
+                    from app.auth.models import User as _User
+                    live_matrix = db2.query(_User).filter(_User.email == settings.MATRIX_ACCOUNT_EMAIL).first()
+                    if live_matrix is not None:
+                        old_balance = float(live_matrix.balance)
+                        live_matrix.balance = round(old_balance + abs_diff, 2)
+                        db2.commit()
+                        result["correction_applied"] = {
+                            "action": "matrix_credited",
+                            "amount": abs_diff,
+                            "matrix_balance_after": float(live_matrix.balance),
+                        }
+                        audit_log(
+                            action="AUDIT_AUTO_CORRECTION",
+                            user="audit-worker",
+                            resource="matrix_balance",
+                            details={
+                                "diff": abs_diff,
+                                "direction": "asaas_above_internal",
+                                "matrix_balance_after": float(live_matrix.balance),
+                                "asaas_balance": asaas_balance,
+                            },
                         )
+                        logger.info(
+                            f"[audit-worker] AUTO-CORRECTION applied: Matrix credited R${abs_diff:.2f} "
+                            f"new_matrix=R${live_matrix.balance:.2f}"
+                        )
+                        result["status"] = "AUTO_CORRECTED"
+                    else:
+                        result["status"] = "WARN"
+                        logger.warning("[audit-worker] Cannot auto-correct: Matrix account not found")
                 finally:
                     db2.close()
             else:
-                # diff > R$20 (structural imbalance) or Asaas > internal — log only, no auto-correct
+                # diff > R$20 on either side — structural imbalance, manual action required
                 result["status"] = "ERROR" if abs_diff >= 10 else "WARN"
                 logger.warning(
                     f"[audit-worker] DIVERGENCE (no-autocorrect) direction={'internal_above_asaas' if signed_diff > 0 else 'asaas_above_internal'} "

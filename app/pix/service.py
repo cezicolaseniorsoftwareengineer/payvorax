@@ -18,7 +18,7 @@ from app.boleto.models import BoletoTransaction, BoletoStatus
 from app.auth.models import User
 from app.adapters.gateway_factory import get_payment_gateway
 from app.pix.internal_transfer import find_recipient_user, execute_internal_transfer
-from app.core.fees import calculate_pix_fee, fee_display
+from app.core.fees import calculate_pix_fee, fee_display, PLATFORM_PIX_OUTBOUND_NETWORK_FEE
 from app.core.matrix import credit_fee
 
 
@@ -166,8 +166,14 @@ def create_pix(
                 sender.balance -= total_required
                 db.add(sender)
 
-                # Credit fee to BioCodeTechPay matrix account (same transaction)
-                credit_fee(db, float(pix_fee))
+                # Credit only the SERVICE margin to Matrix.
+                # The network_fee portion (R$2.00 = Asaas cost) is NOT credited here:
+                # it is accounted for implicitly when Asaas deducts R$2.00 from the
+                # Asaas balance, keeping internal total and Asaas perfectly in sync.
+                # During free-quota months the R$2.00 becomes Matrix profit via audit.
+                service_margin = max(0.0, float(pix_fee) - float(PLATFORM_PIX_OUTBOUND_NETWORK_FEE))
+                if service_margin > 0:
+                    credit_fee(db, service_margin)
 
                 initial_status = PixStatus.CONFIRMED
     else:

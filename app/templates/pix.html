@@ -183,7 +183,7 @@
 
             </div>
 
-            <p class="text-sm text-gray-500">Abrindo camera...</p>
+            <p class="text-sm text-gray-500">Abrindo câmera...</p>
 
         </div>
 
@@ -201,7 +201,7 @@
 
             <div>
 
-                <p class="font-semibold text-gray-800">QR code nao encontrado</p>
+                <p class="font-semibold text-gray-800">QR code não encontrado</p>
 
                 <p class="text-xs text-gray-500 mt-1">Tempo esgotado apos 60 segundos</p>
 
@@ -237,7 +237,7 @@
 
                 <p class="font-semibold text-gray-800">Pix Copia e Cola</p>
 
-                <p class="text-sm text-gray-500">Insira o codigo do Pix Copia e Cola</p>
+                <p class="text-sm text-gray-500">Insira o código do Pix Copia e Cola</p>
 
             </div>
 
@@ -368,7 +368,7 @@
 
                         <option value="TELEFONE">Telefone</option>
 
-                        <option value="ALEATORIA">Chave Aleatoria</option>
+                        <option value="ALEATORIA">Chave Aleatória</option>
 
                     </select>
 
@@ -423,7 +423,8 @@
                         </div>
 
                         <span id="recipientBadge"
-                            class="hidden text-xs bg-blue-100 text-blue-800 font-semibold px-2 py-1 rounded-full flex-shrink-0">correntista BioCodeTechPay</span>
+                            class="hidden text-xs bg-blue-100 text-blue-800 font-semibold px-2 py-1 rounded-full flex-shrink-0">correntista
+                            BioCodeTechPay</span>
 
                     </div>
 
@@ -445,26 +446,36 @@
 
 
                 <!-- Fee preview badge (shown after key resolution) -->
-
                 <div id="feePreviewBadge"
-                    class="hidden rounded-xl border border-blue-100 bg-blue-50 p-3 flex items-center justify-between gap-2 text-sm">
+                    class="hidden rounded-xl border border-blue-100 bg-blue-50 p-3 flex flex-col gap-1.5 text-sm">
 
-                    <div class="flex items-center gap-2 text-blue-700">
-
-                        <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
-
-                        <span id="feePreviewLabel">Taxa de servico BioCodeTechPay</span>
-
+                    <!-- Taxa de Rede -->
+                    <div class="flex items-center justify-between gap-2 text-blue-700">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="network" class="w-4 h-4 flex-shrink-0"></i>
+                            <span>Taxa de Rede</span>
+                        </div>
+                        <span id="feeNetworkValue" class="font-semibold text-blue-800 whitespace-nowrap"></span>
                     </div>
 
-                    <span id="feePreviewValue" class="font-semibold text-blue-800 whitespace-nowrap"></span>
+                    <!-- Taxa de Serviço -->
+                    <div class="flex items-center justify-between gap-2 text-blue-700">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
+                            <span id="feePreviewLabel">Taxa de Serviço</span>
+                        </div>
+                        <span id="feePreviewValue" class="font-semibold text-blue-800 whitespace-nowrap"></span>
+                    </div>
 
+                    <!-- Divisor + Total -->
+                    <div
+                        class="border-t border-blue-200 pt-1 flex items-center justify-between gap-2 text-blue-900 font-semibold">
+                        <span>Total de taxas</span>
+                        <span id="feeTotalValue" class="whitespace-nowrap"></span>
+                    </div>
                 </div>
 
-
-
                 <!-- Agendamento Toggle -->
-
                 <div class="flex items-center gap-2 pt-2">
 
                     <input type="checkbox" id="toggleAgendamento"
@@ -579,12 +590,15 @@
 
                     </div>
 
-                    <div id="comprovante_taxa_row" class="hidden flex justify-between items-center">
-
-                        <span class="text-sm text-gray-500">Taxa BioCodeTechPay</span>
-
-                        <span id="comprovante_taxa" class="text-sm font-medium text-orange-700"></span>
-
+                    <div id="comprovante_taxa_row" class="hidden flex flex-col gap-1 pt-1 border-t border-gray-100">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-500">Taxa de Rede</span>
+                            <span id="comprovante_taxa_rede" class="text-sm font-medium text-orange-700"></span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-500">Taxa de Serviço</span>
+                            <span id="comprovante_taxa" class="text-sm font-medium text-orange-700"></span>
+                        </div>
                     </div>
 
                 </div>
@@ -686,7 +700,7 @@
 
                     <p class="text-xs text-gray-400 mb-4">CNPJ 61.425.124/0001-03</p>
 
-                    <p class="text-xs text-gray-400 mb-0.5">ID da transacao</p>
+                    <p class="text-xs text-gray-400 mb-0.5">ID da transação</p>
 
                     <p id="comprovante_e2e" class="text-xs font-mono text-gray-600 break-all"></p>
 
@@ -983,7 +997,7 @@
     <div
         style="position:absolute;bottom:0;left:0;right:0;z-index:30;text-align:center;background:linear-gradient(to top,rgba(0,0,0,0.75) 0%,transparent 100%);padding:28px 24px max(24px,env(safe-area-inset-bottom,0px));">
 
-        <p style="color:#fff;font-size:14px;font-weight:500;margin:0 0 4px;">Aponte a camera para o QR Code</p>
+        <p style="color:#fff;font-size:14px;font-weight:500;margin:0 0 4px;">Aponte a câmera para o QR Code</p>
 
         <p style="color:#9ca3af;font-size:12px;margin:0 0 20px;">Tempo restante: <span id="qr-countdown"
                 style="color:#fff;font-weight:600;">60s</span></p>
@@ -1127,11 +1141,12 @@
 
         // Seed balance from server-rendered value; PVX.refreshBalance() will keep it updated
 
-        PVX._currentBalance = {{ user_balance | default(0) }};
+        PVX._currentBalance = {{ user_balance | default (0) }
+    };
 
-        // Real-time balance validation as user types the amount
+    // Real-time balance validation as user types the amount
 
-        document.getElementById('valor').addEventListener('input', updateBalanceFeedback);
+    document.getElementById('valor').addEventListener('input', updateBalanceFeedback);
 
     });
 
@@ -1389,7 +1404,7 @@
 
                     stopScanner('idle');
 
-                    PVX.showToast('Camera nao acessivel. Verifique as permissoes do navegador ou use Pix Copia e Cola.', 'error');
+                    PVX.showToast('Câmera não acessível. Verifique as permissões do navegador ou use Pix Copia e Cola.', 'error');
 
                 }
 
@@ -1627,7 +1642,7 @@
 
                 document.getElementById('copiaColaErrorMsg').textContent =
 
-                    (typeof err.detail === 'string' ? err.detail : null) || 'Nao foi possivel verificar este QR Code.';
+                    (typeof err.detail === 'string' ? err.detail : null) || 'Não foi possível verificar este QR Code.';
 
                 _consultInProgress = false;
 
@@ -1973,7 +1988,7 @@
 
                     } else if (data.status === 'FALHOU') {
 
-                        PVX.showToast('Pagamento nao processado. Verifique seu saldo.', 'error', 5000);
+                        PVX.showToast('Pagamento não processado. Verifique seu saldo.', 'error', 5000);
 
                     }
 
@@ -2301,7 +2316,7 @@
 
             fb.innerHTML = '<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>'
 
-                + '<span>Saldo insuficiente. Disponivel: R$ ' + fmtBRL(balance) + feeText + '</span>';
+                + '<span>Saldo insuficiente. Disponível: R$ ' + fmtBRL(balance) + feeText + '</span>';
 
             fb.classList.remove('hidden');
 
@@ -2317,7 +2332,7 @@
 
             fb.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i>'
 
-                + '<span>Saldo OK. Restara: R$ ' + fmtBRL(remaining) + '</span>';
+                + '<span>Saldo OK. Restará: R$ ' + fmtBRL(remaining) + '</span>';
 
             fb.classList.remove('hidden');
 
@@ -2339,60 +2354,54 @@
 
 
 
-    function computePixFeeDisplay(valueFloat, isInternal) {
-
-        if (isInternal) return 'Gratuito';
-
-        if (!USER_IS_PJ) return 'R$ 2,50';
-
-        const rate = valueFloat * 0.008;
-
-        const fee = Math.max(rate, 3.00);
-
-        return 'R$ ' + fee.toFixed(2).replace('.', ',');
-
+    function computePixFeeNumericNetwork() {
+        // Taxa de Rede = custo Asaas por Pix externo (R$2,00)
+        return 2.00;
     }
 
+    function computePixFeeNumericService(valueFloat) {
+        // Taxa de Serviço = margem da plataforma
+        if (!USER_IS_PJ) return 2.50 - 2.00; // R$0,50
+        return Math.max(valueFloat * 0.008, 3.00) - 2.00;
+    }
 
+    function computePixFeeDisplay(valueFloat, isInternal) {
+        if (isInternal) return 'Gratuito';
+        if (!USER_IS_PJ) return 'R$ 2,50';
+        const rate = valueFloat * 0.008;
+        const fee = Math.max(rate, 3.00);
+        return 'R$ ' + fee.toFixed(2).replace('.', ',');
+    }
+
+    const _fmtBRL = (n) => 'R$ ' + n.toFixed(2).replace('.', ',');
 
     function showFeePreview(isInternal, valueFloat) {
-
         const badge = document.getElementById('feePreviewBadge');
-
         const label = document.getElementById('feePreviewLabel');
-
         const valueEl = document.getElementById('feePreviewValue');
-
+        const netEl = document.getElementById('feeNetworkValue');
+        const totalEl = document.getElementById('feeTotalValue');
         if (!badge) return;
-
         if (isInternal) {
-
             badge.classList.add('hidden');
-
             return;
-
         }
+        const networkFee = computePixFeeNumericNetwork();
+        const serviceFee = computePixFeeNumericService(valueFloat || 0);
+        const totalFee = networkFee + serviceFee;
 
-        const feeStr = computePixFeeDisplay(valueFloat || 0, false);
-
-        label.textContent = USER_IS_PJ ? 'Taxa PJ (0,8% do valor, min R$ 3,00)' : 'Taxa de servico (Pix externo) R$ 2,50';
-
-        valueEl.textContent = feeStr;
+        if (netEl) netEl.textContent = _fmtBRL(networkFee);
+        if (valueEl) valueEl.textContent = _fmtBRL(serviceFee);
+        if (totalEl) totalEl.textContent = _fmtBRL(totalFee);
+        if (label) label.textContent = USER_IS_PJ ? 'Serviço PJ (0,8% do valor, mín. R$ 1,00)' : 'Serviço PF';
 
         badge.classList.remove('hidden');
-
         lucide.createIcons();
-
     }
 
-
-
     function hideFeePreview() {
-
         const badge = document.getElementById('feePreviewBadge');
-
         if (badge) badge.classList.add('hidden');
-
     }
 
 
@@ -2549,7 +2558,7 @@
 
                     // Unico caso bloqueante real: formato invalido da chave
 
-                    const msg = data.error || 'Formato de chave invalido para o tipo selecionado.';
+                    const msg = data.error || 'Formato de chave inválido para o tipo selecionado.';
 
                     _showLookupError(msg);
 
@@ -2885,22 +2894,19 @@
 
 
 
-        // Fee row
-
+        // Fee row — two-line breakdown: Taxa de Rede + Taxa de Serviço
         const taxaRow = document.getElementById('comprovante_taxa_row');
-
         const taxaEl = document.getElementById('comprovante_taxa');
-
+        const taxaRede = document.getElementById('comprovante_taxa_rede');
         if (result.fee_amount && result.fee_amount > 0) {
-
-            taxaEl.textContent = result.fee_description || ('R$ ' + Number(result.fee_amount).toFixed(2).replace('.', ','));
-
+            const totalFee = Number(result.fee_amount);
+            const networkFee = 2.00;
+            const serviceFee = Math.max(0, totalFee - networkFee);
+            if (taxaRede) taxaRede.textContent = _fmtBRL(networkFee);
+            if (taxaEl) taxaEl.textContent = _fmtBRL(serviceFee);
             taxaRow.classList.remove('hidden');
-
         } else {
-
             taxaRow.classList.add('hidden');
-
         }
 
 

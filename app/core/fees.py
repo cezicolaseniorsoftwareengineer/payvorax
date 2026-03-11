@@ -205,13 +205,38 @@ def minimum_viable_outbound_amount(cpf_cnpj: str) -> Decimal:
     return Decimal("1.00")
 
 
+# Network fee exposed to users as "Taxa de Rede" (hides Asaas identity).
+# For outbound: R$2.00 pass-through of Asaas cost (within free quota the amount
+# becomes platform profit, captured via audit correction).
+# For inbound: R$0.00 — Asaas fully discounts on current plan inside quota.
+PLATFORM_PIX_OUTBOUND_NETWORK_FEE = ASAAS_PIX_OUTBOUND_COST   # R$2.00
+PLATFORM_PIX_INBOUND_NETWORK_FEE  = ASAAS_PIX_INBOUND_NET_COST  # R$0.00
+
+
+def calculate_pix_network_fee(cpf_cnpj: str, amount: float, *, is_external: bool, is_received: bool = False) -> Decimal:
+    """Network fee pass-through shown to user as 'Taxa de Rede'."""
+    if not is_external or is_received:
+        return Decimal("0.00")
+    return PLATFORM_PIX_OUTBOUND_NETWORK_FEE
+
+
+def calculate_pix_service_fee(cpf_cnpj: str, amount: float, *, is_external: bool, is_received: bool = False) -> Decimal:
+    """Pure platform margin: total_fee minus network pass-through."""
+    total = calculate_pix_fee(cpf_cnpj, amount, is_external=is_external, is_received=is_received)
+    net   = calculate_pix_network_fee(cpf_cnpj, amount, is_external=is_external, is_received=is_received)
+    result = total - net
+    return result.quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
+
+
 def fee_breakdown(cpf_cnpj: str, amount: float, *, is_external: bool, is_received: bool = False) -> dict:
     """
     Returns a structured breakdown used by the fee-preview API endpoint.
 
     Fields:
       gateway_cost   : Asaas underlying cost for this operation.
-      platform_fee   : Fee charged to the platform client.
+      platform_fee   : Total fee charged to the platform client.
+      network_fee    : Pass-through of Asaas cost, shown as 'Taxa de Rede' to users.
+      service_fee    : Pure platform margin (platform_fee - network_fee).
       net_margin     : platform_fee - gateway_cost (platform gross profit).
       fee_label      : Human-readable label for UI display.
       fee_display    : Formatted string (e.g. "R$ 3,00").
@@ -221,32 +246,40 @@ def fee_breakdown(cpf_cnpj: str, amount: float, *, is_external: bool, is_receive
         return {
             "gateway_cost": Decimal("0.00"),
             "platform_fee": Decimal("0.00"),
+            "network_fee":  Decimal("0.00"),
+            "service_fee":  Decimal("0.00"),
             "net_margin":   Decimal("0.00"),
-            "fee_label":    "Transferencia interna — gratuita",
+            "fee_label":    "Transferência interna — gratuita",
             "fee_display":  "Gratuito",
             "is_zero_cost": True,
         }
 
     if is_received:
-        gw_cost = ASAAS_PIX_INBOUND_NET_COST
-        p_fee   = calculate_pix_receive_fee(cpf_cnpj, amount)
-        label   = (
-            "Taxa de recebimento PJ (0,49%, min R$ 0,49)"
+        gw_cost  = ASAAS_PIX_INBOUND_NET_COST
+        p_fee    = calculate_pix_receive_fee(cpf_cnpj, amount)
+        net_fee  = PLATFORM_PIX_INBOUND_NETWORK_FEE
+        svc_fee  = p_fee
+        label    = (
+            "Taxa de recebimento PJ (0,49%, mín. R$ 0,49)"
             if is_pj(cpf_cnpj)
             else "Recebimento gratuito"
         )
     else:
-        gw_cost = ASAAS_PIX_OUTBOUND_COST
-        p_fee   = calculate_pix_outbound_fee(cpf_cnpj, amount)
-        label   = (
-            "Taxa PJ (0,80% do valor, min R$ 3,00)"
+        gw_cost  = ASAAS_PIX_OUTBOUND_COST
+        p_fee    = calculate_pix_outbound_fee(cpf_cnpj, amount)
+        net_fee  = PLATFORM_PIX_OUTBOUND_NETWORK_FEE
+        svc_fee  = (p_fee - net_fee).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
+        label    = (
+            "Taxa PJ (0,80% do valor, mín. R$ 3,00)"
             if is_pj(cpf_cnpj)
-            else "Taxa de servico (Pix externo) R$ 2,50"
+            else "Taxa de serviço (Pix externo)"
         )
 
     return {
         "gateway_cost": gw_cost,
         "platform_fee": p_fee,
+        "network_fee":  net_fee,
+        "service_fee":  svc_fee,
         "net_margin":   (p_fee - gw_cost).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP),
         "fee_label":    label,
         "fee_display":  fee_display(p_fee),
