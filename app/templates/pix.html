@@ -1129,12 +1129,11 @@
 
         // Seed balance from server-rendered value; PVX.refreshBalance() will keep it updated
 
-        PVX._currentBalance = {{ user_balance | default (0) }
-    };
+        PVX._currentBalance = {{ user_balance | default(0) }};
 
-    // Real-time balance validation as user types the amount
+        // Real-time balance validation as user types the amount
 
-    document.getElementById('valor').addEventListener('input', updateBalanceFeedback);
+        document.getElementById('valor').addEventListener('input', updateBalanceFeedback);
 
     });
 
