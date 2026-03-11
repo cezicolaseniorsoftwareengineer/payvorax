@@ -2,26 +2,30 @@
 Transaction fee calculation engine — Bio Code Tech Pay.
 
 Fee policy:
-  Gateway cost (Asaas):
-    - Every external PIX sent:   R$ 2.00 (Asaas charges this from our account)
-    - This cost is always passed through to the client + our margin on top.
+  Gateway costs (Asaas — confirmed 11/03/2026):
+    - Every external PIX sent:     R$ 2.00  (first 100/month free)
+    - Every external PIX received: R$ 1.99  (first 100/month free)
+    - Every boleto paid:           R$ 1.99
+
+  IMPORTANT: all costs above are passed through to the client WITH margin.
+  Never set a client fee below the gateway cost — that creates structural loss.
 
   PF (CPF — 11 raw digits)
-    - External PIX sent:     R$ 2.50 fixed (R$ 2.00 Asaas cost + R$ 0.50 margin)
-    - External PIX received: free
-    - Boleto payment:        R$ 1.00 fixed
-    - Internal transfer:     free
+    - External PIX sent:     R$ 2.50 fixed  (R$2.00 Asaas + R$0.50 margin)
+    - External PIX received: R$ 2.49 fixed  (R$1.99 Asaas + R$0.50 margin)
+    - Boleto payment:        R$ 2.49 fixed  (R$1.99 Asaas + R$0.50 margin)
+    - Internal transfer:     free  (no Asaas fee — stays within platform)
 
   PJ (CNPJ — 14 raw digits)
-    - External PIX sent:     max(R$ 3.00, 0.8% of value)  — R$ 3.00 covers Asaas R$ 2.00 + R$ 1.00 margin
-    - External PIX received: 0.495% of value
-    - Boleto payment:        R$ 1.75 fixed
+    - External PIX sent:     max(R$3.00, 0.8% of value)  (R$2.00 Asaas + R$1.00 margin min)
+    - External PIX received: max(R$2.49, 0.495% of value) (R$1.99 Asaas + margin, rate for large values)
+    - Boleto payment:        R$ 2.99 fixed  (R$1.99 Asaas + R$1.00 margin)
     - Internal transfer:     free
 
 All internal transfers (Bio Code Tech Pay -> Bio Code Tech Pay) are always free.
 
-ASAAS_PIX_OUTBOUND_COST: what Asaas charges us per outbound PIX transfer.
-Update this constant when Asaas changes their pricing.
+Constants prefixed ASAAS_ document gateway costs at the time of measurement.
+Update them whenever Asaas changes their pricing.
 """
 from decimal import Decimal, ROUND_HALF_UP
 import re
@@ -29,22 +33,26 @@ import re
 
 _TWO_PLACES = Decimal("0.01")
 
-# ----------------------------------------------------------------- Gateway cost
-# Asaas charges this from our account on EVERY external PIX sent.
-# Evidence: R$ 0.25 transfer -> Asaas debited R$ 2.00 as fee (11/03/2026).
-# Our client fee must always cover this cost plus our margin.
-ASAAS_PIX_OUTBOUND_COST = Decimal("2.00")
+# ---------------------------------------------------------- Asaas gateway costs
+# Confirmed from Asaas dashboard on 11/03/2026.
+# First 100 outbound and 100 inbound PIX per month are free — steady-state
+# cost applies at scale, so all fees are calculated at the non-free rate.
+ASAAS_PIX_OUTBOUND_COST  = Decimal("2.00")   # per external PIX sent
+ASAAS_PIX_INBOUND_COST   = Decimal("1.99")   # per external PIX received (after 100 free/mo)
+ASAAS_BOLETO_COST        = Decimal("1.99")   # per boleto paid
+ASAAS_PIX_FREE_MONTHLY   = 100               # free ops per month (both in and out)
 
 # --------------------------------------------------------------------------- PF
-_PIX_SENT_PF = Decimal("2.50")   # covers ASAAS_PIX_OUTBOUND_COST (R$2.00) + R$0.50 margin
-_PIX_RECV_PF = Decimal("0.00")
-_BOLETO_PF   = Decimal("1.00")
+_PIX_SENT_PF = Decimal("2.50")   # ASAAS_PIX_OUTBOUND_COST (R$2.00) + R$0.50 margin
+_PIX_RECV_PF = Decimal("2.49")   # ASAAS_PIX_INBOUND_COST  (R$1.99) + R$0.50 margin
+_BOLETO_PF   = Decimal("2.49")   # ASAAS_BOLETO_COST        (R$1.99) + R$0.50 margin
 
 # --------------------------------------------------------------------------- PJ
 _PIX_SENT_RATE_PJ  = Decimal("0.0080")   # 0.8% of value
-_PIX_SENT_MIN_PJ   = Decimal("3.00")    # minimum: R$2.00 Asaas + R$1.00 margin
-_PIX_RECV_RATE_PJ  = Decimal("0.00495")
-_BOLETO_PJ         = Decimal("1.75")
+_PIX_SENT_MIN_PJ   = Decimal("3.00")    # minimum: ASAAS_PIX_OUTBOUND_COST + R$1.00 margin
+_PIX_RECV_RATE_PJ  = Decimal("0.00495") # 0.495% of value (scales on large transactions)
+_PIX_RECV_MIN_PJ   = Decimal("2.49")    # minimum: ASAAS_PIX_INBOUND_COST + R$0.50 margin
+_BOLETO_PJ         = Decimal("2.99")    # ASAAS_BOLETO_COST (R$1.99) + R$1.00 margin
 
 
 def _raw_digits(cpf_cnpj) -> str:
@@ -84,7 +92,8 @@ def calculate_pix_fee(
 
     if is_pj(cpf_cnpj):
         if is_received:
-            return (value * _PIX_RECV_RATE_PJ).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
+            fee = value * _PIX_RECV_RATE_PJ
+            return max(fee, _PIX_RECV_MIN_PJ).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
         fee = value * _PIX_SENT_RATE_PJ
         return max(fee, _PIX_SENT_MIN_PJ).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
     else:

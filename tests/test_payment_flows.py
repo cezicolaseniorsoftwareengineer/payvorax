@@ -143,13 +143,13 @@ class TestFeeCalculation:
         fee = calculate_pix_fee("11111111111", 200.00, is_external=False)
         assert fee == Decimal("0.00")
 
-    def test_pf_received_pix_fee_is_zero(self):
+    def test_pf_received_pix_fee_is_249(self):
         fee = calculate_pix_fee("11111111111", 500.00, is_external=True, is_received=True)
-        assert fee == Decimal("0.00")
+        assert fee == Decimal("2.49")
 
-    def test_pf_boleto_fee_is_100(self):
+    def test_pf_boleto_fee_is_249(self):
         fee = calculate_boleto_fee("11111111111")
-        assert fee == Decimal("1.00")
+        assert fee == Decimal("2.49")
 
     # PJ — external sent (0.8% min R$3.00)
     def test_pj_external_pix_fee_minimum(self):
@@ -167,9 +167,9 @@ class TestFeeCalculation:
         fee = calculate_pix_fee("61425124000103", 1000.00, is_external=True, is_received=True)
         assert fee == Decimal("4.95")
 
-    def test_pj_boleto_fee_is_175(self):
+    def test_pj_boleto_fee_is_299(self):
         fee = calculate_boleto_fee("61425124000103")
-        assert fee == Decimal("1.75")
+        assert fee == Decimal("2.99")
 
     def test_is_pj_detects_cnpj(self):
         assert is_pj("61425124000103") is True
