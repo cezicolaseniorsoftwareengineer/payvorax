@@ -32,7 +32,8 @@
                     class="w-24 h-24 object-contain rounded-full mx-auto shadow-sm mb-4">
             </a>
             <h1 class="text-2xl font-bold text-gray-800">Redefinir senha</h1>
-            <p class="text-sm text-gray-500 mt-1">Crie uma nova senha para sua conta.</p>
+            <p class="text-sm text-gray-500 mt-1">Cole a senha temporaria recebida por e-mail e defina uma nova senha.
+            </p>
         </div>
 
         <div class="w-full max-w-sm space-y-4">
@@ -44,8 +45,21 @@
             </div>
 
             <form id="resetForm" class="space-y-4">
-                <input type="hidden" id="token" value="{{ token }}">
 
+                <!-- Step 1: Temporary password from email -->
+                <div id="tempPasswordSection">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Senha temporaria <span class="text-gray-400 text-xs">(recebida por e-mail)</span>
+                    </label>
+                    <div class="relative">
+                        <input type="text" id="temp_password" required
+                            class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none transition-all font-mono tracking-widest uppercase"
+                            placeholder="Ex: BioP-XXXXXXXX" autocomplete="off" spellcheck="false">
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Cole exatamente como aparece no e-mail. Valida por 1 hora.</p>
+                </div>
+
+                <!-- Step 2: New password -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Nova senha</label>
                     <div class="relative">
@@ -59,6 +73,7 @@
                     </div>
                 </div>
 
+                <!-- Step 3: Confirm new password -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Confirmar nova senha</label>
                     <div class="relative">
@@ -96,14 +111,10 @@
             input.type = input.type === 'password' ? 'text' : 'password';
         }
 
-        // Extract token from URL if not injected server-side
-        const urlToken = new URLSearchParams(window.location.search).get('token');
-        if (urlToken) document.getElementById('token').value = urlToken;
-
         document.getElementById('resetForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const token = document.getElementById('token').value;
+            const tempPassword = document.getElementById('temp_password').value.trim();
             const newPassword = document.getElementById('new_password').value;
             const confirmPassword = document.getElementById('confirm_password').value;
             const errorDiv = document.getElementById('errorMsg');
@@ -112,8 +123,8 @@
 
             errorDiv.classList.add('hidden');
 
-            if (!token) {
-                errorDiv.textContent = 'Link inválido. Solicite um novo link de redefinição.';
+            if (!tempPassword) {
+                errorDiv.textContent = 'Cole a senha temporaria recebida por e-mail.';
                 errorDiv.classList.remove('hidden');
                 return;
             }
@@ -131,7 +142,11 @@
                 const response = await fetch('/auth/redefinir-senha', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token, new_password: newPassword })
+                    body: JSON.stringify({
+                        temp_password: tempPassword,
+                        new_password: newPassword,
+                        confirm_password: confirmPassword
+                    })
                 });
 
                 const data = await response.json();

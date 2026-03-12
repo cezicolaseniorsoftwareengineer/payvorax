@@ -5,7 +5,7 @@ from uuid import uuid4
 from typing import Optional
 from app.core.database import get_db
 from app.auth.models import User
-from app.auth.schemas import UserCreate, UserLogin, DepositRequest, DepositResponse, BalanceResponse, PasswordResetRequest, PasswordResetConfirm
+from app.auth.schemas import UserCreate, UserLogin, DepositRequest, DepositResponse, BalanceResponse, PasswordResetRequest, PasswordResetConfirm, PasswordResetConfirmWithTemp
 from app.auth.service import (
     get_password_hash,
     verify_password,
@@ -302,14 +302,16 @@ def get_balance(
 def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
     """
     Initiates password reset flow.
-    Sends reset link to registered email. Always returns 200 to avoid user enumeration.
+    Generates a readable temporary password, hashes it, stores it, and sends it by email.
+    The user pastes the temp password on the reset page to unlock the new-password form.
+    Always returns 200 to prevent user enumeration.
     """
-    from app.core.email_service import send_password_reset_email
+    from app.core.email_service import send_temp_password_email
+    from app.auth.service import get_password_hash
 
     user = db.query(User).filter(User.email == payload.email).first()
     if not user:
-        # Do not reveal whether email exists
-        return {"message": "Se o e-mail estiver cadastrado, você receberá as instruções em breve."}
+        return {"message": "Se o e-mail estiver cadastrado, voce recebera as instrucoes em breve."}
 
     # Rate limit: 5 minutes between requests
     if user.password_reset_sent_at:
@@ -324,49 +326,71 @@ def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(
                 detail=f"Aguarde {remaining} segundos antes de solicitar novamente."
             )
 
-    token = secrets.token_urlsafe(32)
-    user.password_reset_token = token
+    # Generate a readable temporary password: prefix + 8 random alphanumeric chars
+    # Format: BioP-XXXXXXXX — easy to read and type from an email
+    raw_chars = secrets.token_urlsafe(8).replace("-", "").replace("_", "")[:8].upper()
+    temp_password = f"BioP-{raw_chars}"
+
+    # Store the hash of the temp password as the reset token
+    # This avoids storing plaintext credentials in the database
+    user.password_reset_token = get_password_hash(temp_password)
     user.password_reset_sent_at = datetime.now(timezone.utc)
     db.commit()
 
-    sent = send_password_reset_email(user.email, user.name, token)
+    sent = send_temp_password_email(user.email, user.name, temp_password)
     logger.info(f"Password reset requested for user {user.id}, email_sent={sent}")
 
-    response_data: dict = {"message": "Se o e-mail estiver cadastrado, você receberá as instruções em breve."}
+    response_data: dict = {"message": "Se o e-mail estiver cadastrado, voce recebera as instrucoes em breve."}
 
-    # Demo fallback: when Resend is not configured, expose reset link directly.
-    # In production with RESEND_API_KEY set, the link travels only via email.
+    # Demo fallback: when Resend is not configured, expose temp password directly in response.
+    # In production with RESEND_API_KEY set, the temp password travels only via email.
     if not sent and not settings.RESEND_API_KEY:
-        reset_url = f"{settings.APP_BASE_URL}/auth/redefinir-senha?token={token}"
-        response_data["reset_url"] = reset_url
-        response_data["demo_notice"] = "RESEND_API_KEY nao configurado. Acesse o link abaixo para redefinir."
-        logger.info(f"Demo reset link generated for user {user.id}")
+        response_data["temp_password"] = temp_password
+        response_data["demo_notice"] = "RESEND_API_KEY nao configurado. Use a senha temporaria abaixo."
+        logger.info(f"Demo temp password exposed in response for user {user.id}")
 
     return response_data
 
 
 @router.post("/redefinir-senha", status_code=200)
-def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
+def confirm_password_reset(payload: PasswordResetConfirmWithTemp, db: Session = Depends(get_db)):
     """
-    Confirms password reset using the token received by email.
-    Token expires in 1 hour and is invalidated after use.
+    Confirms password reset using the temporary password received by email.
+    Validates temp_password against the stored bcrypt hash, replaces the user's
+    password with new_password hash, and invalidates the token.
+    Expires in 1 hour. Token is invalidated after first successful use.
     """
-    from app.auth.service import get_password_hash
+    from app.auth.service import get_password_hash, verify_password
 
-    user = db.query(User).filter(User.password_reset_token == payload.token).first()
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="As senhas nao coincidem.")
+
+    # Find all users that have a pending reset token (cannot query by hash directly)
+    # Iterate candidates with active reset tokens — bounded by rate-limit (max 1 per 5 min per user)
+    candidate = db.query(User).filter(
+        User.password_reset_token.isnot(None),
+        User.password_reset_sent_at.isnot(None)
+    ).all()
+
+    user = None
+    for c in candidate:
+        if verify_password(payload.temp_password, c.password_reset_token):
+            user = c
+            break
+
     if not user:
-        raise HTTPException(status_code=400, detail="Link inválido ou já utilizado.")
+        raise HTTPException(status_code=400, detail="Senha temporaria invalida ou ja utilizada.")
 
     # Check expiry (1 hour)
-    if user.password_reset_sent_at:
-        sent_at = user.password_reset_sent_at
-        if sent_at.tzinfo is None:
-            sent_at = sent_at.replace(tzinfo=timezone.utc)
-        elapsed = datetime.now(timezone.utc) - sent_at
-        if elapsed.total_seconds() > 3600:
-            user.password_reset_token = None
-            db.commit()
-            raise HTTPException(status_code=400, detail="Link expirado. Solicite um novo link de redefinicao.")
+    sent_at = user.password_reset_sent_at
+    if sent_at.tzinfo is None:
+        sent_at = sent_at.replace(tzinfo=timezone.utc)
+    elapsed = datetime.now(timezone.utc) - sent_at
+    if elapsed.total_seconds() > 3600:
+        user.password_reset_token = None
+        user.password_reset_sent_at = None
+        db.commit()
+        raise HTTPException(status_code=400, detail="Senha temporaria expirada. Solicite uma nova.")
 
     user.hashed_password = get_password_hash(payload.new_password)
     user.password_reset_token = None

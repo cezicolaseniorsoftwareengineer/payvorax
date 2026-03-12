@@ -128,7 +128,7 @@ def send_verification_email(to: str, name: str, token: str) -> bool:
 
 
 def send_password_reset_email(to: str, name: str, token: str) -> bool:
-    """Sends the password-reset link."""
+    """Sends the password-reset link (legacy link-based flow — kept for compatibility)."""
     url = f"{settings.APP_BASE_URL}/auth/redefinir-senha?token={token}"
 
     html = f"""<!DOCTYPE html>
@@ -179,6 +179,73 @@ def send_password_reset_email(to: str, name: str, token: str) -> bool:
 </body>
 </html>"""
     return send_email(to, "Redefinicao de senha — BioCodeTechPay", html)
+
+
+def send_temp_password_email(to: str, name: str, temp_password: str) -> bool:
+    """
+    Sends a temporary password to the user.
+    The user must use this temporary password to unlock the reset form and define a new one.
+    The temp password is valid for 1 hour and invalidated after first use.
+    """
+    reset_url = f"{settings.APP_BASE_URL}/redefinir-senha"
+
+    html = f"""<!DOCTYPE html>
+<html lang="pt-br">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    <tr><td align="center" style="padding:40px 16px;">
+      <table role="presentation" width="600" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#820AD1 0%,#6d28d9 100%);padding:36px 32px;text-align:center;">
+            <h1 style="color:#ffffff;margin:0;font-size:28px;letter-spacing:-0.5px;">BioCodeTechPay</h1>
+            <p style="color:#e9d5ff;margin:8px 0 0;font-size:15px;">Recuperacao de senha</p>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:40px 32px;">
+            <p style="font-size:16px;color:#1a1a1a;margin:0 0 12px;">Ola, <strong>{name}</strong></p>
+            <p style="color:#555;line-height:1.6;margin:0 0 24px;">
+              Recebemos uma solicitacao de recuperacao de senha para sua conta <strong>BioCodeTechPay</strong>.
+              Use a senha temporaria abaixo para acessar a tela de redefinicao e criar uma nova senha.
+            </p>
+
+            <!-- Temporary password box -->
+            <div style="background:#f3e8ff;border:2px solid #820AD1;border-radius:12px;padding:24px;text-align:center;margin:0 0 28px;">
+              <p style="color:#6d28d9;font-size:13px;font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Senha temporaria</p>
+              <p style="color:#1a1a1a;font-size:28px;font-weight:700;margin:0;letter-spacing:4px;font-family:monospace;">{temp_password}</p>
+              <p style="color:#9ca3af;font-size:12px;margin:8px 0 0;">Valida por 1 hora. Use apenas uma vez.</p>
+            </div>
+
+            <div style="text-align:center;margin:0 0 28px;">
+              <a href="{reset_url}"
+                 style="display:inline-block;background:#820AD1;color:#ffffff;text-decoration:none;
+                        padding:16px 40px;border-radius:8px;font-weight:700;font-size:16px;">
+                Redefinir minha senha
+              </a>
+            </div>
+
+            <p style="color:#999;font-size:13px;line-height:1.5;">
+              Se voce nao solicitou a recuperacao de senha, ignore este e-mail com seguranca.
+              Sua senha atual permanece inalterada.
+            </p>
+            <hr style="border:none;border-top:1px solid #eeeeee;margin:28px 0;">
+            <p style="color:#bbb;font-size:12px;text-align:center;margin:0;">
+              BioCodeTechPay &mdash; Tecnologia financeira com seguranca e transparencia.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+    return send_email(to, "Sua senha temporaria — BioCodeTechPay", html)
 
 
 def send_notification_email(to: str, name: str, subject: str, body_html: str) -> bool:

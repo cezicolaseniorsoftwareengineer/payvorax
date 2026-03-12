@@ -83,3 +83,10 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str = Field(..., min_length=6)
+
+
+class PasswordResetConfirmWithTemp(BaseModel):
+    """Flow with temporary password sent by email (no URL token required)."""
+    temp_password: str = Field(..., min_length=1, description="Temporary password received by email")
+    new_password: str = Field(..., min_length=6)
+    confirm_password: str = Field(..., min_length=6)
