@@ -572,7 +572,12 @@
                         <i data-lucide="check-circle-2" class="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5"></i>
                         <div>
                             <p class="text-xs font-semibold text-green-300 mb-0.5">Correcao automatica aplicada</p>
-                            <p class="text-xs text-green-400">Matrix debitada em <span class="font-mono font-bold">${fmtBRL(data.correction_applied.amount)}</span>. Novo saldo Matrix: <span class="font-mono">${fmtBRL(data.correction_applied.matrix_balance_after)}</span>.</p>
+                            <p class="text-xs text-green-400">${data.correction_applied.action === 'matrix_credited'
+                        ? 'Matrix creditada'
+                        : data.correction_applied.action === 'customers_debited'
+                            ? 'Correntistas debitados'
+                            : 'Matrix/correntistas debitados'
+                    } em <span class="font-mono font-bold">${fmtBRL(data.correction_applied.amount)}</span>. Novo saldo Matrix: <span class="font-mono">${fmtBRL(data.correction_applied.matrix_balance_after ?? data.correction_applied.matrix_unchanged)}</span>.</p>
                         </div>
                     </div>` : '';
 

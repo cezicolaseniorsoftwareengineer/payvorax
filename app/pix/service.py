@@ -6,7 +6,7 @@ Uses internal balance transfer for BioCodeTechPay-to-BioCodeTechPay transactions
 """
 from uuid import uuid4
 from typing import Optional, Dict, Any
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import re
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -171,9 +171,15 @@ def create_pix(
                 # it is accounted for implicitly when Asaas deducts R$2.00 from the
                 # Asaas balance, keeping internal total and Asaas perfectly in sync.
                 # During free-quota months the R$2.00 becomes Matrix profit via audit.
-                service_margin = max(0.0, float(pix_fee) - float(PLATFORM_PIX_OUTBOUND_NETWORK_FEE))
-                if service_margin > 0:
-                    credit_fee(db, service_margin)
+                # IMPORTANT: keep Decimal arithmetic throughout to avoid IEEE 754 float
+                # rounding errors (e.g. 3.02 - 2.00 → 1.0199999... instead of 1.02).
+                _pix_fee_dec = pix_fee if isinstance(pix_fee, Decimal) else Decimal(str(pix_fee))
+                _net_fee_dec = PLATFORM_PIX_OUTBOUND_NETWORK_FEE
+                _service_margin_dec = (_pix_fee_dec - _net_fee_dec).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                if _service_margin_dec > Decimal("0.00"):
+                    credit_fee(db, float(_service_margin_dec))
 
                 initial_status = PixStatus.CONFIRMED
     else:
