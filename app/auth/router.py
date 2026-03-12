@@ -342,12 +342,13 @@ def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(
 
     response_data: dict = {"message": "Se o e-mail estiver cadastrado, voce recebera as instrucoes em breve."}
 
-    # Demo fallback: when Resend is not configured, expose temp password directly in response.
-    # In production with RESEND_API_KEY set, the temp password travels only via email.
-    if not sent and not settings.RESEND_API_KEY:
+    # Fallback: whenever the send fails (no API key, sandbox restriction, network error)
+    # expose temp_password in the response so the frontend can still show it to the user.
+    # When the email is delivered successfully (sent=True) temp_password stays server-side only.
+    if not sent:
         response_data["temp_password"] = temp_password
-        response_data["demo_notice"] = "RESEND_API_KEY nao configurado. Use a senha temporaria abaixo."
-        logger.info(f"Demo temp password exposed in response for user {user.id}")
+        response_data["demo_notice"] = "Email nao entregue. Use a senha temporaria abaixo."
+        logger.warning(f"Email delivery failed for user {user.id} — temp_password exposed in response")
 
     return response_data
 
