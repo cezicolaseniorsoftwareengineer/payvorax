@@ -445,6 +445,13 @@
 
 
 
+                <!-- Transferencia interna gratuita (mostrado quando destinatario e interno) -->
+                <div id="feeInternalBadge"
+                    class="hidden rounded-xl border border-green-200 bg-green-50 p-3 flex items-center gap-2 text-sm text-green-800 font-semibold">
+                    <i data-lucide="gift" class="w-4 h-4 flex-shrink-0 text-green-600"></i>
+                    <span>Transferencia interna &mdash; <span class="text-green-700">gratuita para todos</span></span>
+                </div>
+
                 <!-- Fee preview badge (shown after key resolution) -->
                 <div id="feePreviewBadge"
                     class="hidden rounded-xl border border-blue-100 bg-blue-50 p-3 flex flex-col gap-1.5 text-sm">
@@ -1142,10 +1149,8 @@
         // Seed balance from server-rendered value; PVX.refreshBalance() will keep it updated.
         // Round to 2dp immediately to prevent IEEE 754 float drift (e.g. DB float 3.1499999... != 3.15).
         PVX._currentBalance = Math.round({{ user_balance | default(0) }} * 100) / 100;
-    };
 
     // Real-time balance validation as user types the amount
-
     document.getElementById('valor').addEventListener('input', updateBalanceFeedback);
 
     });
@@ -2380,6 +2385,7 @@
 
     function showFeePreview(isInternal, valueFloat) {
         const badge = document.getElementById('feePreviewBadge');
+        const internalBadge = document.getElementById('feeInternalBadge');
         const label = document.getElementById('feePreviewLabel');
         const valueEl = document.getElementById('feePreviewValue');
         const netEl = document.getElementById('feeNetworkValue');
@@ -2387,8 +2393,10 @@
         if (!badge) return;
         if (isInternal) {
             badge.classList.add('hidden');
+            if (internalBadge) { internalBadge.classList.remove('hidden'); lucide.createIcons(); }
             return;
         }
+        if (internalBadge) internalBadge.classList.add('hidden');
         const networkFee = computePixFeeNumericNetwork();
         const serviceFee = computePixFeeNumericService(valueFloat || 0);
         const totalFee = networkFee + serviceFee;
@@ -2405,6 +2413,8 @@
     function hideFeePreview() {
         const badge = document.getElementById('feePreviewBadge');
         if (badge) badge.classList.add('hidden');
+        const internalBadge = document.getElementById('feeInternalBadge');
+        if (internalBadge) internalBadge.classList.add('hidden');
     }
 
 
