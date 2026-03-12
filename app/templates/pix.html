@@ -1139,8 +1139,9 @@
 
         setupCurrencyInput('valorReceber');
 
-        // Seed balance from server-rendered value; PVX.refreshBalance() will keep it updated
-        PVX._currentBalance = {{ user_balance | default (0) }
+        // Seed balance from server-rendered value; PVX.refreshBalance() will keep it updated.
+        // Round to 2dp immediately to prevent IEEE 754 float drift (e.g. DB float 3.1499999... != 3.15).
+        PVX._currentBalance = Math.round({{ user_balance | default(0) }} * 100) / 100;
     };
 
     // Real-time balance validation as user types the amount
@@ -2303,11 +2304,14 @@
 
         const total = amount + fee;
 
+        // Round both sides to 2dp before comparison.
+        // Without this, a DB float like 3.1499999... vs 3.15 triggers a false "Saldo insuficiente".
+        const balanceRounded = Math.round(balance * 100) / 100;
+        const totalRounded = Math.round(total * 100) / 100;
+
         const fmtBRL = (n) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-
-
-        if (total > balance) {
+        if (totalRounded > balanceRounded) {
 
             fb.className = 'mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium border border-red-200 bg-red-50 text-red-700';
 
@@ -2315,7 +2319,7 @@
 
             fb.innerHTML = '<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>'
 
-                + '<span>Saldo insuficiente. Disponível: R$ ' + fmtBRL(balance) + feeText + '</span>';
+                + '<span>Saldo insuficiente. Disponível: R$ ' + fmtBRL(balanceRounded) + feeText + '</span>';
 
             fb.classList.remove('hidden');
 
