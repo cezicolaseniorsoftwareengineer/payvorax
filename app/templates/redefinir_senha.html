@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-br">
 
 <head>
@@ -32,39 +32,80 @@
                     class="w-24 h-24 object-contain rounded-full mx-auto shadow-sm mb-4">
             </a>
             <h1 class="text-2xl font-bold text-gray-800">Redefinir senha</h1>
-            <p class="text-sm text-gray-500 mt-1">Cole a senha temporaria recebida por e-mail e defina uma nova senha.
-            </p>
+            <p id="pageSubtitle" class="text-sm text-gray-500 mt-1">Cole o codigo recebido por e-mail para confirmar sua
+                identidade.</p>
         </div>
 
         <div class="w-full max-w-sm space-y-4">
+
+            <!-- Error message -->
             <div id="errorMsg"
                 class="hidden bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800 text-center"></div>
+
+            <!-- Success message -->
             <div id="successMsg"
                 class="hidden bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800 text-center">
-                Senha redefinida com sucesso! <a href="/login" class="font-bold underline">Clique aqui para entrar.</a>
+                <p class="font-semibold text-green-700 mb-1">Senha redefinida com sucesso!</p>
+                <p>Redirecionando para o login...</p>
             </div>
 
-            <form id="resetForm" class="space-y-4">
-
-                <!-- Step 1: Temporary password from email -->
-                <div id="tempPasswordSection">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Senha temporaria <span class="text-gray-400 text-xs">(recebida por e-mail)</span>
-                    </label>
-                    <div class="relative">
-                        <input type="text" id="temp_password" required
-                            class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none transition-all font-mono tracking-widest uppercase"
-                            placeholder="Ex: BioP-XXXXXXXX" autocomplete="off" spellcheck="false">
-                    </div>
-                    <p class="text-xs text-gray-400 mt-1">Cole exatamente como aparece no e-mail. Valida por 1 hora.</p>
+            <!-- Step 1: Validate recovery code from email -->
+            <div id="step1">
+                <!-- Progress indicator -->
+                <div class="flex items-center gap-2 mb-4">
+                    <div
+                        class="flex items-center justify-center w-7 h-7 rounded-full bg-blue-700 text-white text-xs font-bold">
+                        1</div>
+                    <span class="text-sm font-medium text-gray-700">Confirmar identidade</span>
+                    <div class="flex-1 h-px bg-gray-200 mx-1"></div>
+                    <div class="flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-400 text-xs font-bold"
+                        id="step2Indicator">2</div>
+                    <span class="text-sm text-gray-400" id="step2Label">Nova senha</span>
                 </div>
 
-                <!-- Step 2: New password -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Codigo de recuperacao
+                        <span class="text-gray-400 text-xs">(recebido por e-mail)</span>
+                    </label>
+                    <input type="text" id="recovery_code"
+                        class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all font-mono tracking-widest text-center text-lg uppercase"
+                        placeholder="XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" autocorrect="off"
+                        oninput="this.value = this.value.toUpperCase()">
+                    <p class="text-xs text-gray-400 mt-1">Cole o codigo exatamente como aparece no e-mail.</p>
+                </div>
+
+                <button id="validateBtn" onclick="validateCode()"
+                    class="w-full mt-4 nu-purple text-white font-bold py-3 rounded-full hover:bg-blue-900 transition-all shadow-lg">
+                    Confirmar codigo
+                </button>
+            </div>
+
+            <!-- Step 2: Set new password (unlocked after step 1) -->
+            <div id="step2" class="hidden space-y-4">
+                <!-- Progress indicator updated -->
+                <div class="flex items-center gap-2 mb-4">
+                    <div
+                        class="flex items-center justify-center w-7 h-7 rounded-full bg-green-500 text-white text-xs font-bold">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-sm font-medium text-green-600">Identidade confirmada</span>
+                    <div class="flex-1 h-px bg-green-200 mx-1"></div>
+                    <div
+                        class="flex items-center justify-center w-7 h-7 rounded-full bg-blue-700 text-white text-xs font-bold">
+                        2</div>
+                    <span class="text-sm font-medium text-gray-700">Nova senha</span>
+                </div>
+
+                <div class="bg-green-50 border border-green-200 rounded-xl p-3 text-center text-sm text-green-700">
+                    Codigo validado. Agora defina sua nova senha.
+                </div>
+
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Nova senha</label>
                     <div class="relative">
-                        <input type="password" id="new_password" required minlength="6"
-                            class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none transition-all"
+                        <input type="password" id="new_password" minlength="6"
+                            class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none transition-all pr-12"
                             placeholder="Minimo 6 caracteres">
                         <button type="button" onclick="togglePass('new_password')"
                             class="absolute right-4 top-3 text-gray-400 hover:text-gray-600">
@@ -73,12 +114,11 @@
                     </div>
                 </div>
 
-                <!-- Step 3: Confirm new password -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Confirmar nova senha</label>
                     <div class="relative">
-                        <input type="password" id="confirm_password" required minlength="6"
-                            class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none transition-all"
+                        <input type="password" id="confirm_password" minlength="6"
+                            class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none transition-all pr-12"
                             placeholder="Repita a nova senha">
                         <button type="button" onclick="togglePass('confirm_password')"
                             class="absolute right-4 top-3 text-gray-400 hover:text-gray-600">
@@ -87,13 +127,13 @@
                     </div>
                 </div>
 
-                <button type="submit"
+                <button id="saveBtn" onclick="savePassword()"
                     class="w-full nu-purple text-white font-bold py-3 rounded-full hover:bg-blue-900 transition-all shadow-lg">
                     Salvar nova senha
                 </button>
-            </form>
+            </div>
 
-            <p class="text-center text-sm text-gray-600">
+            <p class="text-center text-sm text-gray-600 pt-2">
                 <a href="/login" class="nu-text-purple font-semibold hover:underline">Voltar para o login</a>
             </p>
         </div>
@@ -111,30 +151,72 @@
             input.type = input.type === 'password' ? 'text' : 'password';
         }
 
-        document.getElementById('resetForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
 
-            const tempPassword = document.getElementById('temp_password').value.trim();
-            const newPassword = document.getElementById('new_password').value;
-            const confirmPassword = document.getElementById('confirm_password').value;
-            const errorDiv = document.getElementById('errorMsg');
-            const btn = e.target.querySelector('button[type="submit"]');
-            const originalText = btn.innerHTML;
+        function hideError() {
+            document.getElementById('errorMsg').classList.add('hidden');
+        }
 
-            errorDiv.classList.add('hidden');
-
-            if (!tempPassword) {
-                errorDiv.textContent = 'Cole a senha temporaria recebida por e-mail.';
-                errorDiv.classList.remove('hidden');
+        async function validateCode() {
+            hideError();
+            const code = document.getElementById('recovery_code').value.trim();
+            if (!code) {
+                showError('Cole o codigo de recuperacao recebido por e-mail.');
                 return;
             }
 
-            if (newPassword !== confirmPassword) {
-                errorDiv.textContent = 'As senhas não coincidem.';
-                errorDiv.classList.remove('hidden');
+            const btn = document.getElementById('validateBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span>Validando...</span></div>';
+
+            try {
+                const response = await fetch('/auth/redefinir-senha/validar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ recovery_code: code })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.valid) {
+                    // Unlock step 2
+                    document.getElementById('step1').classList.add('hidden');
+                    document.getElementById('step2').classList.remove('hidden');
+                    document.getElementById('pageSubtitle').textContent = 'Defina e confirme sua nova senha.';
+                    lucide.createIcons();
+                    document.getElementById('new_password').focus();
+                } else {
+                    showError(data.detail || 'Codigo invalido ou ja utilizado.');
+                    btn.disabled = false;
+                    btn.textContent = 'Confirmar codigo';
+                }
+            } catch {
+                showError('Erro de conexao. Verifique sua internet.');
+                btn.disabled = false;
+                btn.textContent = 'Confirmar codigo';
+            }
+        }
+
+        async function savePassword() {
+            hideError();
+            const code = document.getElementById('recovery_code').value.trim();
+            const newPwd = document.getElementById('new_password').value;
+            const confirmPwd = document.getElementById('confirm_password').value;
+
+            if (newPwd.length < 6) {
+                showError('A nova senha deve ter pelo menos 6 caracteres.');
+                return;
+            }
+            if (newPwd !== confirmPwd) {
+                showError('As senhas nao coincidem.');
                 return;
             }
 
+            const btn = document.getElementById('saveBtn');
             btn.disabled = true;
             btn.innerHTML = '<div class="flex items-center justify-center gap-2"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span>Salvando...</span></div>';
 
@@ -143,30 +225,33 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        temp_password: tempPassword,
-                        new_password: newPassword,
-                        confirm_password: confirmPassword
+                        recovery_code: code,
+                        new_password: newPwd,
+                        confirm_password: confirmPwd
                     })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
-                    document.getElementById('resetForm').classList.add('hidden');
+                    document.getElementById('step2').classList.add('hidden');
                     document.getElementById('successMsg').classList.remove('hidden');
-                    setTimeout(() => { window.location.href = '/login'; }, 3000);
+                    setTimeout(() => { window.location.href = '/login'; }, 2500);
                 } else {
-                    errorDiv.textContent = data.detail || 'Erro ao redefinir senha. O link pode ter expirado.';
-                    errorDiv.classList.remove('hidden');
+                    showError(data.detail || 'Erro ao redefinir senha. Tente novamente.');
                     btn.disabled = false;
-                    btn.innerHTML = originalText;
+                    btn.textContent = 'Salvar nova senha';
                 }
             } catch {
-                errorDiv.textContent = 'Erro de conexão. Verifique sua internet.';
-                errorDiv.classList.remove('hidden');
+                showError('Erro de conexao. Verifique sua internet.');
                 btn.disabled = false;
-                btn.innerHTML = originalText;
+                btn.textContent = 'Salvar nova senha';
             }
+        }
+
+        // Allow Enter key to trigger validation on step 1
+        document.getElementById('recovery_code').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') validateCode();
         });
     </script>
 </body>

@@ -85,8 +85,13 @@ class PasswordResetConfirm(BaseModel):
     new_password: str = Field(..., min_length=6)
 
 
+class RecoveryCodeValidate(BaseModel):
+    """Step 1: validate the recovery code copied from email before unlocking the new-password form."""
+    recovery_code: str = Field(..., min_length=1, description="Recovery code received by email")
+
+
 class PasswordResetConfirmWithTemp(BaseModel):
-    """Flow with temporary password sent by email (no URL token required)."""
-    temp_password: str = Field(..., min_length=1, description="Temporary password received by email")
+    """Step 2: submit recovery_code + new password to complete the reset."""
+    recovery_code: str = Field(..., min_length=1, description="Recovery code received by email")
     new_password: str = Field(..., min_length=6)
     confirm_password: str = Field(..., min_length=6)

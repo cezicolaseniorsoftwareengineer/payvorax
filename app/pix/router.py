@@ -3,6 +3,7 @@ FastAPI Router for PIX endpoints.
 Exposes RESTful API with strict validation and automated documentation.
 """
 import re
+import urllib.parse
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
@@ -44,6 +45,70 @@ _UUID_RE = re.compile(
     re.IGNORECASE
 )
 _ASAAS_ID_RE = re.compile(r'pay_[A-Za-z0-9]+')
+
+
+# ---------------------------------------------------------------------------
+# BR Code PIX EMV helpers (BACEN spec — ABECS ISO 18004)
+# ---------------------------------------------------------------------------
+
+def _crc16_ccitt(data: str) -> str:
+    """
+    CRC-16/CCITT-FALSE (polynomial 0x1021, init 0xFFFF).
+    Required by BACEN BR Code PIX specification (section 4.1).
+    Mandatory for interoperability — any PSP app validates this before even querying DICT.
+    """
+    crc = 0xFFFF
+    for byte in data.encode("utf-8"):
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = (crc << 1) ^ 0x1021 if crc & 0x8000 else crc << 1
+            crc &= 0xFFFF
+    return format(crc, "04X")
+
+
+def _emv(tag: str, value: str) -> str:
+    """Encodes a single TLV field: tag(2) + length(2, zero-padded decimal) + value."""
+    return f"{tag}{len(value):02d}{value}"
+
+
+def _build_pix_static_emv(charge_id: str, value: float) -> str:
+    """
+    Builds a valid BR Code PIX static EMV payload per BACEN specification.
+    Uses the charge UUID as the EVP random key (field 26.01).
+
+    The generated code is format-valid and CRC-valid — any PSP app will parse it without error.
+    In production (gateway configured), Asaas charges replace this entirely with a real
+    dynamic QR code registered at DICT/SPI. This fallback only applies when:
+      - Asaas gateway is not configured (local/dev), OR
+      - Asaas API fails for this specific request.
+    """
+    # Field 26: Merchant Account Information
+    gui = _emv("00", "BR.GOV.BCB.PIX")
+    key = _emv("01", charge_id)           # EVP key = charge UUID (unique per charge)
+    merchant_account = _emv("26", gui + key)
+
+    # Field 62: Additional Data — txid max 25 chars (hyphens stripped per spec)
+    txid = charge_id.replace("-", "")[:25]
+    additional = _emv("62", _emv("05", txid))
+
+    # Field 54: Transaction Amount — must be "10.00" decimal form, NOT "1000"
+    amount_str = f"{value:.2f}"
+
+    payload = (
+        _emv("00", "01") +               # Payload Format Indicator
+        _emv("01", "11") +               # Point of Initiation = 11 (single-use static)
+        merchant_account +
+        _emv("52", "0000") +             # Merchant Category Code
+        _emv("53", "986") +              # Transaction Currency: BRL = 986
+        _emv("54", amount_str) +         # Transaction Amount
+        _emv("58", "BR") +               # Country Code
+        _emv("59", "BioCodeTechPay") +   # Merchant Name (max 25 chars)
+        _emv("60", "BRASILIA") +         # Merchant City (max 15 chars)
+        additional +
+        "6304"                           # CRC tag — checksum appended immediately below
+    )
+
+    return payload + _crc16_ccitt(payload)
 
 
 def _parse_emv_value(emv: str) -> float:
@@ -674,7 +739,6 @@ def lookup_pix_key_endpoint(
 @router.post("/cobrar", response_model=PixChargeResponse)
 def generate_pix_charge(
     data: PixChargeRequest,
-    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     x_correlation_id: str = Header(default=None)
@@ -690,9 +754,9 @@ def generate_pix_charge(
 
     description = data.description or "BioCodeTechPay - Cobranca PIX"
 
-    ASAAS_MIN_VALUE = Decimal("5.00")
+    ASAAS_MIN_VALUE = Decimal("0.01")
 
-    # --- Attempt real Asaas charge (minimum R$5.00 required by Asaas production) ---
+    # --- Attempt real Asaas charge (gateway must be configured; any value >= R$0.01) ---
     gateway = get_payment_gateway()
     if gateway and Decimal(str(data.value)) >= ASAAS_MIN_VALUE:
         try:
@@ -743,17 +807,20 @@ def generate_pix_charge(
             db.rollback()  # reset session state before fallback insert
     elif gateway and Decimal(str(data.value)) < ASAAS_MIN_VALUE:
         logger.info(
-            f"Value R${data.value:.2f} is below Asaas minimum R$5.00 — using local simulation."
+            f"Value R${data.value:.2f} is below Asaas minimum R$0.01 — using local simulation."
         )
 
-    # --- Fallback: local simulation ---
+    # --- Fallback: local simulation with valid BR Code EMV ---
+    # Generates a format-valid, CRC-valid PIX EMV payload so any bank app
+    # can parse and display the charge (key lookup at DICT will not resolve in
+    # sandbox — that is expected; in production all charges go through Asaas).
     logger.info(f"Creating local simulation charge for user {current_user.id}")
     charge_id = str(uuid4())
 
     pix = PixTransaction(
         id=charge_id,
         value=data.value,
-        pix_key="DYNAMIC_QR_CODE",
+        pix_key=charge_id,               # UUID stored: route 1a in _find_internal_qrcode_charge finds it
         key_type=PixKeyType.RANDOM.value,
         type=TransactionType.RECEIVED,
         status=PixStatus.CREATED,
@@ -767,20 +834,26 @@ def generate_pix_charge(
     db.commit()
     db.refresh(pix)
 
-    mock_payload = (
-        f"00020126580014BR.GOV.BCB.PIX0136{charge_id}520400005303986540"
-        f"{str(data.value).replace('.', '')}5802BR5921BioCodeTechPay6008BRASILIA62070503***6304"
+    # Build valid EMV payload: correct CRC16, correct amount format ("10.00" not "1000")
+    emv_payload = _build_pix_static_emv(charge_id, data.value)
+
+    # QR code image encodes the EMV payload directly — any BR Code reader (any bank app,
+    # any POS terminal) can scan this and extract the PIX data correctly.
+    qr_url = (
+        "https://api.qrserver.com/v1/create-qr-code/"
+        f"?size=300x300&data={urllib.parse.quote(emv_payload)}"
     )
 
-    base_url = str(request.base_url).rstrip('/')
-    simulation_url = f"{base_url}/pix/pagar-qrcode?id={charge_id}"
-    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={simulation_url}"
+    logger.info(
+        f"Simulation charge created: id={charge_id}, value={data.value:.2f}, "
+        f"emv_len={len(emv_payload)}, crc={emv_payload[-4:]}"
+    )
 
     return PixChargeResponse(
         charge_id=charge_id,
         value=data.value,
         description=description,
-        copy_and_paste=mock_payload,
+        copy_and_paste=emv_payload,
         qr_code_url=qr_url,
         is_real_charge=False
     )

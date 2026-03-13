@@ -181,11 +181,12 @@ def send_password_reset_email(to: str, name: str, token: str) -> bool:
     return send_email(to, "Redefinicao de senha — BioCodeTechPay", html)
 
 
-def send_temp_password_email(to: str, name: str, temp_password: str) -> bool:
+def send_recovery_code_email(to: str, name: str, recovery_code: str) -> bool:
     """
-    Sends a temporary password to the user.
-    The user must use this temporary password to unlock the reset form and define a new one.
-    The temp password is valid for 1 hour and invalidated after first use.
+    Sends the permanent recovery code to the user's email.
+    The user copies this code and pastes it on /redefinir-senha to authenticate
+    and unlock the new-password form. The code is valid until used (no TTL).
+    Single-use: consumed on successful password reset.
     """
     reset_url = f"{settings.APP_BASE_URL}/redefinir-senha"
 
@@ -201,7 +202,7 @@ def send_temp_password_email(to: str, name: str, temp_password: str) -> bool:
         <tr>
           <td style="background:linear-gradient(135deg,#820AD1 0%,#6d28d9 100%);padding:36px 32px;text-align:center;">
             <h1 style="color:#ffffff;margin:0;font-size:28px;letter-spacing:-0.5px;">BioCodeTechPay</h1>
-            <p style="color:#e9d5ff;margin:8px 0 0;font-size:15px;">Recuperacao de senha</p>
+            <p style="color:#e9d5ff;margin:8px 0 0;font-size:15px;">Codigo de recuperacao de senha</p>
           </td>
         </tr>
 
@@ -211,14 +212,22 @@ def send_temp_password_email(to: str, name: str, temp_password: str) -> bool:
             <p style="font-size:16px;color:#1a1a1a;margin:0 0 12px;">Ola, <strong>{name}</strong></p>
             <p style="color:#555;line-height:1.6;margin:0 0 24px;">
               Recebemos uma solicitacao de recuperacao de senha para sua conta <strong>BioCodeTechPay</strong>.
-              Use a senha temporaria abaixo para acessar a tela de redefinicao e criar uma nova senha.
+              Use o codigo abaixo para acessar a tela de redefinicao.
+            </p>
+            <p style="color:#555;line-height:1.6;margin:0 0 24px;">
+              <strong>Como usar:</strong><br>
+              1. Copie o codigo abaixo.<br>
+              2. Acesse a tela de redefinicao clicando no botao.<br>
+              3. Cole o codigo no campo indicado para confirmar sua identidade.<br>
+              4. Defina e confirme sua nova senha.<br>
+              5. Faca login com a nova senha.
             </p>
 
-            <!-- Temporary password box -->
-            <div style="background:#f3e8ff;border:2px solid #820AD1;border-radius:12px;padding:24px;text-align:center;margin:0 0 28px;">
-              <p style="color:#6d28d9;font-size:13px;font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Senha temporaria</p>
-              <p style="color:#1a1a1a;font-size:28px;font-weight:700;margin:0;letter-spacing:4px;font-family:monospace;">{temp_password}</p>
-              <p style="color:#9ca3af;font-size:12px;margin:8px 0 0;">Valida por 1 hora. Use apenas uma vez.</p>
+            <!-- Recovery code box -->
+            <div style="background:#f3e8ff;border:2px solid #820AD1;border-radius:12px;padding:28px;text-align:center;margin:0 0 28px;">
+              <p style="color:#6d28d9;font-size:13px;font-weight:600;margin:0 0 12px;text-transform:uppercase;letter-spacing:1px;">Seu codigo de recuperacao</p>
+              <p style="color:#1a1a1a;font-size:32px;font-weight:700;margin:0;letter-spacing:6px;font-family:monospace;">{recovery_code}</p>
+              <p style="color:#9ca3af;font-size:12px;margin:12px 0 0;">Copie e cole exatamente como aparece acima. Valido ate ser utilizado.</p>
             </div>
 
             <div style="text-align:center;margin:0 0 28px;">
@@ -245,7 +254,7 @@ def send_temp_password_email(to: str, name: str, temp_password: str) -> bool:
   </table>
 </body>
 </html>"""
-    return send_email(to, "Sua senha temporaria — BioCodeTechPay", html)
+    return send_email(to, "Seu codigo de recuperacao de senha — BioCodeTechPay", html)
 
 
 def send_notification_email(to: str, name: str, subject: str, body_html: str) -> bool:
