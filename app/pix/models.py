@@ -67,6 +67,8 @@ class PixTransaction(Base):
     scheduled_date: Mapped[datetime] = mapped_column("data_agendamento", DateTime, nullable=True)
     recipient_name: Mapped[str] = mapped_column("nome_destinatario", String(200), nullable=True)
     fee_amount: Mapped[float] = mapped_column("taxa_valor", Float, nullable=True)
+    copy_paste_code: Mapped[str] = mapped_column("copy_paste_code", String(2000), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column("link_expires_at", DateTime, nullable=True)
 
     def __repr__(self):
         return f"<PixTransaction(id={self.id}, value={self.value}, status={self.status}, type={self.type})>"

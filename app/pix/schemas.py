@@ -4,7 +4,7 @@ Enforces financial business rules and format validation.
 """
 from pydantic import BaseModel, Field, field_validator, ConfigDict, ValidationInfo
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 from enum import Enum
 import re
 
@@ -113,6 +113,7 @@ class PixChargeRequest(BaseModel):
     """Request payload for generating a PIX charge (Receive)."""
     value: float = Field(..., gt=0, description="Value to receive (R$)")
     description: Optional[str] = Field(None, max_length=100, description="Description for the payer")
+    due_date: Optional[date] = Field(None, description="Link expiration date (ISO 8601). None = default (today).")
 
 
 class PixChargeResponse(BaseModel):
@@ -123,6 +124,7 @@ class PixChargeResponse(BaseModel):
     copy_and_paste: str = Field(..., description="Pix Copy and Paste string")
     qr_code_url: str = Field(..., description="URL to generate QR Code image")
     is_real_charge: bool = Field(default=False, description="True when charge was created via Asaas")
+    expires_at: Optional[datetime] = Field(None, description="Link expiration datetime (UTC). None = perpetual.")
 
 
 class PixChargeConfirmRequest(BaseModel):

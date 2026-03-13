@@ -133,6 +133,22 @@ def _apply_column_migrations(engine) -> None:
                 conn.commit()
             logger.info("Migration applied: taxa_valor added to transacoes_pix")
 
+        if "copy_paste_code" not in columns:
+            with engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE transacoes_pix ADD COLUMN copy_paste_code VARCHAR(2000)"
+                ))
+                conn.commit()
+            logger.info("Migration applied: copy_paste_code added to transacoes_pix")
+
+        if "link_expires_at" not in columns:
+            with engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE transacoes_pix ADD COLUMN link_expires_at TIMESTAMP"
+                ))
+                conn.commit()
+            logger.info("Migration applied: link_expires_at added to transacoes_pix")
+
     if "transacoes_boleto" in existing_tables:
         columns = [c["name"] for c in inspector.get_columns("transacoes_boleto")]
         if "taxa_valor" not in columns:

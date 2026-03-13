@@ -116,6 +116,55 @@ async def pix_payment_simulation(request: Request, current_user: User = Depends(
     )
 
 
+@router.get("/pix/link/{charge_id}", response_class=HTMLResponse)
+async def pix_payment_link(charge_id: str, request: Request, db: Session = Depends(get_db)):
+    """
+    Public shareable payment link page — no authentication required.
+    The payer accesses this URL to scan the QR code or copy the PIX code.
+    Reconstructs the EMV payload for legacy records without copy_paste_code.
+    """
+    from app.pix.models import PixTransaction, PixStatus, TransactionType
+    from app.core.pix_emv import build_pix_static_emv, build_qr_url
+    import re as _re
+
+    _UUID_PATTERN = _re.compile(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        _re.IGNORECASE
+    )
+
+    charge = (
+        db.query(PixTransaction)
+        .filter(
+            PixTransaction.id == charge_id,
+            PixTransaction.type == TransactionType.RECEIVED,
+        )
+        .first()
+    )
+    if not charge:
+        raise HTTPException(status_code=404, detail="Cobranca nao encontrada.")
+
+    # Resolve copy-paste code — prefer stored value; fall back to reconstruction.
+    copy_paste = charge.copy_paste_code
+    if not copy_paste:
+        if _UUID_PATTERN.match(charge.pix_key):
+            # Simulation charge: pix_key IS the charge UUID — EMV is deterministic
+            copy_paste = build_pix_static_emv(charge.id, charge.value)
+        else:
+            # Asaas charge: pix_key holds a (possibly truncated) EMV — best available
+            copy_paste = charge.pix_key
+
+    qr_url = build_qr_url(copy_paste)
+    already_paid = charge.status == PixStatus.CONFIRMED
+
+    return templates.TemplateResponse("pix_link.html", {
+        "request": request,
+        "charge": charge,
+        "copy_paste": copy_paste,
+        "qr_url": qr_url,
+        "already_paid": already_paid,
+    })
+
+
 @router.get("/ui/extrato", response_class=HTMLResponse)
 async def extrato_ui(request: Request, current_user: User = Depends(get_current_user)):
     """Statement Interface"""

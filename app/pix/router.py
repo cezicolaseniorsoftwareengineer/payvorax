@@ -28,12 +28,14 @@ from app.pix.service import create_pix, confirm_pix, get_pix, list_statement, ca
 from app.pix.internal_transfer import find_recipient_user
 from app.adapters.gateway_factory import get_payment_gateway
 from decimal import Decimal
+from datetime import datetime as _dt, date as _date, timedelta as _td
 from app.core.database import get_db
 from app.core.logger import get_logger_with_correlation, audit_log
 from app.auth.dependencies import get_current_user, require_active_account
 from app.auth.models import User
 from app.core.utils import mask_cpf_cnpj, format_brasilia_time
 from app.core.fees import calculate_pix_fee, fee_display, is_pj
+from app.core.pix_emv import build_pix_static_emv as _build_pix_static_emv, build_qr_url as _build_qr_url
 
 router = APIRouter(tags=["PIX"])
 
@@ -49,6 +51,8 @@ _ASAAS_ID_RE = re.compile(r'pay_[A-Za-z0-9]+')
 
 # ---------------------------------------------------------------------------
 # BR Code PIX EMV helpers (BACEN spec — ABECS ISO 18004)
+# Implementations live in app.core.pix_emv — kept here as thin wrappers
+# for the parse/extract helpers that are only used by this router.
 # ---------------------------------------------------------------------------
 
 def _crc16_ccitt(data: str) -> str:
@@ -766,6 +770,7 @@ def generate_pix_charge(
                     value=Decimal(str(data.value)),
                     description=description,
                     customer_id=customer_id,
+                    due_date=_dt.combine(data.due_date, _dt.min.time()) if data.due_date else None,
                     idempotency_key=f"cobrar-{correlation_id}"
                 )
 
@@ -780,7 +785,9 @@ def generate_pix_charge(
                     idempotency_key=f"cobrar-{correlation_id}",
                     description=description,
                     correlation_id=correlation_id,
-                    user_id=current_user.id
+                    user_id=current_user.id,
+                    copy_paste_code=charge_data.get("qr_code", ""),  # full EMV, no truncation
+                    expires_at=charge_data.get("expires_at")
                 )
                 db.add(pix)
                 db.commit()
@@ -800,7 +807,8 @@ def generate_pix_charge(
                     description=description,
                     copy_and_paste=charge_data.get("qr_code", ""),
                     qr_code_url=qr_url,
-                    is_real_charge=True
+                    is_real_charge=True,
+                    expires_at=pix.expires_at
                 )
         except Exception as e:
             logger.warning(f"Asaas charge failed, falling back to simulation: {str(e)}")
@@ -817,6 +825,9 @@ def generate_pix_charge(
     logger.info(f"Creating local simulation charge for user {current_user.id}")
     charge_id = str(uuid4())
 
+    # Build EMV before insert so it can be persisted in copy_paste_code
+    emv_payload = _build_pix_static_emv(charge_id, data.value)
+
     pix = PixTransaction(
         id=charge_id,
         value=data.value,
@@ -827,15 +838,14 @@ def generate_pix_charge(
         idempotency_key=f"charge-{charge_id}",
         description=description,
         correlation_id=correlation_id,
-        user_id=current_user.id
+        user_id=current_user.id,
+        copy_paste_code=emv_payload,      # stored for shareable payment link
+        expires_at=_dt.combine(data.due_date, _dt.min.time()) if data.due_date else None
     )
 
     db.add(pix)
     db.commit()
     db.refresh(pix)
-
-    # Build valid EMV payload: correct CRC16, correct amount format ("10.00" not "1000")
-    emv_payload = _build_pix_static_emv(charge_id, data.value)
 
     # QR code image encodes the EMV payload directly — any BR Code reader (any bank app,
     # any POS terminal) can scan this and extract the PIX data correctly.
@@ -855,7 +865,8 @@ def generate_pix_charge(
         description=description,
         copy_and_paste=emv_payload,
         qr_code_url=qr_url,
-        is_real_charge=False
+        is_real_charge=False,
+        expires_at=pix.expires_at
     )
 
 
