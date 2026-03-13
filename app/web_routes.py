@@ -2,6 +2,7 @@
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
+from typing import Optional
 from pydantic import BaseModel, field_validator
 from decimal import Decimal
 from uuid import uuid4
@@ -207,6 +208,21 @@ class ToggleActiveRequest(BaseModel):
     active: bool
 
 
+class AdminEditUserRequest(BaseModel):
+    """Payload for admin user edit. Only safe, non-identity fields are accepted."""
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    address_street: Optional[str] = None
+    address_number: Optional[str] = None
+    address_complement: Optional[str] = None
+    address_city: Optional[str] = None
+    address_state: Optional[str] = None
+    address_zip: Optional[str] = None
+    email_verified: Optional[bool] = None
+    document_verified: Optional[bool] = None
+    credit_limit: Optional[float] = None
+
+
 class MatrixTransferRequest(BaseModel):
     pix_key: str
     key_type: str
@@ -256,6 +272,93 @@ async def toggle_user_active(
     target.is_active = payload.active
     db.commit()
     return {"ok": True, "user_id": user_id, "is_active": payload.active}
+
+
+@router.patch("/admin/users/{user_id}")
+async def edit_user(
+    user_id: str,
+    payload: AdminEditUserRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update allowed profile fields for a user. Admin only.
+    Immutable fields (email, cpf_cnpj, password, balance, is_admin) are never touched."""
+    from app.core.logger import logger, audit_log
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso restrito.")
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    changed: dict = {}
+
+    if payload.name is not None:
+        v = payload.name.strip()
+        if not v:
+            raise HTTPException(status_code=400, detail="Nome não pode ser vazio.")
+        if len(v) > 100:
+            raise HTTPException(status_code=400, detail="Nome excede 100 caracteres.")
+        changed["name"] = v
+        target.name = v
+
+    if payload.phone is not None:
+        target.phone = payload.phone.strip() or None
+        changed["phone"] = target.phone
+
+    if payload.address_street is not None:
+        target.address_street = payload.address_street.strip() or None
+        changed["address_street"] = target.address_street
+
+    if payload.address_number is not None:
+        target.address_number = payload.address_number.strip() or None
+        changed["address_number"] = target.address_number
+
+    if payload.address_complement is not None:
+        target.address_complement = payload.address_complement.strip() or None
+        changed["address_complement"] = target.address_complement
+
+    if payload.address_city is not None:
+        target.address_city = payload.address_city.strip() or None
+        changed["address_city"] = target.address_city
+
+    if payload.address_state is not None:
+        v = payload.address_state.strip().upper()
+        if v and len(v) > 2:
+            raise HTTPException(status_code=400, detail="Estado deve ser a sigla UF (ex: SP).")
+        target.address_state = v or None
+        changed["address_state"] = target.address_state
+
+    if payload.address_zip is not None:
+        target.address_zip = payload.address_zip.strip() or None
+        changed["address_zip"] = target.address_zip
+
+    if payload.email_verified is not None:
+        target.email_verified = payload.email_verified
+        changed["email_verified"] = payload.email_verified
+
+    if payload.document_verified is not None:
+        target.document_verified = payload.document_verified
+        changed["document_verified"] = payload.document_verified
+
+    if payload.credit_limit is not None:
+        if payload.credit_limit < 0:
+            raise HTTPException(status_code=400, detail="Limite de crédito não pode ser negativo.")
+        target.credit_limit = payload.credit_limit
+        changed["credit_limit"] = payload.credit_limit
+
+    if not changed:
+        return {"ok": True, "user_id": user_id, "changed": {}}
+
+    db.commit()
+    audit_log(
+        action="ADMIN_USER_EDITED",
+        user=current_user.id,
+        resource=f"user_id={user_id}",
+        details={"changed_fields": list(changed.keys()), "target_email": target.email},
+    )
+    logger.info(f"ADMIN edited user id={user_id} fields={list(changed.keys())}")
+    return {"ok": True, "user_id": user_id, "changed": changed}
 
 
 @router.delete("/admin/users/{user_id}")
