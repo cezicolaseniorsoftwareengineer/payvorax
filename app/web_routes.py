@@ -311,6 +311,69 @@ async def delete_user(
     }
 
 
+@router.get("/admin/users/{user_id}")
+async def get_user_detail(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Return full user profile with transaction stats. Admin only."""
+    from datetime import datetime as _dt
+    from app.core.logger import logger
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso restrito.")
+
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    pix_all = db.query(PixTransaction).filter(PixTransaction.user_id == user_id).all()
+    pix_sent = [t for t in pix_all if t.type == TransactionType.SENT]
+    pix_rcvd = [t for t in pix_all if t.type == TransactionType.RECEIVED]
+    boleto_count = db.query(BoletoTransaction).filter(BoletoTransaction.user_id == user_id).count()
+    card_count = db.query(CreditCard).filter(CreditCard.user_id == user_id).count()
+    recent = sorted(pix_all, key=lambda t: t.created_at or _dt.min, reverse=True)[:5]
+
+    return {
+        "id": u.id,
+        "name": u.name,
+        "cpf_cnpj": u.cpf_cnpj,
+        "email": u.email,
+        "phone": u.phone or "",
+        "address_street": u.address_street or "",
+        "address_number": u.address_number or "",
+        "address_complement": u.address_complement or "",
+        "address_city": u.address_city or "",
+        "address_state": u.address_state or "",
+        "address_zip": u.address_zip or "",
+        "balance": float(u.balance),
+        "credit_limit": float(u.credit_limit) if u.credit_limit else 0.0,
+        "email_verified": bool(u.email_verified),
+        "document_verified": bool(u.document_verified),
+        "is_active": bool(u.is_active),
+        "is_admin": bool(u.is_admin),
+        "created_at": u.created_at.strftime("%d/%m/%Y %H:%M") if u.created_at else "\u2014",
+        "stats": {
+            "pix_sent_count": len(pix_sent),
+            "pix_sent_total": float(sum(t.value for t in pix_sent)),
+            "pix_received_count": len(pix_rcvd),
+            "pix_received_total": float(sum(t.value for t in pix_rcvd)),
+            "boleto_count": boleto_count,
+            "card_count": card_count,
+        },
+        "recent_pix": [
+            {
+                "type": t.type.value if hasattr(t.type, "value") else str(t.type),
+                "value": float(t.value),
+                "status": t.status.value if hasattr(t.status, "value") else str(t.status),
+                "description": t.description or "",
+                "created_at": t.created_at.strftime("%d/%m/%Y %H:%M") if t.created_at else "\u2014",
+            }
+            for t in recent
+        ],
+    }
+
+
 @router.post("/admin/matrix/transfer")
 async def matrix_transfer(
     payload: MatrixTransferRequest,

@@ -88,3 +88,63 @@ class TestDeleteModalTemplateIntegrity:
         assert "display:none" in modal_tag, (
             "detail-modal must also use style='display:none'."
         )
+
+
+class TestOpenDetailJsIntegrity:
+    """Ensure the USERS embedded object was removed and openDetail uses async API fetch."""
+
+    def test_no_jinja2_space_brace_syntax(self):
+        """Template must not contain '{ {' — Jinja2 ignores it and JS SyntaxError results."""
+        html = _html()
+        assert "{ {" not in html, (
+            "Found broken Jinja2 syntax '{ { expr } }' in admin.html. "
+            "This renders literally, causing a JavaScript SyntaxError that kills all JS functions."
+        )
+
+    def test_no_embedded_users_object(self):
+        """The static USERS JS object must be removed — it relied on broken Jinja2 syntax."""
+        html = _html()
+        assert "const USERS = {" not in html, (
+            "Found static USERS JS object in admin.html. "
+            "This object used broken '{ { expr } }' Jinja2 syntax and must be replaced with async fetch."
+        )
+
+    def test_open_detail_is_async(self):
+        """openDetail must be declared as async function to support fetch()."""
+        html = _html()
+        assert "async function openDetail(userId)" in html, (
+            "openDetail must be an async function to call await fetch()."
+        )
+
+    def test_open_detail_fetches_admin_api(self):
+        """openDetail must fetch /admin/users/ endpoint, not read a static object."""
+        html = _html()
+        fn_start = html.index("async function openDetail(userId)")
+        fn_block = html[fn_start: fn_start + 600]
+
+        assert "/admin/users/" in fn_block, (
+            "openDetail must fetch /admin/users/{userId} to load user data dynamically."
+        )
+
+    def test_open_detail_shows_stats(self):
+        """openDetail must render transaction stats from API response."""
+        html = _html()
+        fn_start = html.index("async function openDetail(userId)")
+        fn_block = html[fn_start: fn_start + 6000]
+
+        assert "u.stats.pix_sent_count" in fn_block, (
+            "openDetail must render pix_sent_count from stats returned by the API."
+        )
+        assert "u.stats.pix_received_count" in fn_block, (
+            "openDetail must render pix_received_count from stats returned by the API."
+        )
+
+    def test_open_detail_renders_recent_pix(self):
+        """openDetail must render the recent_pix table from API response."""
+        html = _html()
+        fn_start = html.index("async function openDetail(userId)")
+        fn_block = html[fn_start: fn_start + 3000]
+
+        assert "u.recent_pix" in fn_block, (
+            "openDetail must iterate u.recent_pix to render the recent transactions table."
+        )
