@@ -181,6 +181,22 @@ def favicon() -> Response:
     return Response(status_code=204)
 
 
+@app.get("/sw.js", include_in_schema=False)
+def service_worker() -> Response:
+    """
+    Serve PWA Service Worker from root scope.
+    Must be at / for full-scope registration — cannot be served from /static/.
+    """
+    candidate = Path(__file__).resolve().parent / "static" / "sw.js"
+    if candidate.exists():
+        return FileResponse(
+            path=str(candidate),
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/"},
+        )
+    return Response(status_code=204)
+
+
 # API Info Endpoint (Moved from root)
 @app.get("/api-info", tags=["Health"])
 def api_info() -> Dict[str, Any]:

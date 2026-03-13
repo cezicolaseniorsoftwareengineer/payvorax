@@ -19,6 +19,7 @@ pip-delete-this-directory.txt
 !package.json
 !tasks.json
 !launch.json
+!app/static/manifest.json
 
 # Logs
 *.log

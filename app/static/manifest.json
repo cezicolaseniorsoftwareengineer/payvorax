@@ -1,0 +1,42 @@
+{
+    "name": "BioCodeTechPay",
+    "short_name": "BioCodePay",
+    "description": "Plataforma financeira digital BioCodeTechPay",
+    "start_url": "/dashboard",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#0a0d11",
+    "theme_color": "#3b82f6",
+    "lang": "pt-BR",
+    "scope": "/",
+    "icons": [
+        {
+            "src": "/static/img/logo.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/static/img/logo.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": [
+        "finance",
+        "business"
+    ],
+    "shortcuts": [
+        {
+            "name": "PIX",
+            "url": "/pix",
+            "description": "Enviar PIX"
+        },
+        {
+            "name": "Extrato",
+            "url": "/extrato",
+            "description": "Ver extrato"
+        }
+    ]
+}
