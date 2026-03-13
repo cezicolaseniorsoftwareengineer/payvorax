@@ -1210,11 +1210,13 @@
 
     // -------------------------------------------------------------------------
 
-    function setupCurrencyInput(inputId) {
+    function setupCurrencyInput(inputId, maxCents) {
 
         const input = document.getElementById(inputId);
 
         if (!input) return;
+
+        const _maxCents = (typeof maxCents === 'number') ? maxCents : 99999999;
 
 
 
@@ -1232,9 +1234,9 @@
 
             const centavos = parseInt(digits, 10);
 
-            // Cap at R$ 999.999,99
+            // Cap at configured maximum
 
-            const capped = Math.min(centavos, 99999999);
+            const capped = Math.min(centavos, _maxCents);
 
 
 
@@ -1319,6 +1321,10 @@
         setupCurrencyInput('valor');
 
         setupCurrencyInput('valorReceber');
+
+        // Link de Pagamento: cap at R$ 20.000,00 (2000000 centavos)
+
+        setupCurrencyInput('linkValor', 2000000);
 
         // Seed balance from server-rendered value; PVX.refreshBalance() will keep it updated.
         // Round to 2dp immediately to prevent IEEE 754 float drift (e.g. DB float 3.1499999... != 3.15).
