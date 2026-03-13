@@ -75,6 +75,28 @@
         </div>
     </div>
 
+    <!-- PWA Install Banner -->
+    <div id="pwa-banner" class="hidden fixed bottom-0 left-0 right-0 z-50 p-4">
+        <div
+            class="max-w-sm mx-auto bg-white border border-blue-100 rounded-2xl shadow-2xl p-4 flex items-center gap-3">
+            <img src="/static/img/logo.png" alt="Logo" class="w-12 h-12 rounded-full flex-shrink-0">
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-gray-800">Bio Code Tech Pay</p>
+                <p class="text-xs text-gray-500">Acesso rapido sem navegar</p>
+            </div>
+            <button id="pwa-install-btn"
+                class="flex-shrink-0 nu-purple text-white text-xs font-bold px-4 py-2 rounded-full hover:bg-blue-900 transition-all shadow">
+                Entrar na Fintech
+            </button>
+            <button id="pwa-dismiss-btn" class="flex-shrink-0 text-gray-300 hover:text-gray-500 ml-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="w-full p-4 text-center text-xs text-gray-400 border-t border-gray-100 bg-white">
         <div class="max-w-md mx-auto">
@@ -93,6 +115,35 @@
 
         // Database warm-up on login page load (wakes Neon before user submits)
         fetch('/health', { method: 'GET', priority: 'low' }).catch(() => { });
+
+        // PWA install banner
+        let deferredPrompt = null;
+        const banner = document.getElementById('pwa-banner');
+        const installBtn = document.getElementById('pwa-install-btn');
+        const dismissBtn = document.getElementById('pwa-dismiss-btn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            banner.classList.remove('hidden');
+        });
+
+        installBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            deferredPrompt = null;
+            banner.classList.add('hidden');
+        });
+
+        dismissBtn.addEventListener('click', () => {
+            banner.classList.add('hidden');
+        });
+
+        window.addEventListener('appinstalled', () => {
+            banner.classList.add('hidden');
+            deferredPrompt = null;
+        });
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
