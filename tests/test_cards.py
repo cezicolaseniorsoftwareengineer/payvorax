@@ -50,7 +50,8 @@ def auth_token():
         email="card@test.com",
         cpf_cnpj="99999999999",
         hashed_password=get_password_hash("password123"),
-        credit_limit=1000.0
+        credit_limit=1000.0,
+        email_verified=True,
     )
     db.add(user)
     db.commit()

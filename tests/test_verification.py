@@ -217,9 +217,10 @@ class TestRegisterDocumentGate:
         assert response.status_code in (201, 400)
         if response.status_code == 201:
             data = response.json()
-            assert "access_token" in data
+            assert "access_token" not in data
             assert data.get("email_verified") is False
             assert data.get("document_verified") is True
+            assert "message" in data
 
     @patch("app.auth.router.send_verification_email", return_value=True)
     def test_register_sends_verification_email(self, mock_email, client, valid_user_payload):

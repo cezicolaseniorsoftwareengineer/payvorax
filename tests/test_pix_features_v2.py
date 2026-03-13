@@ -51,7 +51,8 @@ def sender_token() -> str:
         email="sender@test.com",
         cpf_cnpj="11111111111",
         hashed_password=get_password_hash("password123"),
-        credit_limit=1000000000.0  # High limit for testing
+        credit_limit=1000000000.0,  # High limit for testing
+        email_verified=True,
     )
     db.add(sender)
     db.commit()
@@ -71,7 +72,8 @@ def receiver_token() -> str:
         email="receiver@test.com",
         cpf_cnpj="22222222222",
         hashed_password=get_password_hash("password123"),
-        credit_limit=10000.0
+        credit_limit=10000.0,
+        email_verified=True,
     )
     db.add(receiver)
     db.commit()
@@ -197,7 +199,8 @@ def test_self_deposit_simulation() -> None:
             email="depositor@test.com",
             cpf_cnpj=test_cpf,
             hashed_password=get_password_hash("password123"),
-            credit_limit=0.0
+            credit_limit=0.0,
+            email_verified=True,
         )
         db.add(depositor)
         db.commit()
@@ -249,7 +252,8 @@ def test_confirm_receipt_flow() -> None:
             email="receipt@test.com",
             cpf_cnpj=test_cpf,
             hashed_password=get_password_hash("password123"),
-            credit_limit=0.0
+            credit_limit=0.0,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -291,7 +295,8 @@ def test_high_value_receipt_flow() -> None:
             email="rich@test.com",
             cpf_cnpj=test_cpf,
             hashed_password=get_password_hash("password123"),
-            credit_limit=0.0
+            credit_limit=0.0,
+            email_verified=True,
         )
         db.add(user)
         db.commit()

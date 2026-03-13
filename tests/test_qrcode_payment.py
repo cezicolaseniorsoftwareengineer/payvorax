@@ -75,6 +75,7 @@ def payer_token() -> str:
         hashed_password=get_password_hash("pass123"),
         balance=500.0,
         credit_limit=0.0,
+        email_verified=True,
     )
     db.add(payer)
     db.commit()
@@ -96,6 +97,7 @@ def receiver_token() -> str:
         hashed_password=get_password_hash("pass123"),
         balance=0.0,
         credit_limit=0.0,
+        email_verified=True,
     )
     db.add(receiver)
     db.commit()
@@ -557,6 +559,7 @@ class TestQrCodeGuards:
                 hashed_password=get_password_hash("pass123"),
                 balance=balance,
                 credit_limit=0.0,
+                email_verified=True,
             )
             db.add(user)
             db.commit()
