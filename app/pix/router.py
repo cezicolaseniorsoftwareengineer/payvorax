@@ -280,9 +280,20 @@ def _extract_pix_url(emv: str) -> Optional[str]:
         if val25 and "/" in val25:
             return _normalise(val25)
 
-        # Sub-tag 01: URL used by PagSeguro, Mercado Pago older firmware
+        # Sub-tag 01: may hold a PIX key (CNPJ "24.455.140/0001-12", CPF, email,
+        # phone, EVP UUID) OR a payloadLocation URL (PagSeguro / Mercado Pago old
+        # firmware). CNPJ keys contain "/" and "." but are NOT URLs.
+        # Only treat as URL when there is an explicit scheme (https://, http://,
+        # pix://) OR when the value starts with a letter-based domain name.
         val01 = sub.get("01", "")
-        if val01 and "/" in val01 and ("." in val01 or val01.startswith("pix://")):
+        if val01 and (
+            val01.startswith(("https://", "http://", "pix://"))
+            or (
+                "/" in val01
+                and val01[0].isalpha()
+                and re.search(r'^[a-zA-Z][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/', val01)
+            )
+        ):
             return _normalise(val01)
 
     return None
@@ -312,10 +323,21 @@ def _fetch_pix_charge_url(url: str) -> Dict[str, Any]:
         response = client.get(
             url,
             headers={
-                "Accept": "application/json",
-                "User-Agent": "BioCodeTechPay/1.0",
+                "Accept": "application/json, */*",
+                "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+                "User-Agent": (
+                    "Mozilla/5.0 (Linux; Android 12; Pixel 6) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/121.0.0.0 Mobile Safari/537.36"
+                ),
+                "Cache-Control": "no-cache",
             }
         )
+        # 404 / 410: charge was cleaned up or explicitly expired at the PSP.
+        # Raise before raise_for_status so it becomes _PixChargeExpired, not a
+        # generic HTTPStatusError that would fall through to field-54.
+        if response.status_code in (404, 410):
+            raise _PixChargeExpired(f"HTTP {response.status_code}")
         response.raise_for_status()
 
     data = response.json()
@@ -1301,37 +1323,15 @@ def consultar_pix_qrcode(
     #   Covers edge cases not handled by the above two stages. Swallows all
     #   errors because sandbox mode makes this fail for real-world QR codes.
 
-    # Stage 1: resolve payloadLocation URL directly at PSP
+    # Stage 1: resolve payloadLocation URL directly at PSP.
+    # Only entered when the QR has a genuine URL in fields 26-51 sub-tag 25/01.
+    # Static QRs (CNPJ key, CPF key, etc.) have no URL and skip this stage.
     pix_url = _extract_pix_url(data.payload)
     if pix_url:
         logger.info(f"QR consultar: stage-1 payloadLocation found url={pix_url[:80]}")
         try:
             charge_data = _fetch_pix_charge_url(pix_url)
-            logger.info(f"QR consultar: stage-1 PSP resolve success value={charge_data['value']}")
-            return {
-                "value": charge_data["value"],
-                "beneficiary_name": charge_data.get("beneficiary_name") or "Beneficiario",
-                "is_internal": False,
-                "charge_id": None
-            }
-        except _PixChargeExpired as exp_status:
-            # PSP explicitly returned a terminal status — charge is dead.
-            # Do NOT fall through to field-54: even if the value is parseable,
-            # Asaas will also reject the payment with the same reason.
-            logger.warning(f"QR consultar: stage-1 charge terminal status={exp_status}")
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "QR Code expirado ou ja utilizado. "
-                    "Gere um novo QR Code no terminal e tente novamente."
-                )
-            )
-        except Exception as url_err:
-            # Network / parse error: PSP temporarily unreachable.
-            # Fall through to field-54 so a brief outage doesn't block payments.
-            logger.warning(f"QR consultar: stage-1 PSP unreachable, fallback to field-54: {url_err}")
-        else:
-            # Stage-1 succeeded: validate txid integrity (anti-fraud)
+            # txid anti-fraud validation — runs inside try where charge_data is in scope.
             txid_qr = _extract_txid_field62(data.payload)
             txid_psp = charge_data.get("txid")
             if txid_qr and txid_psp and txid_qr.upper() != txid_psp.upper():
@@ -1349,8 +1349,40 @@ def consultar_pix_qrcode(
                 "is_internal": False,
                 "charge_id": None
             }
+        except HTTPException:
+            raise  # txid mismatch — must not be swallowed by the generic handler below
+        except _PixChargeExpired as exp_status:
+            # PSP confirmed terminal status (EXPIRADA/CONCLUIDA or HTTP 404/410).
+            # Do NOT fall through: Asaas will also reject this QR at payment time.
+            logger.warning(f"QR consultar: stage-1 charge terminal status={exp_status}")
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "QR Code expirado ou ja utilizado. "
+                    "Gere um novo QR Code no terminal e tente novamente."
+                )
+            )
+        except Exception as url_err:
+            # PSP unreachable, auth required, or rate-limited — fall through to field-54.
+            logger.warning(f"QR consultar: stage-1 PSP unreachable, fallback to field-54: {url_err}")
 
-    # Stage 3: Asaas decode API (swallow all errors — sandbox silently fails for real QR)
+    # Stage 2: local EMV field-54 parse — no network, zero latency.
+    # Handles static QRs (no payloadLocation URL) and fallback when Stage 1 PSP
+    # was temporarily unreachable. Static QRs do not expire by design.
+    emv_value = _parse_emv_value(data.payload)
+    if emv_value > 0:
+        merchant_name = _parse_emv_top_level(data.payload.strip()).get("59", "").strip()
+        logger.info(f"QR consultar: stage-2 field-54 value={emv_value} merchant={merchant_name!r}")
+        return {
+            "value": emv_value,
+            "beneficiary_name": merchant_name or "Beneficiario",
+            "is_internal": False,
+            "charge_id": None
+        }
+
+    # Stage 3: Asaas /pix/qrCodes/decode — fallback of last resort.
+    # In sandbox mode Asaas rejects external QR codes — errors are not surfaced.
+    # In production, Asaas may resolve value/liveness for additional PSPs.
     gateway = get_payment_gateway()
     if gateway:
         try:
@@ -1363,6 +1395,8 @@ def consultar_pix_qrcode(
                     "is_internal": False,
                     "charge_id": None
                 }
+        except httpx.HTTPStatusError as asaas_http_err:
+            logger.warning(f"QR consultar: stage-3 Asaas decode HTTP error: {asaas_http_err}")
         except Exception as e:
             logger.warning(f"QR consultar: stage-3 Asaas decode failed: {e}")
 
