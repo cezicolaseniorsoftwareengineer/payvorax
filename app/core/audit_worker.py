@@ -88,7 +88,8 @@ async def _call_openrouter_analysis(
         "  1. Conta Matrix acumula APENAS a margem da plataforma (taxa cobrada ao correntista menos "
         "custo Asaas). Nunca deve ir negativa.\n"
         "  2. Quando total interno > Asaas: Asaas cobrou taxa de gateway nao refletida internamente. "
-        "A correcao correta e debitar do correntista, nao creditar a Matrix.\n"
+        "A correcao correta e debitar da Conta Matrix (plataforma absorve o custo como reducao de margem). "
+        "NUNCA modificar saldo de correntistas — esse e um invariante absoluto do sistema.\n"
         "  3. Quando Asaas > total interno: existe um credito no Asaas nao registrado internamente. "
         "Creditar a Matrix ate igualar.\n"
         "  4. O sistema auto-corrige divergencias ate R$20,00 por ciclo.\n\n"
@@ -133,8 +134,8 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
 
     When internal total exceeds Asaas balance (diff > 0), the divergence is caused
     by gateway fees that reduced the Asaas account but were not reflected internally.
-    Correction: debit Matrix first (floor at R$0.00), then distribute remainder
-    proportionally across customers.
+    Correction: debit Matrix only (platform absorbs the Asaas gateway cost as a
+    reduction in margin). Correntista balances are NEVER modified by the audit system.
 
     When Asaas exceeds internal (diff < 0), an unregistered credit exists in
     the gateway. Correction: credit the Matrix account to restore parity.
@@ -211,58 +212,29 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
             # Divergence detected
             if Decimal(str(signed_diff)) > Decimal("0.01") and abs_diff_dec <= _AUTO_CORRECTION_MAX and matrix_user is not None:
                 # Internal exceeds Asaas: Asaas deducted a gateway fee not reflected internally.
-                # Rule: absorb from Matrix first (floor 0), then proportional from customers.
+                # INVARIANT: platform (Matrix) absorbs the Asaas gateway cost as a margin reduction.
+                # Correntista balances are NEVER modified by the audit system under any circumstance.
                 db2 = db_factory()
                 try:
                     from app.auth.models import User as _User
                     live_matrix = db2.query(_User).filter(_User.email == settings.MATRIX_ACCOUNT_EMAIL).first()
-                    live_customers = [
-                        u for u in db2.query(_User).all()
-                        if u.email != settings.MATRIX_ACCOUNT_EMAIL and float(u.balance) > 0
-                    ]
 
                     if live_matrix is not None:
-                        matrix_cur_dec  = Decimal(str(live_matrix.balance)).quantize(_TWO_PLACES, ROUND_HALF_UP)
-                        matrix_abs_dec  = min(abs_diff_dec, max(Decimal("0.00"), matrix_cur_dec))
-                        remainder_dec   = (abs_diff_dec - matrix_abs_dec).quantize(_TWO_PLACES, ROUND_HALF_UP)
-
-                        if matrix_abs_dec > Decimal("0.00"):
-                            live_matrix.balance = float((matrix_cur_dec - matrix_abs_dec).quantize(_TWO_PLACES, ROUND_HALF_UP))
-
-                        customers_debited: list = []
-                        if remainder_dec > Decimal("0.01"):
-                            total_cust_dec = sum(
-                                (Decimal(str(u.balance)).quantize(_TWO_PLACES, ROUND_HALF_UP) for u in live_customers),
-                                Decimal("0.00"),
-                            )
-                            if total_cust_dec > Decimal("0.00"):
-                                unallocated = remainder_dec
-                                for customer in sorted(live_customers, key=lambda u: float(u.balance), reverse=True):
-                                    cust_bal_dec = Decimal(str(customer.balance)).quantize(_TWO_PLACES, ROUND_HALF_UP)
-                                    share_dec    = (cust_bal_dec / total_cust_dec * remainder_dec).quantize(_TWO_PLACES, ROUND_HALF_UP)
-                                    actual_dec   = min(share_dec, cust_bal_dec, unallocated)
-                                    if actual_dec > Decimal("0.00"):
-                                        customer.balance = float((cust_bal_dec - actual_dec).quantize(_TWO_PLACES, ROUND_HALF_UP))
-                                        customers_debited.append({"id": str(customer.id), "amount": float(actual_dec)})
-                                        unallocated = (unallocated - actual_dec).quantize(_TWO_PLACES, ROUND_HALF_UP)
-                                if unallocated > Decimal("0.01"):
-                                    logger.warning(
-                                        f"[audit-worker] Partial correction: R${float(unallocated):.2f} unallocated "
-                                        "(insufficient customer balances)."
-                                    )
-                            else:
-                                logger.warning(
-                                    f"[audit-worker] Cannot charge remainder R${float(remainder_dec):.2f}: "
-                                    "no customer with positive balance found."
-                                )
-
+                        matrix_cur_dec = Decimal(str(live_matrix.balance)).quantize(_TWO_PLACES, ROUND_HALF_UP)
+                        matrix_debit   = min(abs_diff_dec, max(Decimal("0.00"), matrix_cur_dec))
+                        live_matrix.balance = float(
+                            (matrix_cur_dec - matrix_debit).quantize(_TWO_PLACES, ROUND_HALF_UP)
+                        )
                         db2.commit()
+                        _remainder_unfunded = float(
+                            (abs_diff_dec - matrix_debit).quantize(_TWO_PLACES, ROUND_HALF_UP)
+                        )
                         result["correction_applied"] = {
-                            "action": "matrix_and_customers_debited",
-                            "matrix_debited": float(matrix_abs_dec),
-                            "customers_debited": customers_debited,
-                            "remainder_allocated_to_customers": float(remainder_dec),
+                            "action": "matrix_debited",
+                            "matrix_debited": float(matrix_debit),
                             "matrix_balance_after": float(live_matrix.balance),
+                            "correntistas_unchanged": True,
+                            "remainder_unfunded": _remainder_unfunded,
                         }
                         audit_log(
                             action="AUDIT_AUTO_CORRECTION",
@@ -271,18 +243,20 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
                             details={
                                 "diff": abs_diff,
                                 "direction": "internal_above_asaas",
-                                "matrix_absorbed": float(matrix_abs_dec),
-                                "customer_remainder": float(remainder_dec),
-                                "customers_debited": customers_debited,
+                                "matrix_debited": float(matrix_debit),
                                 "matrix_balance_after": float(live_matrix.balance),
+                                "correntistas_unchanged": True,
                                 "asaas_balance": asaas_balance,
                             },
                         )
+                        if _remainder_unfunded > 0.01:
+                            logger.warning(
+                                f"[audit-worker] Partial correction: R${_remainder_unfunded:.2f} unfunded — "
+                                "Matrix balance insufficient to absorb full divergence. Manual action required."
+                            )
                         logger.info(
-                            f"[audit-worker] AUTO-CORRECTION: Matrix debited R${float(matrix_abs_dec):.2f} "
-                            f"(new_matrix=R${live_matrix.balance:.2f}), "
-                            f"customers charged R${float(remainder_dec):.2f} "
-                            f"across {len(customers_debited)} account(s)"
+                            f"[audit-worker] AUTO-CORRECTION: Matrix debited R${float(matrix_debit):.2f} "
+                            f"(new_matrix=R${live_matrix.balance:.2f}). Correntistas unchanged (invariant)."
                         )
                         result["status"] = "AUTO_CORRECTED"
                     else:

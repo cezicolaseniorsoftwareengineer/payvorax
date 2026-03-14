@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel, field_validator
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 import secrets
 from datetime import datetime as _datetime, timezone as _timezone
@@ -928,17 +928,14 @@ async def matrix_audit(
             messages.append("Saldo interno e Asaas estao sincronizados.")
 
         elif diff > 0:
-            # internal > asaas: saldo interno maior que o real no Asaas.
-            # Causa: Asaas cobrou taxa de gateway (ex: R$2,98 inbound) que nao foi
-            # deduzida do correntista no momento do credito.
-            # Regra invariante: Matrix NUNCA e debitada neste cenario — ela contem
-            # apenas lucro realizado (margem pos-Asaas). A diferenca vem de creditos
-            # concedidos a maior aos correntistas e deve ser retirada dos mesmos.
+            # internal > asaas: Asaas deducted a gateway fee not reflected in the internal ledger.
+            # INVARIANT: correntista balances are NEVER modified by the audit system.
+            # Platform (Matrix) absorbs the Asaas gateway cost as a reduction in margin.
             direction = "internal_above_asaas"
             _AUTO_CORRECTION_MAX = 20.0
             if abs_diff < 10:
                 status = "WARN"
-                status_label = "Divergencia detectada — taxa gateway nao deduzida de correntista"
+                status_label = "Divergencia detectada — custo gateway Asaas nao refletido internamente"
             else:
                 status = "ERROR"
                 status_label = "Divergencia critica — reconciliacao necessaria"
@@ -946,92 +943,66 @@ async def matrix_audit(
             messages.append(
                 f"Total interno (R$ {total_internal:.2f}) e maior que Asaas (R$ {asaas_balance:.2f}). "
                 f"Diferenca: R$ {abs_diff:.2f}. "
-                "Causa provavel: Asaas cobrou taxa de gateway do deposito/recebimento e o correntista "
-                "foi creditado com o valor bruto. "
-                "Correcao: debitar diferenca proporcionalmente dos correntistas com saldo positivo. "
-                "A Conta Matrix NAO e alterada — ela contem apenas lucro realizado da plataforma."
+                "Causa provavel: Asaas deduziu taxa de gateway nao refletida internamente. "
+                "Correcao: debitar da Conta Matrix (plataforma absorve o custo como reducao de margem). "
+                "INVARIANTE: saldo de correntistas NUNCA e alterado pela auditoria."
             )
 
             if abs_diff <= _AUTO_CORRECTION_MAX:
-                # Collect all customers with positive balance (exclude matrix and admin system accounts)
-                live_customers = [
-                    u for u in db.query(User).all()
-                    if u.email != settings.MATRIX_ACCOUNT_EMAIL
-                    and float(u.balance) > 0
-                ]
-                total_cust_bal = sum(float(u.balance) for u in live_customers)
-                customers_debited: list = []
-
-                if total_cust_bal > 0.01:
-                    remainder = abs_diff
-                    for customer in sorted(live_customers, key=lambda u: float(u.balance), reverse=True):
-                        share = round((float(customer.balance) / total_cust_bal) * abs_diff, 2)
-                        actual_debit = min(share, float(customer.balance), remainder)
-                        if actual_debit > 0:
-                            customer.balance = round(float(customer.balance) - actual_debit, 2)
-                            db.add(customer)
-                            customers_debited.append({
-                                "user_id": str(customer.id),
-                                "name": customer.name,
-                                "amount": actual_debit,
-                                "balance_after": round(float(customer.balance), 2),
-                            })
-                            remainder = round(remainder - actual_debit, 2)
+                if matrix_user is not None:
+                    _matrix_before  = round(float(matrix_user.balance), 2)
+                    _matrix_bal_dec = Decimal(str(matrix_user.balance)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    _abs_diff_dec   = Decimal(str(abs_diff)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    _matrix_debit   = min(_abs_diff_dec, max(Decimal("0.00"), _matrix_bal_dec))
+                    matrix_user.balance = float((_matrix_bal_dec - _matrix_debit).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+                    db.add(matrix_user)
                     db.commit()
-
-                    # Refresh internal_sum after debit
-                    refreshed_customers = [
-                        u for u in db.query(User).all()
-                        if u.email != settings.MATRIX_ACCOUNT_EMAIL
-                    ]
-                    internal_sum = round(sum(float(u.balance) for u in refreshed_customers), 2)
+                    db.refresh(matrix_user)
+                    matrix_balance = round(float(matrix_user.balance), 2)
                     total_internal = round(internal_sum + matrix_balance, 2)
-
+                    _remainder_unfunded = round(float(_abs_diff_dec - _matrix_debit), 2)
                     correction_applied = {
-                        "action": "customers_debited",
-                        "amount": abs_diff,
-                        "customers": customers_debited,
-                        "matrix_unchanged": matrix_balance,
+                        "action": "matrix_debited",
+                        "amount": float(_matrix_debit),
+                        "matrix_before": _matrix_before,
                         "matrix_balance_after": matrix_balance,
-                        "reason": "asaas_gateway_fee_recovered_from_customers",
-                        "remainder_unallocated": round(remainder, 2),
+                        "correntistas_unchanged": True,
+                        "remainder_unfunded": _remainder_unfunded,
+                        "reason": "asaas_gateway_cost_absorbed_by_platform",
                     }
-                    names = ", ".join(c["name"] for c in customers_debited) or "nenhum"
                     messages.append(
-                        f"Saldo de {len(customers_debited)} correntista(s) ajustado: {names}. "
-                        f"Total debitado: R$ {abs_diff - round(remainder, 2):.2f}. "
-                        "Conta Matrix preservada intacta."
+                        f"Conta Matrix ajustada: R$ {_matrix_before:.2f} -> R$ {matrix_balance:.2f} "
+                        f"(debito de R$ {float(_matrix_debit):.2f}). Correntistas preservados intactos (invariante)."
                     )
-                    if remainder > 0.01:
+                    if _remainder_unfunded > 0.01:
                         messages.append(
-                            f"Atencao: R$ {remainder:.2f} nao alocados — saldo total dos correntistas "
-                            "foi insuficiente para cobrir a divergencia completa."
+                            f"AVISO: R$ {_remainder_unfunded:.2f} nao cobertos — saldo Matrix insuficiente "
+                            "para absorver a divergencia completa. Acao manual necessaria."
                         )
                     audit_log(
                         action="AUDIT_AUTO_CORRECTION",
                         user=current_user.id,
-                        resource="customers_balance",
+                        resource="matrix_account",
                         details={
                             "diff": abs_diff,
                             "direction": direction,
-                            "customers_debited": customers_debited,
-                            "matrix_unchanged": matrix_balance,
+                            "matrix_before": _matrix_before,
+                            "matrix_after": matrix_balance,
+                            "correntistas_unchanged": True,
                             "asaas_balance": asaas_balance,
                             "total_internal_after": total_internal,
                         },
                     )
                     status = "AUTO_CORRECTED"
-                    status_label = "Saldos sincronizados — custo gateway debitado dos correntistas"
-                    # Rebuild breakdown with corrected values (post-correction diff = 0.00)
-                    breakdown[0]["value"] = internal_sum
+                    status_label = "Saldos sincronizados — custo gateway absorvido pela Matrix"
+                    breakdown[1]["value"] = matrix_balance
                     breakdown[2]["value"] = total_internal
                     if len(breakdown) > 4:
                         breakdown[4]["value"] = round(abs(total_internal - asaas_balance), 2)
                         breakdown[4]["highlight"] = False
                 else:
                     messages.append(
-                        f"Divergencia de R$ {abs_diff:.2f} nao pode ser corrigida automaticamente: "
-                        "nenhum correntista com saldo positivo encontrado. Verifique manualmente."
+                        "Conta Matrix nao encontrada. Correcao automatica impossivel. Verifique a configuracao."
                     )
             else:
                 messages.append(
@@ -1114,12 +1085,10 @@ async def matrix_audit(
         # Describe what correction was applied for the AI context
         if correction_applied:
             _action = correction_applied.get("action", "")
-            if _action == "customers_debited":
-                _names = ", ".join(c["name"] for c in correction_applied.get("customers", []))
+            if _action == "matrix_debited":
                 _correction_desc = (
-                    f"sim — saldo debitado dos correntistas ({_names}) "
-                    f"no valor total de R$ {correction_applied['amount']:.2f}. "
-                    "Conta Matrix preservada intacta (ela so contem lucro realizado da plataforma)."
+                    f"sim — Matrix debitada em R$ {correction_applied.get('amount', 0.0):.2f}. "
+                    "Correntistas preservados (invariante absoluto: saldo de correntistas nunca e modificado pela auditoria)."
                 )
             elif _action == "matrix_credited":
                 _correction_desc = f"sim — Matrix creditada em R$ {correction_applied['amount']:.2f}"
@@ -1139,9 +1108,10 @@ async def matrix_audit(
             f"- Status: {status_label}\n"
             f"- Correcao aplicada: {_correction_desc}\n\n"
             "Regra de negocio: a Conta Matrix acumula apenas a margem da plataforma (taxa cobrada ao "
-            "correntista menos o custo Asaas). Quando o saldo interno excede o Asaas, significa que "
-            "um correntista foi creditado com valor bruto sem deducao da taxa gateway — o shortfall "
-            "deve ser debitado do correntista, nunca da Matrix. "
+            "correntista menos o custo Asaas). Quando o saldo interno excede o Asaas, o custo de gateway "
+            "Asaas nao foi refletido internamente — a Conta Matrix absorve esse custo como reducao de margem. "
+            "INVARIANTE ABSOLUTO: saldo de correntistas NUNCA e modificado pela auditoria ou qualquer "
+            "correcao automatica. "
             "Em 2 a 4 frases curtas, explique em portugues brasileiro o que provavelmente causou "
             "esta divergencia, o que foi feito automaticamente e o que o admin deve verificar. "
             "Seja tecnico e preciso."
@@ -1169,6 +1139,56 @@ async def matrix_audit(
             logger.warning(f"[audit] OpenRouter explanation failed: {ai_err}")
     # ─────────────────────────────────────────────────────────────────────────
 
+    # ── Per-transaction fee forensics (read-only — never modifies any balance) ──
+    from app.pix.models import PixStatus as _PixStatus
+    from app.core.fees import (
+        calculate_pix_outbound_fee as _fee_out,
+        calculate_pix_receive_fee as _fee_in,
+    )
+
+    _TWO = Decimal("0.01")
+    _fee_discrepancies: list = []
+    _confirmed_txs = (
+        db.query(PixTransaction)
+        .filter(PixTransaction.status == _PixStatus.CONFIRMED)
+        .all()
+    )
+    _total_audited = len(_confirmed_txs)
+    _user_map = {u.id: u for u in all_users}
+
+    for _tx in _confirmed_txs:
+        _u = _user_map.get(_tx.user_id)
+        if not _u:
+            continue
+        if _u.email in (settings.MATRIX_ACCOUNT_EMAIL, settings.ADMIN_EMAIL):
+            continue
+        if _tx.fee_amount is None:
+            continue  # pre-fee-tracking records — not comparable
+        _stored   = Decimal(str(_tx.fee_amount)).quantize(_TWO, rounding=ROUND_HALF_UP)
+        _cpf_cnpj = getattr(_u, "cpf_cnpj", None) or ""
+        if _tx.type == TransactionType.SENT:
+            _expected = _fee_out(_cpf_cnpj, _tx.value)
+        else:
+            _expected = _fee_in(_cpf_cnpj, _tx.value)
+        _delta = (_stored - _expected).quantize(_TWO, rounding=ROUND_HALF_UP)
+        if abs(_delta) >= _TWO:
+            _fee_discrepancies.append({
+                "tx_id": _tx.id,
+                "user_id": str(_tx.user_id),
+                "user_name": _u.name,
+                "type": _tx.type.value,
+                "value": round(_tx.value, 2),
+                "fee_stored": float(_stored),
+                "fee_expected": float(_expected),
+                "delta": float(_delta),
+                "created_at": _tx.created_at.isoformat() if _tx.created_at else None,
+            })
+
+    _total_overcharged  = round(sum(d["delta"] for d in _fee_discrepancies if d["delta"] > 0), 2)
+    _total_undercharged = round(abs(sum(d["delta"] for d in _fee_discrepancies if d["delta"] < 0)), 2)
+    _fee_health = "OK" if not _fee_discrepancies else f"DISCREPANCIAS ({len(_fee_discrepancies)})"
+    # ──────────────────────────────────────────────────────────────────────────
+
     return {
         "status": status,
         "status_label": status_label,
@@ -1177,6 +1197,17 @@ async def matrix_audit(
         "asaas_available": asaas_balance is not None,
         "correction_applied": correction_applied,
         "ai_explanation": ai_explanation,
+        "fee_forensics": {
+            "status": _fee_health,
+            "total_transactions_audited": _total_audited,
+            "discrepancies": _fee_discrepancies,
+            "total_overcharged": _total_overcharged,
+            "total_undercharged": _total_undercharged,
+        },
+        "audit_invariants": {
+            "correntistas_modified": False,
+            "matrix_only_corrections": True,
+        },
     }
 
 
