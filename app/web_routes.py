@@ -254,6 +254,44 @@ class MatrixTransferRequest(BaseModel):
         return v.upper()
 
 
+class AsaasTransferRequest(BaseModel):
+    """Transfer FROM the real Asaas bank account to a destination."""
+    destination: str  # "correntista" | "pix_key" | "matrix"
+    user_id: Optional[str] = None
+    pix_key: Optional[str] = None
+    key_type: Optional[str] = None
+    amount: float
+    description: str = ""
+
+    @field_validator("amount")
+    @classmethod
+    def amount_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("Valor deve ser positivo")
+        return round(v, 2)
+
+    @field_validator("destination")
+    @classmethod
+    def destination_valid(cls, v: str) -> str:
+        valid = {"correntista", "pix_key", "matrix"}
+        if v not in valid:
+            raise ValueError(f"Destino inválido. Aceitos: {', '.join(sorted(valid))}")
+        return v
+
+
+class MatrixToAsaasRequest(BaseModel):
+    """Accounting debit: move matrix balance back to Asaas (no real PIX emitted)."""
+    amount: float
+    description: str = ""
+
+    @field_validator("amount")
+    @classmethod
+    def amount_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("Valor deve ser positivo")
+        return round(v, 2)
+
+
 @router.post("/admin/users/{user_id}/toggle-active")
 async def toggle_user_active(
     user_id: str,
@@ -616,6 +654,178 @@ async def matrix_transfer(
     db.commit()
 
     return {"ok": True, "type": "external", "balance": round(matrix.balance, 2), "payment_id": payment_id}
+
+
+# ---------------------------------------------------------------------------
+# Real-time balances — polling endpoint for the admin panel
+# ---------------------------------------------------------------------------
+
+@router.get("/admin/balances")
+async def admin_balances(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return Asaas bank balance + matrix (fee) balance + correntistas list.
+    Called every 30 s by the admin panel JS. Admin only.
+    """
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso restrito.")
+
+    matrix_user = db.query(User).filter(User.email == settings.MATRIX_ACCOUNT_EMAIL).first()
+    matrix_balance = round(float(matrix_user.balance), 2) if matrix_user else 0.0
+
+    asaas_balance: float | None = None
+    from app.adapters.gateway_factory import get_payment_gateway
+    gateway = get_payment_gateway()
+    if gateway and hasattr(gateway, "_make_request"):
+        try:
+            resp = gateway._make_request("GET", "/finance/balance")
+            asaas_balance = round(float(resp.get("balance", 0)), 2)
+        except Exception:
+            asaas_balance = None
+
+    correntistas = (
+        db.query(User)
+        .filter(
+            User.email != settings.MATRIX_ACCOUNT_EMAIL,
+            User.email != settings.ADMIN_EMAIL,
+        )
+        .order_by(User.name)
+        .all()
+    )
+
+    return {
+        "matrix_balance": matrix_balance,
+        "asaas_balance": asaas_balance,
+        "correntistas": [
+            {"id": str(u.id), "name": u.name, "email": u.email, "balance": round(float(u.balance), 2)}
+            for u in correntistas
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Asaas → anywhere transfer (admin only)
+# ---------------------------------------------------------------------------
+
+@router.post("/admin/asaas/transfer")
+async def asaas_transfer(
+    payload: AsaasTransferRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Transfer FROM the real Asaas bank account.
+    - destination='correntista': credits an internal user balance (accounting entry).
+    - destination='pix_key': emits a real PIX via gateway (real money leaves Asaas).
+    - destination='matrix': credits the matrix (fee) account balance (accounting entry).
+    Admin only.
+    """
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso restrito.")
+
+    if payload.destination == "correntista":
+        if not payload.user_id:
+            raise HTTPException(status_code=400, detail="user_id obrigatório para destino 'correntista'.")
+        target = db.query(User).filter(User.id == payload.user_id).first()
+        if not target:
+            raise HTTPException(status_code=404, detail="Correntista não encontrado.")
+        if target.email in (settings.MATRIX_ACCOUNT_EMAIL, settings.ADMIN_EMAIL):
+            raise HTTPException(status_code=400, detail="Destino inválido.")
+        target.balance += Decimal(str(payload.amount))
+        db.add(target)
+        db.commit()
+        db.refresh(target)
+        return {
+            "ok": True,
+            "type": "internal_credit",
+            "recipient": target.name,
+            "new_recipient_balance": round(float(target.balance), 2),
+        }
+
+    if payload.destination == "matrix":
+        matrix = db.query(User).filter(User.email == settings.MATRIX_ACCOUNT_EMAIL).first()
+        if not matrix:
+            raise HTTPException(status_code=404, detail="Conta de Taxas não encontrada.")
+        matrix.balance += Decimal(str(payload.amount))
+        db.add(matrix)
+        db.commit()
+        db.refresh(matrix)
+        return {
+            "ok": True,
+            "type": "matrix_credit",
+            "new_matrix_balance": round(float(matrix.balance), 2),
+        }
+
+    # destination == "pix_key" — real PIX via gateway
+    if not payload.pix_key or not payload.key_type:
+        raise HTTPException(status_code=400, detail="pix_key e key_type são obrigatórios para transferência externa.")
+
+    key_type_upper = payload.key_type.upper()
+    valid_key_types = {"CPF", "CNPJ", "EMAIL", "PHONE", "RANDOM"}
+    if key_type_upper not in valid_key_types:
+        raise HTTPException(status_code=400, detail=f"Tipo de chave inválido. Aceitos: {', '.join(sorted(valid_key_types))}")
+
+    from app.adapters.gateway_factory import get_payment_gateway
+    gateway = get_payment_gateway()
+    if not gateway:
+        raise HTTPException(status_code=503, detail="Gateway de pagamento não configurado.")
+
+    idempotency_key = str(uuid4())
+    try:
+        result = gateway.create_pix_payment(
+            value=Decimal(str(payload.amount)),
+            pix_key=payload.pix_key.strip(),
+            pix_key_type=key_type_upper,
+            description=payload.description or "Transferência BioCodeTechPay",
+            idempotency_key=idempotency_key,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Falha no gateway: {str(exc)}")
+
+    return {
+        "ok": True,
+        "type": "external_pix",
+        "payment_id": result.get("payment_id"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Matrix → Asaas accounting debit (admin only)
+# ---------------------------------------------------------------------------
+
+@router.post("/admin/matrix/to-asaas")
+async def matrix_to_asaas(
+    payload: MatrixToAsaasRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Accounting debit: move matrix balance back to Asaas view.
+    Debits the matrix (fee) account balance; no real PIX is emitted.
+    Use when fee funds are considered returned to the Asaas bank account.
+    Admin only.
+    """
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso restrito.")
+
+    matrix = db.query(User).filter(User.email == settings.MATRIX_ACCOUNT_EMAIL).first()
+    if not matrix:
+        raise HTTPException(status_code=404, detail="Conta de Taxas não encontrada.")
+    if matrix.balance < Decimal(str(payload.amount)):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Saldo insuficiente. Disponível: R$ {matrix.balance:.2f}",
+        )
+
+    matrix.balance -= Decimal(str(payload.amount))
+    db.add(matrix)
+    db.commit()
+    db.refresh(matrix)
+
+    return {
+        "ok": True,
+        "type": "matrix_debit_to_asaas",
+        "new_matrix_balance": round(float(matrix.balance), 2),
+    }
 
 
 # ---------------------------------------------------------------------------

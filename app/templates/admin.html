@@ -47,6 +47,22 @@
             background: linear-gradient(135deg, #0f1c3a 0%, #111827 40%, #0f172a 100%);
         }
 
+        /* Asaas card gradient */
+        .asaas-card {
+            background: linear-gradient(135deg, #0a2a1a 0%, #0d1f14 40%, #0a1a10 100%);
+        }
+
+        /* Transfer modal tab active */
+        .transfer-tab-active {
+            color: #60a5fa;
+            border-bottom-color: #3b82f6;
+        }
+
+        .transfer-tab-inactive {
+            color: #6b7280;
+            border-bottom-color: transparent;
+        }
+
         /* Table row smooth highlight */
         tbody tr:hover {
             transition: background 0.15s ease;
@@ -135,39 +151,108 @@
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 safe-bottom">
 
-        <!-- Conta Matriz BioCodeTechPay -->
-        <div class="matrix-card border border-blue-900/40 rounded-2xl p-5 sm:p-6 mb-6 sm:mb-8 shadow-2xl">
+        <!-- Painel de Contas em Tempo Real -->
+        <div class="mb-6 sm:mb-8">
 
-            <!-- Header row: label + balance -->
-            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-5">
-                <div class="flex items-start gap-3">
-                    <div
-                        class="w-10 h-10 bg-blue-900/60 border border-blue-700/50 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <i data-lucide="landmark" class="w-5 h-5 text-blue-400"></i>
-                    </div>
-                    <div>
-                        <p class="text-xs text-blue-400 uppercase tracking-widest font-bold mb-0.5">Conta Matriz</p>
-                        <h2 class="text-white font-bold text-lg sm:text-xl leading-tight">BioCodeTechPay</h2>
-                        <p class="text-blue-300/60 text-xs mt-0.5">Saldo acumulado de taxas da plataforma</p>
-                    </div>
+            <!-- Panel header -->
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-white font-bold text-base sm:text-lg">Painel de Contas</h2>
+                    <p class="text-gray-500 text-xs mt-0.5">Atualizacao automatica a cada 30 segundos</p>
                 </div>
-                <div class="sm:text-right bg-gray-900/50 rounded-xl px-4 py-3 border border-green-900/30">
-                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Saldo disponivel</p>
-                    <p class="text-2xl sm:text-3xl font-bold text-green-400 tabular-nums" id="matrix-balance-display">
-                        R$&nbsp;{{ "%.2f"|format(matrix_balance) }}
-                    </p>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <span id="balance-refresh-dot" class="w-2 h-2 rounded-full bg-gray-600 flex-shrink-0"></span>
+                    <span class="text-xs text-gray-500 hidden sm:block">Att: <span
+                            id="balance-last-updated">—</span></span>
+                    <button onclick="refreshBalances()"
+                        class="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-gray-800/60 hover:bg-gray-800 px-2.5 py-1.5 rounded-lg transition-colors border border-gray-700/50">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M23 4v6h-6" />
+                            <path d="M1 20v-6h6" />
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                        </svg>
+                        Atualizar
+                    </button>
                 </div>
             </div>
 
-            <!-- Matrix account access button -->
-            <div class="border-t border-blue-900/30 pt-5">
-                <a href="/admin/matrix"
-                    class="tap-target inline-flex items-center gap-3 bg-blue-700 hover:bg-blue-600 active:bg-blue-800 text-white font-semibold px-6 py-3 rounded-xl text-sm transition-colors shadow-lg shadow-blue-900/40 w-full sm:w-auto justify-center">
-                    <i data-lucide="landmark" class="w-4 h-4 flex-shrink-0"></i>
-                    Acessar Conta Matrix
-                </a>
-                <p class="text-xs text-blue-400/60 mt-2 pl-1">Ambiente isolado — transferencias sem taxa, acesso
-                    exclusivo admin.</p>
+            <!-- Two account cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                <!-- Conta Asaas -->
+                <div class="asaas-card border border-green-900/40 rounded-2xl p-5 sm:p-6 shadow-2xl">
+                    <div class="flex items-start gap-3 mb-4">
+                        <div
+                            class="w-10 h-10 bg-green-900/50 border border-green-700/50 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <i data-lucide="building-2" class="w-5 h-5 text-green-400"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-green-400 uppercase tracking-widest font-bold mb-0.5">Conta Asaas</p>
+                            <h3 class="text-white font-bold text-sm leading-tight">BioCodeTechPay LTDA</h3>
+                            <p class="text-green-300/50 text-xs mt-0.5">Saldo real no banco parceiro</p>
+                        </div>
+                    </div>
+                    <div class="bg-gray-900/60 rounded-xl px-4 py-3 border border-green-900/30 mb-4">
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Saldo disponivel</p>
+                        <div id="asaas-balance-display"
+                            class="text-2xl sm:text-3xl font-bold text-green-400 tabular-nums flex items-center gap-2">
+                            <div
+                                class="w-5 h-5 border-2 border-green-400/40 border-t-green-400 rounded-full animate-spin">
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="openTransferModal('asaas')"
+                        class="tap-target inline-flex items-center gap-2 bg-green-800/70 hover:bg-green-700/80 active:bg-green-900 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-colors shadow-lg shadow-green-900/30 w-full justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <polyline points="19 12 12 19 5 12" />
+                        </svg>
+                        Transferir da Conta Asaas
+                    </button>
+                </div>
+
+                <!-- Conta de Taxas (Matrix) -->
+                <div class="matrix-card border border-blue-900/40 rounded-2xl p-5 sm:p-6 shadow-2xl">
+                    <div class="flex items-start gap-3 mb-4">
+                        <div
+                            class="w-10 h-10 bg-blue-900/60 border border-blue-700/50 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <i data-lucide="landmark" class="w-5 h-5 text-blue-400"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-blue-400 uppercase tracking-widest font-bold mb-0.5">Conta de Taxas
+                            </p>
+                            <h3 class="text-white font-bold text-sm leading-tight">Conta Matriz</h3>
+                            <p class="text-blue-300/50 text-xs mt-0.5">Saldo acumulado de taxas da plataforma</p>
+                        </div>
+                    </div>
+                    <div class="bg-gray-900/50 rounded-xl px-4 py-3 border border-purple-900/30 mb-4">
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Saldo disponivel</p>
+                        <p class="text-2xl sm:text-3xl font-bold text-purple-300 tabular-nums"
+                            id="matrix-balance-realtime">
+                            R$&nbsp;{{ "%.2f"|format(matrix_balance) }}
+                        </p>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <button onclick="openTransferModal('matrix')"
+                            class="tap-target flex-1 inline-flex items-center gap-2 bg-blue-800/70 hover:bg-blue-700/80 active:bg-blue-900 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors shadow-lg shadow-blue-900/30 justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <polyline points="19 12 12 19 5 12" />
+                            </svg>
+                            Transferir
+                        </button>
+                        <a href="/admin/matrix"
+                            class="tap-target flex-1 inline-flex items-center gap-2 bg-gray-800/60 hover:bg-gray-700/60 text-blue-300 font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors border border-gray-700/40 justify-center">
+                            <i data-lucide="external-link" class="w-3.5 h-3.5 flex-shrink-0"></i>
+                            Dashboard
+                        </a>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -479,6 +564,160 @@
                 <p class="text-sm">Nenhum correntista cadastrado ainda.</p>
             </div>
             {% endif %}
+        </div>
+    </div>
+
+    <!-- Transfer Modal (unified: Asaas or Conta de Taxas as source) -->
+    <div id="transfer-modal" class="fixed inset-0 z-50 bg-black/80 items-center justify-center p-3 sm:p-4"
+        style="display:none; backdrop-filter: blur(4px);">
+        <div
+            class="bg-gray-900 rounded-2xl border border-gray-700/60 w-full max-w-lg shadow-2xl flex flex-col max-h-[92vh]">
+
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-gray-800 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div id="transfer-source-icon"
+                        class="w-9 h-9 rounded-full bg-green-900/50 border border-green-700/40 flex items-center justify-center flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                            stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <path d="M3 9h18" />
+                            <path d="M9 21V9" />
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Transferir de</p>
+                        <h3 id="transfer-source-name" class="font-bold text-white text-sm">Conta Asaas</h3>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <p class="text-xs text-gray-600">Saldo</p>
+                        <p id="transfer-source-balance" class="text-sm font-bold text-green-400 tabular-nums">—</p>
+                    </div>
+                    <button onclick="closeTransferModal()"
+                        class="tap-target flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Destination Tabs -->
+            <div class="flex border-b border-gray-800 flex-shrink-0 px-1">
+                <button id="tab-correntista" onclick="switchTransferTab('correntista')"
+                    class="transfer-tab-active flex-1 py-3 text-xs font-semibold border-b-2 transition-colors">
+                    Correntista
+                </button>
+                <button id="tab-pix" onclick="switchTransferTab('pix')"
+                    class="transfer-tab-inactive flex-1 py-3 text-xs font-semibold border-b-2 transition-colors">
+                    Chave PIX
+                </button>
+                <button id="tab-interaccount" onclick="switchTransferTab('interaccount')"
+                    class="transfer-tab-inactive flex-1 py-3 text-xs font-semibold border-b-2 transition-colors">
+                    Outra Conta
+                </button>
+            </div>
+
+            <!-- Form -->
+            <div class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+
+                <!-- Correntista tab -->
+                <div id="tab-content-correntista">
+                    <label class="block text-xs text-gray-400 mb-1.5">Selecionar correntista</label>
+                    <select id="transfer-correntista-select"
+                        class="tap-target w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition appearance-none cursor-pointer"
+                        onchange="updateCorrentistaBadge()">
+                        <option value="">Selecione um correntista...</option>
+                    </select>
+                    <div id="correntista-balance-badge"
+                        class="hidden mt-2 text-xs text-gray-400 bg-gray-800/60 rounded-lg px-3 py-2">
+                        Saldo atual: <span id="correntista-balance-value"
+                            class="text-white font-semibold tabular-nums"></span>
+                    </div>
+                </div>
+
+                <!-- PIX key tab -->
+                <div id="tab-content-pix" class="hidden space-y-3">
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1.5">Tipo de chave PIX</label>
+                        <select id="transfer-key-type"
+                            class="tap-target w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition appearance-none cursor-pointer">
+                            <option value="CPF">CPF</option>
+                            <option value="CNPJ">CNPJ</option>
+                            <option value="EMAIL">E-mail</option>
+                            <option value="PHONE">Telefone</option>
+                            <option value="RANDOM">Chave aleatoria</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1.5">Chave PIX</label>
+                        <input id="transfer-pix-key" type="text" placeholder="Digite a chave PIX..."
+                            class="tap-target w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    </div>
+                </div>
+
+                <!-- Inter-account tab -->
+                <div id="tab-content-interaccount" class="hidden">
+                    <div class="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                                fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <line x1="12" y1="8" x2="12" y2="12" />
+                                <line x1="12" y1="16" x2="12.01" y2="16" />
+                            </svg>
+                            <p class="text-xs text-blue-400 font-medium">Ajuste contabil interno</p>
+                        </div>
+                        <p class="text-sm text-gray-300">
+                            Transferir para
+                            <span id="interaccount-target-name" class="font-semibold text-white">Conta de Taxas</span>.
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1 leading-relaxed">
+                            Nenhum PIX externo sera emitido. Operacao de reconciliacao interna entre as contas da
+                            plataforma.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Common fields -->
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1.5">Valor (R$)</label>
+                    <input id="transfer-amount" type="number" min="0.01" step="0.01" placeholder="0,00"
+                        class="tap-target w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition font-mono">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1.5">Descricao (opcional)</label>
+                    <input id="transfer-description" type="text" maxlength="100"
+                        placeholder="Motivo da transferencia..."
+                        class="tap-target w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                </div>
+
+                <!-- Warning for real PIX -->
+                <div id="transfer-pix-warning"
+                    class="hidden bg-yellow-950/30 border border-yellow-800/30 rounded-xl px-4 py-3">
+                    <p class="text-xs text-yellow-400/90 leading-relaxed">
+                        Esta operacao emite um PIX real via Asaas. O valor sera debitado do saldo bancario da conta
+                        Asaas imediatamente.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="px-5 sm:px-6 pb-5 flex gap-3 flex-shrink-0 border-t border-gray-800 pt-4">
+                <button onclick="closeTransferModal()"
+                    class="tap-target flex-1 py-2.5 rounded-xl text-sm font-semibold bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-gray-300 transition-colors">
+                    Cancelar
+                </button>
+                <button id="transfer-submit-btn" onclick="submitTransfer()"
+                    class="tap-target flex-1 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Confirmar transferencia
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1086,6 +1325,238 @@
             if (e.target === this) closeEdit();
         });
         // ────────────────────────────────────────────────────────────────────
+
+        // ── Real-time Accounts Panel ──────────────────────────────────────────
+        let _balancesData = null;
+        let _transferSource = 'asaas';
+        let _activeTransferTab = 'correntista';
+
+        async function refreshBalances() {
+            const dot = document.getElementById('balance-refresh-dot');
+            dot.classList.remove('bg-green-500', 'bg-red-500', 'bg-gray-600');
+            dot.classList.add('bg-yellow-400');
+
+            try {
+                const r = await fetch('/admin/balances', { credentials: 'same-origin' });
+                if (!r.ok) { dot.classList.replace('bg-yellow-400', 'bg-red-500'); return; }
+                _balancesData = await r.json();
+
+                // Update Asaas balance display
+                const asaasEl = document.getElementById('asaas-balance-display');
+                if (_balancesData.asaas_balance !== null && _balancesData.asaas_balance !== undefined) {
+                    asaasEl.innerHTML = 'R$&nbsp;' + _balancesData.asaas_balance.toFixed(2).replace('.', ',');
+                    asaasEl.classList.remove('text-gray-500');
+                    asaasEl.classList.add('text-green-400');
+                } else {
+                    asaasEl.innerHTML = '<span class="text-gray-500 text-base font-normal">Indisponivel</span>';
+                }
+
+                // Update Matrix balance display
+                const matrixEl = document.getElementById('matrix-balance-realtime');
+                if (matrixEl) {
+                    matrixEl.textContent = 'R$\u00a0' + _balancesData.matrix_balance.toFixed(2).replace('.', ',');
+                }
+
+                // Update timestamp
+                const ts = document.getElementById('balance-last-updated');
+                if (ts) ts.textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                dot.classList.replace('bg-yellow-400', 'bg-green-500');
+
+                // Refresh correntistas dropdown if modal is open
+                if (document.getElementById('transfer-modal').style.display === 'flex') {
+                    _populateCorrentistasDropdown();
+                }
+            } catch (e) {
+                dot.classList.replace('bg-yellow-400', 'bg-red-500');
+            }
+        }
+
+        // Initial load + periodic refresh
+        refreshBalances();
+        setInterval(refreshBalances, 30000);
+
+        function _populateCorrentistasDropdown() {
+            if (!_balancesData) return;
+            const sel = document.getElementById('transfer-correntista-select');
+            const prev = sel.value;
+            sel.innerHTML = '<option value="">Selecione um correntista...</option>';
+            (_balancesData.correntistas || []).forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u.id;
+                opt.textContent = u.name + ' \u2014 R$ ' + u.balance.toFixed(2).replace('.', ',');
+                opt.dataset.balance = u.balance;
+                opt.dataset.email = u.email;
+                sel.appendChild(opt);
+            });
+            if (prev) sel.value = prev;
+            updateCorrentistaBadge();
+        }
+
+        function updateCorrentistaBadge() {
+            const sel = document.getElementById('transfer-correntista-select');
+            const badge = document.getElementById('correntista-balance-badge');
+            const val = document.getElementById('correntista-balance-value');
+            const opt = sel.options[sel.selectedIndex];
+            if (opt && opt.value && opt.dataset.balance !== undefined) {
+                val.textContent = 'R$ ' + parseFloat(opt.dataset.balance).toFixed(2).replace('.', ',');
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function openTransferModal(source) {
+            _transferSource = source;
+            const isAsaas = source === 'asaas';
+
+            // Source label + icon color
+            document.getElementById('transfer-source-name').textContent = isAsaas ? 'Conta Asaas' : 'Conta de Taxas';
+            const iconEl = document.getElementById('transfer-source-icon');
+            iconEl.className = 'w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ' +
+                (isAsaas ? 'bg-green-900/50 border border-green-700/40' : 'bg-blue-900/50 border border-blue-700/40');
+            iconEl.innerHTML = isAsaas
+                ? '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>'
+                : '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>';
+
+            // Source balance
+            const balEl = document.getElementById('transfer-source-balance');
+            const bal = isAsaas
+                ? _balancesData?.asaas_balance
+                : _balancesData?.matrix_balance ?? null;
+            balEl.textContent = (bal !== null && bal !== undefined) ? 'R$\u00a0' + bal.toFixed(2).replace('.', ',') : '\u2014';
+            balEl.className = 'text-sm font-bold tabular-nums ' + (isAsaas ? 'text-green-400' : 'text-purple-300');
+
+            // Inter-account target label
+            document.getElementById('interaccount-target-name').textContent =
+                isAsaas ? 'Conta de Taxas' : 'Conta Asaas';
+
+            // Reset form fields
+            document.getElementById('transfer-amount').value = '';
+            document.getElementById('transfer-description').value = '';
+            document.getElementById('transfer-pix-key').value = '';
+
+            // Populate dropdown
+            _populateCorrentistasDropdown();
+
+            // Activate first tab
+            switchTransferTab('correntista');
+
+            // Show modal
+            document.getElementById('transfer-modal').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeTransferModal() {
+            document.getElementById('transfer-modal').style.display = 'none';
+            document.body.style.overflow = '';
+            const btn = document.getElementById('transfer-submit-btn');
+            btn.disabled = false;
+            btn.textContent = 'Confirmar transferencia';
+        }
+
+        function switchTransferTab(tab) {
+            _activeTransferTab = tab;
+            ['correntista', 'pix', 'interaccount'].forEach(t => {
+                const btn = document.getElementById('tab-' + t);
+                const content = document.getElementById('tab-content-' + t);
+                if (t === tab) {
+                    btn.className = btn.className.replace('transfer-tab-inactive', 'transfer-tab-active');
+                    content.classList.remove('hidden');
+                } else {
+                    btn.className = btn.className.replace('transfer-tab-active', 'transfer-tab-inactive');
+                    content.classList.add('hidden');
+                }
+            });
+            // Show PIX warning only for Asaas source + pix_key destination
+            const warn = document.getElementById('transfer-pix-warning');
+            warn.classList.toggle('hidden', !(_transferSource === 'asaas' && tab === 'pix'));
+        }
+
+        async function submitTransfer() {
+            const rawAmount = document.getElementById('transfer-amount').value;
+            const amount = parseFloat(rawAmount);
+            if (!rawAmount || isNaN(amount) || amount <= 0) {
+                _showToast('Informe um valor positivo.', 'error');
+                return;
+            }
+
+            const description = document.getElementById('transfer-description').value.trim();
+            const btn = document.getElementById('transfer-submit-btn');
+            btn.disabled = true;
+            btn.textContent = 'Processando...';
+
+            try {
+                let url, payload;
+
+                if (_transferSource === 'matrix') {
+                    if (_activeTransferTab === 'interaccount') {
+                        // Matrix → Asaas (accounting debit)
+                        url = '/admin/matrix/to-asaas';
+                        payload = { amount, description: description || 'Ajuste matriz para Asaas' };
+                    } else if (_activeTransferTab === 'correntista') {
+                        const sel = document.getElementById('transfer-correntista-select');
+                        if (!sel.value) { _showToast('Selecione um correntista.', 'error'); btn.disabled = false; btn.textContent = 'Confirmar transferencia'; return; }
+                        const opt = sel.options[sel.selectedIndex];
+                        url = '/admin/matrix/transfer';
+                        payload = { pix_key: opt.dataset.email, key_type: 'EMAIL', amount, description: description || 'Repasse BioCodeTechPay' };
+                    } else {
+                        // pix_key
+                        const pix_key = document.getElementById('transfer-pix-key').value.trim();
+                        const key_type = document.getElementById('transfer-key-type').value;
+                        if (!pix_key) { _showToast('Informe a chave PIX.', 'error'); btn.disabled = false; btn.textContent = 'Confirmar transferencia'; return; }
+                        url = '/admin/matrix/transfer';
+                        payload = { pix_key, key_type, amount, description: description || 'Repasse BioCodeTechPay' };
+                    }
+                } else {
+                    // Asaas source
+                    if (_activeTransferTab === 'interaccount') {
+                        // Asaas → Matrix (accounting credit)
+                        url = '/admin/asaas/transfer';
+                        payload = { destination: 'matrix', amount, description: description || 'Aporte Asaas para Conta de Taxas' };
+                    } else if (_activeTransferTab === 'correntista') {
+                        const sel = document.getElementById('transfer-correntista-select');
+                        if (!sel.value) { _showToast('Selecione um correntista.', 'error'); btn.disabled = false; btn.textContent = 'Confirmar transferencia'; return; }
+                        url = '/admin/asaas/transfer';
+                        payload = { destination: 'correntista', user_id: sel.value, amount, description: description || 'Credito de Conta Asaas' };
+                    } else {
+                        // pix_key (real PIX from Asaas)
+                        const pix_key = document.getElementById('transfer-pix-key').value.trim();
+                        const key_type = document.getElementById('transfer-key-type').value;
+                        if (!pix_key) { _showToast('Informe a chave PIX.', 'error'); btn.disabled = false; btn.textContent = 'Confirmar transferencia'; return; }
+                        url = '/admin/asaas/transfer';
+                        payload = { destination: 'pix_key', pix_key, key_type, amount, description: description || 'PIX Asaas BioCodeTechPay' };
+                    }
+                }
+
+                const r = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload),
+                });
+                const data = await r.json();
+
+                if (r.ok && data.ok) {
+                    closeTransferModal();
+                    _showToast('Transferencia realizada com sucesso.', 'success');
+                    setTimeout(refreshBalances, 600);
+                } else {
+                    _showToast(data.detail || 'Erro ao processar transferencia.', 'error');
+                }
+            } catch (e) {
+                _showToast('Erro de conexao.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Confirmar transferencia';
+            }
+        }
+
+        document.getElementById('transfer-modal').addEventListener('click', function (e) {
+            if (e.target === this) closeTransferModal();
+        });
+        // ─────────────────────────────────────────────────────────────────────
+
     </script>
 </body>
 
