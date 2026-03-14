@@ -161,6 +161,130 @@ def _extract_emv_merchant(emv: str) -> str:
     return _parse_emv_top_level(emv.strip()).get("59", "").strip()
 
 
+class _PixChargeExpired(Exception):
+    """Raised by _fetch_pix_charge_url when the PSP confirms the charge is expired/removed."""
+
+
+def _extract_pix_url(emv: str) -> Optional[str]:
+    """
+    Extract the PIX payloadLocation URL from a BR Code EMV string.
+
+    BR Code / BACEN spec (Manual BR Code v2.1):
+      Field 26 (Merchant Account Information):
+        Sub-tag 00: GUI = "BR.GOV.BCB.PIX"
+        Sub-tag 01: PIX key (static QR) OR payloadLocation URL (some PSPs e.g. PagSeguro)
+        Sub-tag 25: payloadLocation URL (standard dynamic QR — BCB preferred position)
+
+    Detection rule:
+      Sub-tag 25 is the canonical position for the URL and is checked first.
+      Sub-tag 01 is also checked when it contains a URL pattern (forward-slash present)
+      because several PSPs (PagSeguro, Mercado Pago older firmware) populate it there.
+
+    URL normalisation:
+      pix://   -> https://
+      http://  -> kept as-is
+      no scheme -> https:// prepended
+    """
+    fields = _parse_emv_top_level(emv.strip())
+    merchant_raw = fields.get("26", "")
+    if not merchant_raw:
+        return None
+
+    sub: dict = {}
+    pos = 0
+    while pos + 4 <= len(merchant_raw):
+        tag = merchant_raw[pos:pos + 2]
+        try:
+            length = int(merchant_raw[pos + 2:pos + 4])
+        except ValueError:
+            break
+        end = pos + 4 + length
+        if end > len(merchant_raw):
+            break
+        sub[tag] = merchant_raw[pos + 4:end]
+        pos = end
+
+    def _normalise(raw: str) -> str:
+        raw = raw.strip()
+        if raw.startswith("pix://"):
+            raw = "https://" + raw[6:]
+        elif not raw.startswith("http"):
+            raw = "https://" + raw
+        return raw
+
+    # Sub-tag 25: canonical payloadLocation field (BACEN spec)
+    val25 = sub.get("25", "")
+    if val25 and "/" in val25:
+        return _normalise(val25)
+
+    # Sub-tag 01: PIX key field — also used as URL by PagSeguro and others
+    val01 = sub.get("01", "")
+    if val01 and "/" in val01 and ("." in val01 or val01.startswith("pix://")):
+        return _normalise(val01)
+
+    return None
+
+
+def _fetch_pix_charge_url(url: str) -> Dict[str, Any]:
+    """
+    Fetch PIX charge data from the PSP payloadLocation URL (BACEN standard).
+
+    BACEN COB/COBV JSON schema:
+      {
+        "status": "ATIVA" | "EXPIRADA" | "REMOVIDA_PELO_USUARIO_RECEBEDOR" | "CONCLUIDA",
+        "valor": { "original": "10.00" },
+        "devedor": { "nome": "...", "cpf": "...", "cnpj": "..." },
+        "solicitacaoPagador": "..."
+      }
+
+    Returns:
+        dict with value (float) and beneficiary_name (str) when the charge is ATIVA.
+
+    Raises:
+        _PixChargeExpired: When PSP confirms status is EXPIRADA, REMOVIDA or CONCLUIDA.
+            Caller MUST surface this as a user-visible error; do NOT fall through.
+
+    On network / timeout / parse errors: raises exception (caller catches and falls through).
+    """
+    with httpx.Client(timeout=6.0, follow_redirects=True) as client:
+        response = client.get(
+            url,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "BioCodeTechPay/1.0",
+            }
+        )
+        response.raise_for_status()
+
+    data = response.json()
+
+    # Normalised status check (BACEN spec field: status)
+    status = (data.get("status") or "").upper()
+    _terminal_statuses = {"EXPIRADA", "REMOVIDA_PELO_USUARIO_RECEBEDOR", "REMOVIDA_PELO_PSP", "CONCLUIDA"}
+    if status in _terminal_statuses:
+        raise _PixChargeExpired(status)
+
+    # Extract value: BACEN places it at valor.original (decimal string)
+    raw_value = data.get("valor", {}).get("original")
+    if raw_value is None:
+        # Some PSPs return a flat structure
+        raw_value = data.get("value") or data.get("amount")
+
+    if raw_value is None:
+        raise ValueError(f"payloadLocation response has no recognisable value field: {list(data.keys())}")
+
+    # Determine beneficiary name from devedor or solicitacaoPagador
+    devedor = data.get("devedor") or {}
+    beneficiary = (
+        devedor.get("nome")
+        or devedor.get("name")
+        or data.get("solicitacaoPagador", "")[:60]
+        or data.get("description", "")
+        or "Beneficiario"
+    )
+    return {"value": float(raw_value), "beneficiary_name": beneficiary.strip() or "Beneficiario"}
+
+
 def _find_internal_qrcode_charge(payload: str, db, logger) -> tuple:
     """
     Detects whether a PIX QR Code payload matches an internal BioCodeTechPay charge.
@@ -1081,63 +1205,93 @@ def consultar_pix_qrcode(
             "charge_id": internal_charge.id
         }
 
-    # External QR Code: call Asaas /pix/qrCodes/decode FIRST to validate liveness.
-    # This catches expiration BEFORE the user proceeds to payment — decode is the
-    # authoritative network check that guarantees the QR is still valid on the SPI.
-    # Fallback to local field-54 parse only when the gateway is unreachable.
+    # -------------------------------------------------------------------------
+    # Three-stage decode chain for external QR Codes
+    # -------------------------------------------------------------------------
+    #
+    # Correct priority (BR Code / BACEN Manual v2.1):
+    #
+    # Stage 1 — payloadLocation URL (field 26, sub-tag 25 OR 01)
+    #   MUST run first when URL is present. Dynamic QR codes from maquininhas
+    #   (PagSeguro, Mercado Pago, Stone, Cielo, Rede) can have field-54 WITH a
+    #   value AND a payloadLocation URL. Field-54 carries the amount but the
+    #   CHARGE may already be EXPIRADA at the PSP. Only the URL endpoint is the
+    #   authoritative liveness check. Fetching the URL is PSP-direct (no Asaas)
+    #   so it works in both sandbox and production.
+    #
+    # Stage 2 — Local EMV field-54 parse (zero latency, no network)
+    #   Used ONLY when no URL is detected OR when Stage 1 fails with a network
+    #   error (not an expiry). Static QR codes (most bank transfers) land here.
+    #   Field-54 parse never raises — worst case it returns 0.0.
+    #
+    # Stage 3 — Asaas /pix/qrCodes/decode (fallback of last resort)
+    #   Covers edge cases not handled by the above two stages. Swallows all
+    #   errors because sandbox mode makes this fail for real-world QR codes.
+
+    # Stage 1: resolve payloadLocation URL directly at PSP
+    pix_url = _extract_pix_url(data.payload)
+    if pix_url:
+        logger.info(f"QR consultar: stage-1 payloadLocation found url={pix_url[:80]}")
+        try:
+            charge_data = _fetch_pix_charge_url(pix_url)
+            logger.info(f"QR consultar: stage-1 PSP resolve success value={charge_data['value']}")
+            return {
+                "value": charge_data["value"],
+                "beneficiary_name": charge_data.get("beneficiary_name") or "Beneficiario",
+                "is_internal": False,
+                "charge_id": None
+            }
+        except _PixChargeExpired as exp_status:
+            # PSP explicitly returned a terminal status — charge is dead.
+            # Do NOT fall through to field-54: even if the value is parseable,
+            # Asaas will also reject the payment with the same reason.
+            logger.warning(f"QR consultar: stage-1 charge terminal status={exp_status}")
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "QR Code expirado ou ja utilizado. "
+                    "Gere um novo QR Code no terminal e tente novamente."
+                )
+            )
+        except Exception as url_err:
+            # Network / parse error: PSP temporarily unreachable.
+            # Fall through to field-54 so a brief outage doesn't block payments.
+            logger.warning(f"QR consultar: stage-1 PSP unreachable, fallback to field-54: {url_err}")
+
+    # Stage 2: local EMV field-54 parse (static QR or PSP network error fallback)
+    emv_value = _parse_emv_value(data.payload)
+    if emv_value > 0:
+        beneficiary = _extract_emv_merchant(data.payload) or "Beneficiario"
+        logger.info(f"QR consultar: stage-2 field-54 success value={emv_value}")
+        return {
+            "value": emv_value,
+            "beneficiary_name": beneficiary,
+            "is_internal": False,
+            "charge_id": None
+        }
+
+    # Stage 3: Asaas decode API (swallow all errors — sandbox silently fails for real QR)
     gateway = get_payment_gateway()
     if gateway:
         try:
             decoded = gateway.decode_qr_code(data.payload)
             if decoded and decoded.get("value"):
+                logger.info(f"QR consultar: stage-3 Asaas decode success value={decoded['value']}")
                 return {
                     "value": float(decoded["value"]),
                     "beneficiary_name": decoded.get("beneficiary_name") or "Beneficiario",
                     "is_internal": False,
                     "charge_id": None
                 }
-        except httpx.HTTPStatusError as asaas_err:
-            # Asaas returned 4xx: QR Code is invalid or expired on the network.
-            # Translate to actionable Portuguese message immediately — do NOT let the user
-            # proceed to payment, which would fail with the same reason.
-            try:
-                body = asaas_err.response.json()
-                errors = body.get("errors", [])
-                asaas_desc = "; ".join(
-                    e.get("description", "") for e in errors if e.get("description")
-                )
-            except Exception:
-                asaas_desc = ""
-            logger.warning(
-                f"Asaas QR Code decode rejected: status={asaas_err.response.status_code} "
-                f"desc='{asaas_desc}'"
-            )
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "QR Code invalido ou expirado. "
-                    "QR Codes dinamicos de maquininhas expiram em 60 a 300 segundos. "
-                    "Gere um novo QR Code no terminal e tente novamente."
-                )
-            )
         except Exception as e:
-            # Network/timeout: gateway unreachable — fall through to local field-54 parse
-            logger.warning(f"Asaas QR Code decode network error during consultar: {e}")
-
-    # Fallback: parse EMV field 54 locally (no network call — works when gateway is down
-    # or for internal QR codes tested without Asaas connectivity).
-    emv_value = _parse_emv_value(data.payload)
-    if emv_value > 0:
-        return {
-            "value": emv_value,
-            "beneficiary_name": _extract_emv_merchant(data.payload) or "Beneficiario",
-            "is_internal": False,
-            "charge_id": None
-        }
+            logger.warning(f"QR consultar: stage-3 Asaas decode failed: {e}")
 
     raise HTTPException(
         status_code=422,
-        detail="Nao foi possivel determinar o valor deste QR Code. Verifique se o codigo e valido."
+        detail=(
+            "Nao foi possivel determinar o valor deste QR Code. "
+            "Se for QR dinamico de maquininha, gere um novo QR e tente novamente."
+        )
     )
 
 
@@ -1272,7 +1426,21 @@ def pay_pix_qrcode(
     if not gateway:
         raise HTTPException(
             status_code=503,
-            detail="Serviço de pagamento temporariamente indisponível."
+            detail="Servico de pagamento temporariamente indisponivel."
+        )
+
+    # Sandbox guard: Asaas sandbox cannot communicate with the real SPI/DICT.
+    # Any payment attempt against a real-world maquininha QR will be rejected.
+    # This surfaces the configuration issue immediately with a clear message.
+    from app.core.config import settings as _settings
+    if _settings.ASAAS_USE_SANDBOX:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Pagamento de QR Code externo requer modo producao. "
+                "O sistema esta configurado em modo sandbox (ASAAS_USE_SANDBOX=True). "
+                "Defina ASAAS_USE_SANDBOX=False no Render Dashboard e use a chave de producao Asaas."
+            )
         )
 
     try:
