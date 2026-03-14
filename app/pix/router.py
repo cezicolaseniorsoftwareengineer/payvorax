@@ -161,24 +161,76 @@ def _extract_emv_merchant(emv: str) -> str:
     return _parse_emv_top_level(emv.strip()).get("59", "").strip()
 
 
+def _validate_pix_crc(payload: str) -> bool:
+    """
+    Validate BR Code CRC-16/CCITT-FALSE (field 63).
+
+    BACEN spec: the payload string up to and including "6304" is hashed; the
+    4-hex result appended at position len-4 must match.
+    Returns True when valid, False when checksum fails.
+    Payloads without a "63" terminal field pass vacuously (internal / test QR).
+    """
+    emv = payload.strip()
+    idx = emv.rfind("6304")
+    if idx == -1:
+        return True  # no CRC field — treat as valid (internal / test)
+    body = emv[:idx + 4]     # everything up to and including "6304"
+    expected = _crc16_ccitt(body)
+    actual = emv[idx + 4:idx + 8].upper()
+    return actual == expected
+
+
+def _extract_txid_field62(emv: str) -> Optional[str]:
+    """
+    Extract the txid from BR Code EMV field 62 (Additional Data Field Template),
+    sub-tag 05.
+
+    The txid uniquely identifies the charge at the SPI. BACEN spec limits it to
+    25 alphanumeric chars (hyphens stripped). All major POS terminals (Stone, Cielo,
+    Rede, PagSeguro, Mercado Pago) embed it here.
+
+    Returns the raw txid string, or None when absent.
+    """
+    additional_raw = _parse_emv_top_level(emv.strip()).get("62", "")
+    if not additional_raw:
+        return None
+    pos = 0
+    while pos + 4 <= len(additional_raw):
+        tag = additional_raw[pos:pos + 2]
+        try:
+            length = int(additional_raw[pos + 2:pos + 4])
+        except ValueError:
+            break
+        end = pos + 4 + length
+        if end > len(additional_raw):
+            break
+        if tag == "05":
+            return additional_raw[pos + 4:end].strip() or None
+        pos = end
+    return None
+
+
 class _PixChargeExpired(Exception):
     """Raised by _fetch_pix_charge_url when the PSP confirms the charge is expired/removed."""
+
+
+class _PixTxidMismatch(Exception):
+    """Raised when txid in QR field 62 does not match txid returned by PSP."""
 
 
 def _extract_pix_url(emv: str) -> Optional[str]:
     """
     Extract the PIX payloadLocation URL from a BR Code EMV string.
 
-    BR Code / BACEN spec (Manual BR Code v2.1):
-      Field 26 (Merchant Account Information):
-        Sub-tag 00: GUI = "BR.GOV.BCB.PIX"
-        Sub-tag 01: PIX key (static QR) OR payloadLocation URL (some PSPs e.g. PagSeguro)
-        Sub-tag 25: payloadLocation URL (standard dynamic QR — BCB preferred position)
+    BACEN Manual BR Code v2.1 allows multiple Merchant Account Info fields
+    (tags 26–51). The correct one is identified by GUI = "BR.GOV.BCB.PIX"
+    in sub-tag 00. Other tags (VISA, MASTERCARD) coexist on multi-network POS
+    terminals and MUST be skipped.
 
-    Detection rule:
-      Sub-tag 25 is the canonical position for the URL and is checked first.
-      Sub-tag 01 is also checked when it contains a URL pattern (forward-slash present)
-      because several PSPs (PagSeguro, Mercado Pago older firmware) populate it there.
+    Sub-tag layout:
+      00  GUI identifier  ("BR.GOV.BCB.PIX")
+      01  PIX key OR payloadLocation URL (PagSeguro, Mercado Pago older firmware)
+      25  payloadLocation URL (BACEN canonical position)
 
     URL normalisation:
       pix://   -> https://
@@ -186,41 +238,52 @@ def _extract_pix_url(emv: str) -> Optional[str]:
       no scheme -> https:// prepended
     """
     fields = _parse_emv_top_level(emv.strip())
-    merchant_raw = fields.get("26", "")
-    if not merchant_raw:
-        return None
-
-    sub: dict = {}
-    pos = 0
-    while pos + 4 <= len(merchant_raw):
-        tag = merchant_raw[pos:pos + 2]
-        try:
-            length = int(merchant_raw[pos + 2:pos + 4])
-        except ValueError:
-            break
-        end = pos + 4 + length
-        if end > len(merchant_raw):
-            break
-        sub[tag] = merchant_raw[pos + 4:end]
-        pos = end
 
     def _normalise(raw: str) -> str:
         raw = raw.strip()
         if raw.startswith("pix://"):
-            raw = "https://" + raw[6:]
-        elif not raw.startswith("http"):
-            raw = "https://" + raw
+            return "https://" + raw[6:]
+        if not raw.startswith("http"):
+            return "https://" + raw
         return raw
 
-    # Sub-tag 25: canonical payloadLocation field (BACEN spec)
-    val25 = sub.get("25", "")
-    if val25 and "/" in val25:
-        return _normalise(val25)
+    def _walk_sub_tlv(raw: str) -> dict:
+        sub: dict = {}
+        pos = 0
+        while pos + 4 <= len(raw):
+            tag = raw[pos:pos + 2]
+            try:
+                length = int(raw[pos + 2:pos + 4])
+            except ValueError:
+                break
+            end = pos + 4 + length
+            if end > len(raw):
+                break
+            sub[tag] = raw[pos + 4:end]
+            pos = end
+        return sub
 
-    # Sub-tag 01: PIX key field — also used as URL by PagSeguro and others
-    val01 = sub.get("01", "")
-    if val01 and "/" in val01 and ("." in val01 or val01.startswith("pix://")):
-        return _normalise(val01)
+    # Scan fields 26–51 (BACEN allows multiple Merchant Account Info blocks)
+    # Stop at first block whose GUI is BR.GOV.BCB.PIX
+    for field_id in range(26, 52):
+        tag = f"{field_id:02d}"
+        raw = fields.get(tag, "")
+        if not raw:
+            continue
+        sub = _walk_sub_tlv(raw)
+        gui = sub.get("00", "").upper()
+        if "BCB.PIX" not in gui and "BR.GOV.BCB" not in gui:
+            continue  # not a PIX block — skip (VISA, MASTERCARD, etc.)
+
+        # Sub-tag 25: canonical payloadLocation (BACEN spec)
+        val25 = sub.get("25", "")
+        if val25 and "/" in val25:
+            return _normalise(val25)
+
+        # Sub-tag 01: URL used by PagSeguro, Mercado Pago older firmware
+        val01 = sub.get("01", "")
+        if val01 and "/" in val01 and ("." in val01 or val01.startswith("pix://")):
+            return _normalise(val01)
 
     return None
 
@@ -231,22 +294,21 @@ def _fetch_pix_charge_url(url: str) -> Dict[str, Any]:
 
     BACEN COB/COBV JSON schema:
       {
+        "txid":   "...",
         "status": "ATIVA" | "EXPIRADA" | "REMOVIDA_PELO_USUARIO_RECEBEDOR" | "CONCLUIDA",
-        "valor": { "original": "10.00" },
+        "valor":  { "original": "10.00" },
         "devedor": { "nome": "...", "cpf": "...", "cnpj": "..." },
         "solicitacaoPagador": "..."
       }
 
     Returns:
-        dict with value (float) and beneficiary_name (str) when the charge is ATIVA.
+        dict with value (float), beneficiary_name (str), and txid (Optional[str]).
 
     Raises:
-        _PixChargeExpired: When PSP confirms status is EXPIRADA, REMOVIDA or CONCLUIDA.
-            Caller MUST surface this as a user-visible error; do NOT fall through.
-
-    On network / timeout / parse errors: raises exception (caller catches and falls through).
+        _PixChargeExpired: When PSP confirms a terminal status.
+        Exception: On network / timeout / parse errors (caller falls through to field-54).
     """
-    with httpx.Client(timeout=6.0, follow_redirects=True) as client:
+    with httpx.Client(timeout=2.5, follow_redirects=True) as client:
         response = client.get(
             url,
             headers={
@@ -258,22 +320,17 @@ def _fetch_pix_charge_url(url: str) -> Dict[str, Any]:
 
     data = response.json()
 
-    # Normalised status check (BACEN spec field: status)
     status = (data.get("status") or "").upper()
-    _terminal_statuses = {"EXPIRADA", "REMOVIDA_PELO_USUARIO_RECEBEDOR", "REMOVIDA_PELO_PSP", "CONCLUIDA"}
-    if status in _terminal_statuses:
+    _terminal = {"EXPIRADA", "REMOVIDA_PELO_USUARIO_RECEBEDOR", "REMOVIDA_PELO_PSP", "CONCLUIDA"}
+    if status in _terminal:
         raise _PixChargeExpired(status)
 
-    # Extract value: BACEN places it at valor.original (decimal string)
     raw_value = data.get("valor", {}).get("original")
     if raw_value is None:
-        # Some PSPs return a flat structure
         raw_value = data.get("value") or data.get("amount")
-
     if raw_value is None:
         raise ValueError(f"payloadLocation response has no recognisable value field: {list(data.keys())}")
 
-    # Determine beneficiary name from devedor or solicitacaoPagador
     devedor = data.get("devedor") or {}
     beneficiary = (
         devedor.get("nome")
@@ -282,7 +339,11 @@ def _fetch_pix_charge_url(url: str) -> Dict[str, Any]:
         or data.get("description", "")
         or "Beneficiario"
     )
-    return {"value": float(raw_value), "beneficiary_name": beneficiary.strip() or "Beneficiario"}
+    return {
+        "value": float(raw_value),
+        "beneficiary_name": beneficiary.strip() or "Beneficiario",
+        "txid": (data.get("txid") or "").strip() or None,
+    }
 
 
 def _find_internal_qrcode_charge(payload: str, db, logger) -> tuple:
@@ -1190,6 +1251,18 @@ def consultar_pix_qrcode(
     correlation_id = x_correlation_id or str(uuid4())
     logger = get_logger_with_correlation(correlation_id)
 
+    # -------------------------------------------------------------------------
+    # CRC validation (BACEN spec, field 63, CRC-16/CCITT-FALSE)
+    # Reject payloads with a corrupt checksum before any database or network call.
+    # A valid bank QR always passes. Internal/test QR without field 63 also pass.
+    # -------------------------------------------------------------------------
+    if not _validate_pix_crc(data.payload):
+        logger.warning("QR consultar: CRC validation failed — payload may be tampered")
+        raise HTTPException(
+            status_code=422,
+            detail="QR Code invalido: checksum incorreto. O codigo pode estar danificado ou alterado."
+        )
+
     internal_charge, is_already_paid = _find_internal_qrcode_charge(data.payload, db, logger)
 
     if is_already_paid:
@@ -1257,18 +1330,25 @@ def consultar_pix_qrcode(
             # Network / parse error: PSP temporarily unreachable.
             # Fall through to field-54 so a brief outage doesn't block payments.
             logger.warning(f"QR consultar: stage-1 PSP unreachable, fallback to field-54: {url_err}")
-
-    # Stage 2: local EMV field-54 parse (static QR or PSP network error fallback)
-    emv_value = _parse_emv_value(data.payload)
-    if emv_value > 0:
-        beneficiary = _extract_emv_merchant(data.payload) or "Beneficiario"
-        logger.info(f"QR consultar: stage-2 field-54 success value={emv_value}")
-        return {
-            "value": emv_value,
-            "beneficiary_name": beneficiary,
-            "is_internal": False,
-            "charge_id": None
-        }
+        else:
+            # Stage-1 succeeded: validate txid integrity (anti-fraud)
+            txid_qr = _extract_txid_field62(data.payload)
+            txid_psp = charge_data.get("txid")
+            if txid_qr and txid_psp and txid_qr.upper() != txid_psp.upper():
+                logger.warning(
+                    f"QR consultar: txid mismatch txid_qr={txid_qr} txid_psp={txid_psp}"
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail="QR Code invalido: identificador da cobranca diverge do registrado no PSP."
+                )
+            logger.info(f"QR consultar: stage-1 PSP resolve success value={charge_data['value']}")
+            return {
+                "value": charge_data["value"],
+                "beneficiary_name": charge_data.get("beneficiary_name") or "Beneficiario",
+                "is_internal": False,
+                "charge_id": None
+            }
 
     # Stage 3: Asaas decode API (swallow all errors — sandbox silently fails for real QR)
     gateway = get_payment_gateway()
