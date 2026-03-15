@@ -40,6 +40,14 @@ from app.core.pix_emv import build_pix_static_emv as _build_pix_static_emv, buil
 router = APIRouter(tags=["PIX"])
 
 # ---------------------------------------------------------------------------
+# Platform PIX receiving key (Asaas account random key).
+# All inbound external PIX flows arrive at this gateway key; the webhook then
+# resolves the actual recipient by matching pix_random_key or pix_email_key
+# stored on each User record.
+# ---------------------------------------------------------------------------
+_PLATFORM_PIX_KEY = "1a923d7b-3230-46d4-a670-87bf7ee54817"
+
+# ---------------------------------------------------------------------------
 # Module-level helpers shared by /qrcode/consultar and /qrcode/pagar
 # ---------------------------------------------------------------------------
 _UUID_RE = re.compile(
@@ -1845,8 +1853,101 @@ async def asaas_webhook(
     ).first()
 
     if not pix:
-        logger.warning(f"Asaas webhook: charge not found in DB: {payment_id}")
-        return {"received": True, "action": "ignored", "reason": "charge_not_found"}
+        # -----------------------------------------------------------------------
+        # Inbound PIX via virtual key (not a charge we created).
+        # This happens when an external bank user sends PIX directly to one of
+        # the user's virtual keys (pix_random_key or pix_email_key).
+        # Flow:
+        #   1. External sender types user's virtual key in their bank app.
+        #   2. Their bank routes the PIX to the platform's Asaas gateway key.
+        #   3. Asaas fires PAYMENT_RECEIVED; pixTransaction.pixKey = destination key.
+        #   4. We match that key to a user and credit their account (net of fee).
+        # -----------------------------------------------------------------------
+        pix_transaction_data = payment.get("pixTransaction") or {}
+        dest_key   = (pix_transaction_data.get("pixKey") or "").strip().lower()
+        payer_name = (
+            pix_transaction_data.get("payerName")
+            or payment.get("customerName")
+            or "Pagador externo"
+        )
+        raw_value  = payment.get("value") or pix_transaction_data.get("value") or 0
+        try:
+            inbound_value = float(raw_value)
+        except (TypeError, ValueError):
+            inbound_value = 0.0
+
+        if dest_key and inbound_value > 0:
+            # Resolve recipient by virtual key (case-insensitive)
+            recipient_user: User | None = db.query(User).filter(
+                (User.pix_random_key == dest_key) | (User.pix_email_key == dest_key)
+            ).first()
+
+            if recipient_user:
+                from app.core.fees import calculate_pix_receive_fee as _recv_fee
+                from app.core.matrix import credit_fee as _credit_fee_matrix
+
+                fee_dec   = _recv_fee(recipient_user.cpf_cnpj, inbound_value)
+                fee_float = float(fee_dec)
+                net_credit = round(inbound_value - fee_float, 2)
+
+                # Credit user (net of platform fee)
+                previous_bal = recipient_user.balance
+                recipient_user.balance = round(recipient_user.balance + net_credit, 2)
+                recipient_user.credit_limit = round(
+                    getattr(recipient_user, "credit_limit", 0) + net_credit * 0.50, 2
+                )
+                db.add(recipient_user)
+
+                # Credit Matrix with service margin (fee minus Asaas cost)
+                _credit_fee_matrix(db, fee_dec)
+
+                # Record the inbound transaction
+                new_tx = PixTransaction(
+                    id=payment_id,
+                    value=net_credit,
+                    pix_key=dest_key,
+                    key_type="ALEATORIA" if len(dest_key) == 36 and "-" in dest_key else "EMAIL",
+                    type=TransactionType.RECEIVED,
+                    status=PixStatus.CONFIRMED,
+                    user_id=recipient_user.id,
+                    idempotency_key=f"inbound-{payment_id}",
+                    description=f"PIX recebido de {payer_name}",
+                    recipient_name=payer_name,
+                    fee_amount=fee_float,
+                )
+                db.add(new_tx)
+                db.commit()
+
+                logger.info(
+                    f"Inbound external PIX credited: user={recipient_user.id} key={dest_key} "
+                    f"gross=R${inbound_value:.2f} fee=R${fee_float:.2f} net=R${net_credit:.2f} "
+                    f"balance: R${previous_bal:.2f} -> R${recipient_user.balance:.2f}"
+                )
+                audit_log(
+                    action="PIX_INBOUND_EXTERNAL",
+                    user=recipient_user.id,
+                    resource=f"payment_id={payment_id}",
+                    details={
+                        "dest_key": dest_key,
+                        "payer_name": payer_name,
+                        "gross_value": inbound_value,
+                        "fee": fee_float,
+                        "net_credit": net_credit,
+                        "balance_after": recipient_user.balance,
+                    },
+                )
+                return {
+                    "received": True,
+                    "action": "inbound_key_credited",
+                    "user_id": recipient_user.id,
+                    "net_credit": net_credit,
+                }
+
+        logger.warning(
+            f"Asaas webhook: payment {payment_id} not found in DB and no matching virtual key "
+            f"(dest_key={dest_key!r}). Ignored."
+        )
+        return {"received": True, "action": "ignored", "reason": "no_matching_key"}
 
     if pix.status.value == "CONFIRMADO":
         logger.info(f"Asaas webhook: charge already confirmed: {payment_id}")
@@ -1936,6 +2037,126 @@ async def asaas_withdrawal_validation(
 
     # Approve all withdrawals — authorization is enforced at the application layer
     return {"status": "APPROVED"}
+
+
+# ===========================================================================
+# PIX KEY MANAGEMENT — /pix/minhas-chaves
+# Virtual keys that route inbound external PIX to the correct user account.
+# The underlying gateway key is _PLATFORM_PIX_KEY (Asaas random key).
+# ===========================================================================
+
+@router.get("/minhas-chaves")
+def get_minhas_chaves(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns the current user's registered PIX keys.
+
+    pix_random_key: auto-generated on account creation, permanent.
+    pix_email_key:  optional; user-registered. Null if not set.
+    platform_key:   the underlying Asaas gateway key (masked for UI display).
+    """
+    masked_platform = (
+        _PLATFORM_PIX_KEY[:8] + "****-****-****-" + _PLATFORM_PIX_KEY[-12:]
+    )
+    return {
+        "pix_random_key": current_user.pix_random_key,
+        "pix_email_key":  current_user.pix_email_key,
+        "platform_key_hint": masked_platform,
+        "instructions": (
+            "Compartilhe sua Chave Aleatoria ou Email com quem vai te enviar PIX. "
+            "Redes bancarias externas reconhecerao a BioCodeTechPay como instituicao destino."
+        ),
+    }
+
+
+@router.post("/minhas-chaves/email", status_code=200)
+def register_email_pix_key(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Registers the user's account email as their PIX email key.
+
+    Rules:
+    - Only the account email can be used (no arbitrary email input — prevents impersonation).
+    - If another user already has this email as a PIX key, the operation is rejected.
+    - Idempotent: calling again when already registered returns success.
+    """
+    email = current_user.email.strip().lower()
+
+    if current_user.pix_email_key and current_user.pix_email_key.lower() == email:
+        return {
+            "status": "already_registered",
+            "pix_email_key": current_user.pix_email_key,
+            "message": "Chave email ja estava registrada.",
+        }
+
+    # Verify no other user holds this email key
+    conflict = db.query(User).filter(
+        User.pix_email_key == email,
+        User.id != current_user.id,
+    ).first()
+    if conflict:
+        raise HTTPException(
+            status_code=409,
+            detail="Este email ja esta registrado como chave PIX de outra conta.",
+        )
+
+    live_user = db.query(User).filter(User.id == current_user.id).first()
+    if not live_user:
+        raise HTTPException(status_code=404, detail="Conta nao encontrada.")
+
+    live_user.pix_email_key = email
+    db.add(live_user)
+    db.commit()
+
+    audit_log(
+        action="PIX_EMAIL_KEY_REGISTERED",
+        user=current_user.id,
+        resource="pix_email_key",
+        details={"email_key": email},
+    )
+
+    return {
+        "status": "registered",
+        "pix_email_key": email,
+        "message": "Chave email PIX registrada com sucesso.",
+    }
+
+
+@router.delete("/minhas-chaves/email", status_code=200)
+def remove_email_pix_key(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Removes the user's PIX email key.
+    After removal, inbound PIX sent to that email will no longer credit this account.
+    pix_random_key is unaffected.
+    """
+    if not current_user.pix_email_key:
+        return {"status": "not_registered", "message": "Nenhuma chave email PIX registrada."}
+
+    removed_key = current_user.pix_email_key
+
+    live_user = db.query(User).filter(User.id == current_user.id).first()
+    if live_user:
+        live_user.pix_email_key = None
+        db.add(live_user)
+        db.commit()
+
+    audit_log(
+        action="PIX_EMAIL_KEY_REMOVED",
+        user=current_user.id,
+        resource="pix_email_key",
+        details={"removed_key": removed_key},
+    )
+
+    return {
+        "status": "removed",
+        "message": "Chave email PIX removida. Sua Chave Aleatoria permanece ativa.",
+    }
 
 
 def build_pix_response(pix: Any, db: Session) -> PixResponse:

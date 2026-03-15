@@ -43,4 +43,13 @@ class User(Base):
     password_reset_token: Mapped[Optional[str]] = mapped_column("password_reset_token", String(255), nullable=True, index=True)
     password_reset_sent_at: Mapped[Optional[datetime]] = mapped_column("password_reset_sent_at", DateTime, nullable=True)
 
+    # PIX keys — virtual keys that map to this user for inbound PIX from external banks.
+    # pix_random_key: auto-generated UUID on account creation; never changes; always active.
+    # pix_email_key:  optional; user can register their email to receive PIX by email.
+    # Both keys are globally unique across all users (unique=True enforced at DB level).
+    # The underlying receiving gateway is the platform's Asaas PIX key; keys here are
+    # virtual routing identifiers resolved by the webhook handler on every inbound PIX.
+    pix_random_key: Mapped[Optional[str]] = mapped_column("pix_random_key", String(36), unique=True, nullable=True, index=True)
+    pix_email_key:  Mapped[Optional[str]] = mapped_column("pix_email_key",  String(100), unique=True, nullable=True, index=True)
+
     cards = relationship("CreditCard", back_populates="user", lazy="select")

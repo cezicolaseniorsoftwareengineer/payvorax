@@ -78,7 +78,8 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
             email_verification_token=email_token,
             email_verification_sent_at=datetime.now(timezone.utc),
             is_active=True,
-            is_admin=False
+            is_admin=False,
+            pix_random_key=str(uuid4()),
         )
 
         db.add(new_user)

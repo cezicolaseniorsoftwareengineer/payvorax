@@ -137,27 +137,26 @@ class TestFeeCalculation:
     # PF — external sent
     def test_pf_external_pix_fee_is_025(self):
         fee = calculate_pix_fee("11111111111", 200.00, is_external=True)
-        assert fee == Decimal("2.50")
+        assert fee == Decimal("4.00")
 
     def test_pf_internal_pix_fee_is_zero(self):
         fee = calculate_pix_fee("11111111111", 200.00, is_external=False)
         assert fee == Decimal("0.00")
 
     def test_pf_received_pix_fee_is_free(self):
-        # Asaas confirmed net inbound cost = R$0.00 (all fees discounted on current plan).
-        # PF receives via Pix charge at zero platform fee — competitive requirement.
+        # PF inbound external PIX: flat R$2.00 platform fee.
         fee = calculate_pix_fee("11111111111", 500.00, is_external=True, is_received=True)
-        assert fee == Decimal("0.00")
+        assert fee == Decimal("2.00")
 
     def test_pf_boleto_fee_is_249(self):
         fee = calculate_boleto_fee("11111111111")
         assert fee == Decimal("2.49")
 
-    # PJ — external sent (0.8% min R$3.00)
+    # PJ — external sent (0.8% min R$4.00)
     def test_pj_external_pix_fee_minimum(self):
-        # 0.8% of R$50 = R$0.40 -> floor to minimum R$3.00
+        # 0.8% of R$50 = R$0.40 -> floor to minimum R$4.00
         fee = calculate_pix_fee("61425124000103", 50.00, is_external=True)
-        assert fee == Decimal("3.00")
+        assert fee == Decimal("4.00")
 
     def test_pj_external_pix_fee_percentage(self):
         # 0.8% of R$500 = R$4.00
@@ -299,7 +298,7 @@ class TestInternalPixTransfer:
 
 class TestExternalPixTransfer:
     def test_pf_external_deducts_value_plus_025_fee(self, db, pf_alice):
-        """PF external PIX: R$200 value + R$2.50 fee = R$202.50 debited."""
+        """PF external PIX: R$200 value + R$4.00 fee = R$204.00 debited."""
         deposit_funds(db, pf_alice.id, 1000.00)
 
         req = PixCreateRequest(value=200.00, pix_key="99999999999",
@@ -311,7 +310,7 @@ class TestExternalPixTransfer:
 
         db.refresh(pf_alice)
         assert tx.status == PixStatus.CONFIRMED
-        assert pf_alice.balance == pytest.approx(797.50, abs=0.01)  # 1000 - 200 - 2.50
+        assert pf_alice.balance == pytest.approx(796.00, abs=0.01)  # 1000 - 200 - 4.00
 
     def test_pj_external_deducts_percentage_fee(self, db, pj_carlos):
         """PJ external PIX R$1000: fee = 0.5% = R$5.00 → balance = 1994.95 + initial."""
@@ -330,7 +329,7 @@ class TestExternalPixTransfer:
         assert pj_carlos.balance == pytest.approx(992.00, abs=0.01)  # 2000 - 1000 - 8.00
 
     def test_pj_external_minimum_fee_applies(self, db, pj_carlos):
-        """PJ external PIX R$50: 0.8% = R$0.40 < min R$3.00 → minimum applies."""
+        """PJ external PIX R$50: 0.8% = R$0.40 < min R$4.00 → minimum applies."""
         deposit_funds(db, pj_carlos.id, 200.00)
 
         req = PixCreateRequest(value=50.00, pix_key="88888888888888",
@@ -341,11 +340,11 @@ class TestExternalPixTransfer:
                        type=TransactionType.SENT)
 
         db.refresh(pj_carlos)
-        assert pj_carlos.balance == pytest.approx(147.00, abs=0.01)  # 200 - 50 - 3.00
+        assert pj_carlos.balance == pytest.approx(146.00, abs=0.01)  # 200 - 50 - 4.00
 
     def test_pf_external_insufficient_balance_includes_fee_message(self, db, pf_alice):
         """Error message must inform: disponivel, necessario, valor, taxa."""
-        deposit_funds(db, pf_alice.id, 200.00)  # R$200 — not enough for R$200 + R$2.50
+        deposit_funds(db, pf_alice.id, 200.00)  # R$200 — not enough for R$200 + R$4.00
 
         req = PixCreateRequest(value=200.00, pix_key="77777777777",
                                key_type=PixKeyType.CPF)
@@ -357,7 +356,7 @@ class TestExternalPixTransfer:
 
         error_msg = str(exc_info.value)
         assert "200.00" in error_msg   # valor disponivel
-        assert "202.50" in error_msg   # total necessario
+        assert "204.00" in error_msg   # total necessario
 
     def test_pf_external_zero_balance_raises(self, db, pf_alice):
         """Zero balance must raise before any gateway call."""
@@ -387,8 +386,8 @@ class TestExternalPixTransfer:
         assert recv_count == 0
 
     def test_pf_external_exact_balance_plus_fee_succeeds(self, db, pf_alice):
-        """Balance = value + R$2.50 exactly — must succeed."""
-        deposit_funds(db, pf_alice.id, 102.50)
+        """Balance = value + R$4.00 exactly — must succeed."""
+        deposit_funds(db, pf_alice.id, 104.00)
 
         req = PixCreateRequest(value=100.00, pix_key="44444444444",
                                key_type=PixKeyType.CPF)
@@ -537,7 +536,7 @@ class TestComprehensiveFlow:
         Full scenario:
           1. Alice deposits R$1000
           2. Alice sends R$200 to Bob internally (free)
-          3. Alice sends R$100 externally to another bank (fee R$2.50)
+          3. Alice sends R$100 externally to another bank (fee R$4.00)
           Final balances verified.
         """
         deposit_funds(db, pf_alice.id, 1000.00)
@@ -560,8 +559,8 @@ class TestComprehensiveFlow:
         db.refresh(pf_alice)
         db.refresh(pf_bob)
 
-        # Alice: 1000 - 200 (internal, no fee) - 100 - 2.50 (external fee)
-        assert pf_alice.balance == pytest.approx(697.50, abs=0.01)
+        # Alice: 1000 - 200 (internal, no fee) - 100 - 4.00 (external fee)
+        assert pf_alice.balance == pytest.approx(696.00, abs=0.01)
         # Bob: received R$200 internally
         assert pf_bob.balance == pytest.approx(200.00, abs=0.01)
 
@@ -597,8 +596,8 @@ class TestComprehensiveFlow:
 
         # Carlos: 5000 - 1000 (free) - 500 - 4.00 (0.8% of 500) = 3496.00
         assert pj_carlos.balance == pytest.approx(3496.00, abs=0.01)
-        # Diana: 1000 (received) - 200 - 3.00 (0.8% of 200=R$1.60 < min R$3.00) = 797.00
-        assert pj_diana.balance == pytest.approx(797.00, abs=0.01)
+        # Diana: 1000 (received) - 200 - 4.00 (0.8% of 200=R$1.60 < min R$4.00) = 796.00
+        assert pj_diana.balance == pytest.approx(796.00, abs=0.01)
 
     def test_insufficient_balance_after_partial_spending(self, db, pf_alice, pf_bob):
         """

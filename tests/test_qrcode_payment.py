@@ -406,9 +406,9 @@ class TestCopiaECola:
         data = pay_resp.json()
         assert data["value"] == 75.0
 
-        # Balance must have been debited: value (R$75) + PF platform fee (R$2.50)
+        # Balance must have been debited: value (R$75) + PF platform fee (R$4.00)
         balance_after = client.get("/pix/extrato", cookies=payer_cookies).json()["balance"]
-        expected_debit = 75.0 + 2.50  # PF flat outbound fee
+        expected_debit = 75.0 + 4.00  # PF flat outbound fee
         assert balance_after == balance_before - expected_debit, (
             f"Balance not debited after external payment. "
             f"Before: {balance_before}, After: {balance_after}, Expected debit: R${expected_debit:.2f}"
@@ -470,7 +470,7 @@ class TestChaveAleatoria:
         assert pay_resp.json()["value"] == 20.0
 
         balance_after = client.get("/pix/extrato", cookies=payer_cookies).json()["balance"]
-        expected_debit = 20.0 + 2.50  # PF flat outbound fee
+        expected_debit = 20.0 + 4.00  # PF flat outbound fee
         assert balance_after == balance_before - expected_debit, (
             f"Balance not debited for EVP payment. "
             f"Before: {balance_before}, After: {balance_after}, Expected debit: R${expected_debit:.2f}"

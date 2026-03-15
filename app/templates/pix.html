@@ -144,7 +144,163 @@
 
         </button>
 
+        <button onclick="switchTab('chaves')" id="tab-chaves"
+            class="flex-1 py-2 px-1 sm:px-3 rounded-lg text-xs sm:text-sm font-medium text-gray-500 hover:text-gray-700 transition-all">
+            <span class="relative inline-flex flex-col items-center">
+                <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" class="w-4 h-4 mb-0.5">
+                    <circle cx="8" cy="15" r="3" />
+                    <path d="M11 15h8" />
+                    <path d="M17 12v6" />
+                    <path d="M14 12v6" />
+                </svg>
+                <span class="leading-none">Chaves</span>
+            </span>
+        </button>
+
     </div>
+
+
+
+    <!-- ==================== MINHAS CHAVES PIX ==================== -->
+    <div id="view-chaves" class="hidden bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
+
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">Minhas Chaves PIX</h2>
+        <p class="text-sm text-gray-500 mb-5">
+            Compartilhe sua chave com quem quiser te enviar PIX de qualquer banco.
+            Nenhum dado sensivel e exposto — a BioCodeTechPay cuida do roteamento.
+        </p>
+
+        <!-- Chave Aleatoria (permanente) -->
+        <div class="rounded-xl border border-blue-100 bg-blue-50 p-4 mb-4">
+            <div class="flex items-start justify-between gap-3 mb-2">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"
+                            class="w-4 h-4 text-blue-600">
+                            <circle cx="7" cy="13" r="3" />
+                            <path d="M10 13h7" />
+                            <path d="M15 10v6" />
+                            <path d="M13 10v6" />
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold text-blue-700 uppercase tracking-wide">Chave Aleatoria</p>
+                        <p class="text-xs text-blue-500">Permanente · Gerada automaticamente</p>
+                    </div>
+                </div>
+                <span
+                    class="text-xs bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">Ativa</span>
+            </div>
+            <div class="flex items-center gap-2 bg-white rounded-lg px-3 py-2.5 border border-blue-200">
+                <code id="displayRandomKey" class="text-xs font-mono text-gray-700 flex-1 break-all select-all">
+                    {{ user_pix_random_key or "Carregando..." }}
+                </code>
+                <button onclick="copyPixKey('displayRandomKey', this)"
+                    class="flex-shrink-0 p-1 text-blue-600 hover:text-blue-800 transition-colors" title="Copiar">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                        <rect x="8" y="8" width="10" height="10" rx="2" />
+                        <path d="M4 12H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Chave Email (opcional) -->
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-5">
+            <div class="flex items-start justify-between gap-3 mb-2">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"
+                            class="w-4 h-4 text-gray-500">
+                            <rect x="2" y="5" width="16" height="12" rx="2" />
+                            <path d="M2 7l8 5 8-5" />
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold text-gray-600 uppercase tracking-wide">Chave Email</p>
+                        <p class="text-xs text-gray-400">Opcional · Usa o email da sua conta</p>
+                    </div>
+                </div>
+                <span id="emailKeyStatusBadge"
+                    class="text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap
+                    {% if user_pix_email_key %}bg-green-100 text-green-700{% else %}bg-gray-200 text-gray-500{% endif %}">
+                    {% if user_pix_email_key %}Ativa{% else %}Nao registrada{% endif %}
+                </span>
+            </div>
+
+            {% if user_pix_email_key %}
+            <!-- Email key registered -->
+            <div class="flex items-center gap-2 bg-white rounded-lg px-3 py-2.5 border border-gray-200 mb-3">
+                <code id="displayEmailKey"
+                    class="text-xs font-mono text-gray-700 flex-1 break-all select-all">{{ user_pix_email_key }}</code>
+                <button onclick="copyPixKey('displayEmailKey', this)"
+                    class="flex-shrink-0 p-1 text-gray-400 hover:text-blue-600 transition-colors" title="Copiar">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                        <rect x="8" y="8" width="10" height="10" rx="2" />
+                        <path d="M4 12H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1" />
+                    </svg>
+                </button>
+            </div>
+            <button onclick="removeEmailKey()"
+                class="w-full py-2.5 border border-red-200 text-red-600 text-sm font-medium rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
+                id="btnRemoveEmailKey">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                    <polyline points="3 6 5 6 17 6" />
+                    <path d="M8 6V4h4v2" />
+                    <path d="M6 6l1 11h6l1-11" />
+                </svg>
+                Remover chave email
+            </button>
+            {% else %}
+            <!-- Email key not registered -->
+            <div class="bg-white rounded-lg px-3 py-2.5 border border-dashed border-gray-300 mb-3">
+                <p class="text-xs text-gray-400 font-mono">{{ user_email }}</p>
+            </div>
+            <button onclick="registerEmailKey()"
+                class="w-full py-2.5 bg-blue-700 text-white text-sm font-semibold rounded-xl hover:bg-blue-800 transition-colors flex items-center justify-center gap-2"
+                id="btnRegisterEmailKey">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                    <circle cx="10" cy="10" r="8" />
+                    <line x1="10" y1="6" x2="10" y2="14" />
+                    <line x1="6" y1="10" x2="14" y2="10" />
+                </svg>
+                Registrar {{ user_email }} como chave PIX
+            </button>
+            {% endif %}
+        </div>
+
+        <!-- Painel informativo: como funciona -->
+        <div class="rounded-xl border border-amber-100 bg-amber-50 p-4">
+            <p class="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Como funciona o recebimento</p>
+            <ol class="space-y-2 text-xs text-amber-800">
+                <li class="flex items-start gap-2">
+                    <span class="font-bold flex-shrink-0">1.</span>
+                    <span>Compartilhe sua <strong>Chave Aleatoria</strong> ou <strong>Chave Email</strong> com o
+                        remetente.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <span class="font-bold flex-shrink-0">2.</span>
+                    <span>O remetente digita a chave no aplicativo do banco dele e confirma o pagamento
+                        normalmente.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <span class="font-bold flex-shrink-0">3.</span>
+                    <span>O sistema BioCodeTechPay identifica automaticamente sua conta e credita o valor recebido
+                        (descontada a taxa de R$ 2,00).</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <span class="font-bold flex-shrink-0">4.</span>
+                    <span>Voce ve o credito em tempo real no seu saldo. Sem burocracia, sem espera.</span>
+                </li>
+            </ol>
+        </div>
+
+        <!-- Feedback inline -->
+        <div id="chavesMsg" class="hidden mt-4 rounded-lg px-4 py-3 text-sm font-medium"></div>
+
+    </div>
+    <!-- ==================== FIM MINHAS CHAVES PIX ==================== -->
 
 
 
@@ -1352,43 +1508,28 @@
     function switchTab(tab) {
 
         const viewPagar = document.getElementById('view-pagar');
-
         const viewCobrar = document.getElementById('view-cobrar');
-
         const viewLerQr = document.getElementById('view-ler-qr');
-
         const viewLink = document.getElementById('view-link');
-
-
+        const viewChaves = document.getElementById('view-chaves');
 
         const tabPagar = document.getElementById('tab-pagar');
-
         const tabCobrar = document.getElementById('tab-cobrar');
-
         const tabLerQr = document.getElementById('tab-ler-qr');
-
         const tabLink = document.getElementById('tab-link');
-
-
+        const tabChaves = document.getElementById('tab-chaves');
 
         // Reset all tab button classes
 
-        [tabPagar, tabCobrar, tabLerQr, tabLink].forEach(t => {
-
-            t.className = "flex-1 py-2 px-1 sm:px-3 rounded-lg text-xs sm:text-sm font-medium text-gray-500 hover:text-gray-700 transition-all";
-
+        [tabPagar, tabCobrar, tabLerQr, tabLink, tabChaves].forEach(t => {
+            if (t) t.className = "flex-1 py-2 px-1 sm:px-3 rounded-lg text-xs sm:text-sm font-medium text-gray-500 hover:text-gray-700 transition-all";
         });
-
-
 
         // Hide all views
 
-        [viewPagar, viewCobrar, viewLerQr, viewLink].forEach(v => v.classList.add('hidden'));
-
-
+        [viewPagar, viewCobrar, viewLerQr, viewLink, viewChaves].forEach(v => { if (v) v.classList.add('hidden'); });
 
         const activeClass = "flex-1 py-2 px-1 sm:px-3 rounded-lg text-xs sm:text-sm font-medium transition-all bg-white text-blue-700 shadow-sm";
-
         // Activate selected
 
         if (tab === 'pagar') {
@@ -1417,9 +1558,15 @@
 
             lucide.createIcons();
 
+        } else if (tab === 'chaves') {
+
+            viewChaves.classList.remove('hidden');
+
+            tabChaves.className = activeClass;
+
+            lucide.createIcons();
+
         }
-
-
 
         // Stop scanner if leaving tab
 
@@ -3735,6 +3882,80 @@
 
         }).catch(() => { url.select(); document.execCommand('copy'); });
 
+    }
+
+    // PIX key management
+
+    function copyPixKey(elementId, btn) {
+        const text = document.getElementById(elementId).textContent.trim();
+        navigator.clipboard.writeText(text).then(() => {
+            const original = btn.innerHTML;
+            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            btn.classList.remove('text-blue-600');
+            btn.classList.add('text-green-600');
+            setTimeout(() => {
+                btn.innerHTML = original;
+                btn.classList.remove('text-green-600');
+                btn.classList.add('text-blue-600');
+            }, 1800);
+        }).catch(() => {
+            const el = document.getElementById(elementId);
+            const range = document.createRange();
+            range.selectNode(el);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            document.execCommand('copy');
+            window.getSelection().removeAllRanges();
+        });
+    }
+
+    async function registerEmailKey() {
+        const btn = document.getElementById('btnRegisterEmailKey');
+        const msg = document.getElementById('chavesMsg');
+        btn.disabled = true;
+        btn.textContent = 'Registrando...';
+        try {
+            const resp = await fetch('/pix/minhas-chaves/email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                msg.className = 'mt-4 rounded-lg px-4 py-3 text-sm font-medium bg-green-50 text-green-700 border border-green-200';
+                msg.textContent = data.message || 'Chave email registrada com sucesso!';
+                msg.classList.remove('hidden');
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                msg.className = 'mt-4 rounded-lg px-4 py-3 text-sm font-medium bg-red-50 text-red-700 border border-red-200';
+                msg.textContent = data.detail || 'Erro ao registrar chave email.';
+                msg.classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = 'Registrar como chave PIX';
+            }
+        } catch (e) {
+            msg.className = 'mt-4 rounded-lg px-4 py-3 text-sm font-medium bg-red-50 text-red-700 border border-red-200';
+            msg.textContent = 'Falha de conexão. Tente novamente.';
+            msg.classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = 'Registrar como chave PIX';
+        }
+    }
+
+    async function removeEmailKey() {
+        if (!confirm('Remover sua chave PIX email? Você não conseguirá receber PIX por email até registrar novamente.')) return;
+        const msg = document.getElementById('chavesMsg');
+        try {
+            const resp = await fetch('/pix/minhas-chaves/email', { method: 'DELETE' });
+            const data = await resp.json();
+            msg.className = 'mt-4 rounded-lg px-4 py-3 text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200';
+            msg.textContent = data.message || 'Chave email removida.';
+            msg.classList.remove('hidden');
+            setTimeout(() => location.reload(), 1200);
+        } catch (e) {
+            msg.className = 'mt-4 rounded-lg px-4 py-3 text-sm font-medium bg-red-50 text-red-700 border border-red-200';
+            msg.textContent = 'Falha de conexão. Tente novamente.';
+            msg.classList.remove('hidden');
+        }
     }
 
 

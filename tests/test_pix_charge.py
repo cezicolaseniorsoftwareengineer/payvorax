@@ -73,9 +73,10 @@ def test_process_pix_receipt_success():
     # Setup query return
     # 1. Get Charge (PixTransaction)
     # 2. Get Receiver (User)
-    # 3. build_pix_response -> Get Owner (User)
-    # 4. build_pix_response -> Get Sender Transaction (PixTransaction) - None
-    mock_db.query.return_value.filter.return_value.first.side_effect = [mock_tx, mock_user, mock_user, None]
+    # 3. credit_fee -> Get Matrix account (User) - None (not seeded in unit test, silently skipped)
+    # 4. build_pix_response -> Get Owner (User)
+    # 5. build_pix_response -> Get Sender Transaction (PixTransaction) - None
+    mock_db.query.return_value.filter.return_value.first.side_effect = [mock_tx, mock_user, None, mock_user, None]
 
     # Override dependencies
     app.dependency_overrides[get_db] = lambda: mock_db

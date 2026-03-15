@@ -72,6 +72,25 @@ async def pix_ui(request: Request, current_user: User = Depends(get_current_user
     user_pj = _is_pj(current_user.cpf_cnpj)
     # Reference amount R$100 used only as a display hint for PF (fixed fee, amount-agnostic).
     outbound_fee_label = fee_display(calculate_pix_outbound_fee(current_user.cpf_cnpj, 100))
+
+    # Ensure pix_random_key exists (backfill for accounts predating the migration).
+    if not current_user.pix_random_key:
+        from uuid import uuid4 as _uuid4
+        from app.core.database import get_db as _get_db
+        _db_gen = _get_db()
+        _db = next(_db_gen)
+        try:
+            from app.auth.models import User as _User
+            _live = _db.query(_User).filter(_User.id == current_user.id).first()
+            if _live and not _live.pix_random_key:
+                _live.pix_random_key = str(_uuid4())
+                _db.add(_live)
+                _db.commit()
+                _db.refresh(_live)
+                current_user.pix_random_key = _live.pix_random_key
+        finally:
+            _db_gen.close()
+
     return templates.TemplateResponse(
         "pix.html",
         {
@@ -80,15 +99,18 @@ async def pix_ui(request: Request, current_user: User = Depends(get_current_user
             "user_name": current_user.name,
             "user_is_pj": user_pj,
             "user_balance": float(current_user.balance),
+            "user_pix_random_key": current_user.pix_random_key or "",
+            "user_pix_email_key":  current_user.pix_email_key  or "",
+            "user_email":          current_user.email,
             # Labels derived from the real fee engine — no hardcoded strings.
             # The JS in pix.html also reads USER_IS_PJ and computes the same values
             # live on every amount change via /pix/fee-preview or computePixFeeDisplay().
             "pix_fee_outbound_label": outbound_fee_label,
             "pix_fee_outbound_rate_label": (
-                "0,80% do valor, min R$ 3,00" if user_pj else "R$ 2,50 fixo"
+                "0,80% do valor, min R$ 4,00" if user_pj else "R$ 4,00 fixo"
             ),
             "pix_fee_receive_label": (
-                "0,49% do valor recebido, min R$ 0,49" if user_pj else "Gratuito"
+                "0,49% do valor recebido, min R$ 2,00" if user_pj else "R$ 2,00 fixo"
             ),
         }
     )
