@@ -424,29 +424,50 @@ class AsaasAdapter(PaymentGatewayPort):
                                 )
                             _url_resp.raise_for_status()
 
-                            # Some PSPs (PagSeguro cobv, Mercado Pago) require OAuth
-                            # and return HTTP 200 with empty/HTML body instead of 401.
-                            # Per BACEN BR Code Manual v2.1, payloadLocation MUST be
-                            # publicly accessible, but non-compliant PSPs block it.
-                            # In that case, we cannot extract the Pix key and must
-                            # surface a clear actionable message.
+                            # BACEN PIX API spec (v2.4) allows PSPs to return their
+                            # payloadLocation responses as JWS (JSON Web Signature)
+                            # with Content-Type: application/jose.
+                            # PagSeguro and some other PSPs use this security-enhanced
+                            # format: the body is a compact JWS (header.payload.sig)
+                            # where the payload base64url-decodes to the charge JSON.
+                            # We must handle both plain JSON and JWS-signed responses.
+                            import base64 as _b64_mod
                             _resp_text = _url_resp.text.strip() if _url_resp.content else ""
-                            if not _resp_text or not _resp_text.startswith("{"):
-                                logger.warning(
-                                    f"pay_qr_code: payloadLocation returned non-JSON body "
-                                    f"(status={_url_resp.status_code}, "
-                                    f"content_type={_url_resp.headers.get('content-type', '?')}, "
-                                    f"body_len={len(_url_resp.content)}). "
-                                    "PSP requires authentication for this endpoint. "
-                                    f"url={payload_url[:80]}"
-                                )
+                            _ct = _url_resp.headers.get("content-type", "").lower()
+
+                            if not _resp_text:
                                 raise ValueError(
-                                    "QR Code dinamico nao pode ser processado: o PSP emissor "
-                                    "requer autenticacao no endpoint de cobranca. "
-                                    "Use o app do banco emissor para pagar, ou solicite um "
-                                    "QR Code estatico (Pix Copia e Cola com chave) ao vendedor."
+                                    "QR Code dinamico nao pode ser processado: "
+                                    "PSP retornou resposta vazia (payloadLocation inacessivel)."
                                 )
-                            charge_data = _url_resp.json()
+
+                            if "jose" in _ct or (not _resp_text.startswith("{") and _resp_text.count(".") >= 2):
+                                # JWS compact serialization: header.payload.signature
+                                _jws_parts = _resp_text.split(".")
+                                if len(_jws_parts) < 3:
+                                    raise ValueError(
+                                        "QR Code dinamico nao pode ser processado: "
+                                        "formato JWS invalido retornado pelo PSP."
+                                    )
+                                _payload_b64 = _jws_parts[1]
+                                _pad = 4 - len(_payload_b64) % 4
+                                if _pad != 4:
+                                    _payload_b64 += "=" * _pad
+                                try:
+                                    charge_data = _json.loads(
+                                        _b64_mod.urlsafe_b64decode(_payload_b64)
+                                    )
+                                except Exception as _jws_err:
+                                    raise ValueError(
+                                        "QR Code dinamico nao pode ser processado: "
+                                        "falha ao decodificar resposta JWS do PSP."
+                                    ) from _jws_err
+                                logger.info(
+                                    f"pay_qr_code: JWS payloadLocation decoded successfully "
+                                    f"(status={_url_resp.status_code}, url={payload_url[:80]})"
+                                )
+                            else:
+                                charge_data = _url_resp.json()
 
                         except ValueError:
                             raise

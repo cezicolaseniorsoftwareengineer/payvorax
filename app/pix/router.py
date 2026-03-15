@@ -1590,6 +1590,9 @@ def pay_pix_qrcode(
                 "PSP nao retornou",
                 "nao suportado",
                 "Valor do QR Code",
+                "JWS invalido",
+                "formato JWS",
+                "resposta vazia",
             )
         )
         # Translate raw Asaas API errors to actionable Portuguese messages
