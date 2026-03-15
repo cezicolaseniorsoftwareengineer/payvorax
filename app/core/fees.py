@@ -74,16 +74,29 @@ import re
 _TWO_PLACES = Decimal("0.01")
 
 # ---------------------------------------------------------------- Asaas costs
-# Verified from Asaas statement and dashboard on 11/03/2026.
-# Inbound net cost is R$0.00 because Asaas currently offsets both the pix fee
-# and messaging fee with "Desconto na tarifa" / "Desconto na taxa de mensageria".
-# Monitor monthly: partial discount (R$0.32 instead of R$0.99) appeared at
-# end of 11/03 cycle, indicating quota exhaustion near that volume level.
+# Verified from Asaas statement 03/03/2026 through 15/03/2026.
+#
+# INBOUND cost history:
+#   03/03 – 10/03: net R$0.00 — Asaas fully discounted both
+#                  "Taxa do Pix" (R$1.99) and "Taxa de mensageria" (R$0.99)
+#                  via "Desconto na tarifa" and "Desconto na taxa de mensageria".
+#   11/03 (last):   partial mensageria refund (R$0.32, not R$0.99) signalled quota
+#                  exhaustion.  Full billings on same day: R$2.98 net.
+#   11/03 onwards: discounts stopped — effective cost is R$1.99/charge ("Taxa do Pix"
+#                  only) or up to R$2.98 when mensageria is also billed.
+#                  Conservative reference value adopted: R$1.99 (minimum observed).
+#
+# OUTBOUND cost history:
+#   Monthly quota of 30 free transfers exhausted on 11/03.
+#   Every outbound PIX after that: R$2.00 flat ("Taxa para Pix com chave").
+#   Very small charges (< R$1.00 approx) were observed with no Asaas fee.
+#
+# Update ASAAS_PIX_INBOUND_NET_COST if Asaas resets quota or changes plan.
 ASAAS_PIX_OUTBOUND_COST      = Decimal("2.00")  # per external PIX sent (after free quota)
-ASAAS_PIX_INBOUND_GROSS_COST = Decimal("2.98")  # R$1.99 + R$0.99 gross (fully discounted back)
-ASAAS_PIX_INBOUND_NET_COST   = Decimal("0.00")  # effective cost on current plan
+ASAAS_PIX_INBOUND_GROSS_COST = Decimal("2.98")  # R$1.99 (taxa pix) + R$0.99 (mensageria) — peak cost
+ASAAS_PIX_INBOUND_NET_COST   = Decimal("1.99")  # conservative effective cost: quota exhausted 11/03/2026
 ASAAS_BOLETO_COST            = Decimal("1.99")  # per boleto (do not use)
-ASAAS_PIX_FREE_MONTHLY       = 100              # free outbound operations per month
+ASAAS_PIX_FREE_MONTHLY       = 100              # legacy constant — use split constants below
 
 # ---------------------------------------------------------------- PF constants
 _PIX_SENT_PF = Decimal("2.50")  # ASAAS_PIX_OUTBOUND_COST (R$2.00) + R$0.50 margin
@@ -94,8 +107,9 @@ _PIX_RECV_PF = Decimal("0.00")  # Inbound free for PF — competitive requiremen
 _PIX_SENT_RATE_PJ = Decimal("0.0080")  # 0.80% of value
 _PIX_SENT_MIN_PJ  = Decimal("3.00")   # min: Asaas R$2.00 + R$1.00 margin
 
-# Inbound: Asaas net cost is R$0.00 — every cent charged is pure platform revenue.
-# 0.49% rate stays well below Asaas reference fee of R$1.99.
+# Inbound: Asaas cost is R$1.99/charge (quota exhausted 11/03/2026).
+# Break-even at 0.49% rate: R$1.99 / 0.0049 ≈ R$406. Charges below R$406 are a
+# net loss. This is a policy gap that must be monitored and corrected.
 _PIX_RECV_RATE_PJ = Decimal("0.0049")  # 0.49% of received value
 _PIX_RECV_MIN_PJ  = Decimal("0.49")   # minimum per inbound charge
 
@@ -206,11 +220,11 @@ def minimum_viable_outbound_amount(cpf_cnpj: str) -> Decimal:
 
 
 # Network fee exposed to users as "Taxa de Rede" (hides Asaas identity).
-# For outbound: R$2.00 pass-through of Asaas cost (within free quota the amount
-# becomes platform profit, captured via audit correction).
-# For inbound: R$0.00 — Asaas fully discounts on current plan inside quota.
+# For outbound: R$2.00 pass-through of Asaas cost.
+# For inbound: R$1.99 since quota exhaustion on 11/03/2026 — PF inbound is a
+#              structural loss (platform earns R$0.00, pays R$1.99 to Asaas).
 PLATFORM_PIX_OUTBOUND_NETWORK_FEE = ASAAS_PIX_OUTBOUND_COST   # R$2.00
-PLATFORM_PIX_INBOUND_NETWORK_FEE  = ASAAS_PIX_INBOUND_NET_COST  # R$0.00
+PLATFORM_PIX_INBOUND_NETWORK_FEE  = ASAAS_PIX_INBOUND_NET_COST  # R$1.99 (post-quota)
 
 
 def calculate_pix_network_fee(cpf_cnpj: str, amount: float, *, is_external: bool, is_received: bool = False) -> Decimal:
@@ -316,13 +330,15 @@ def monthly_revenue_projection(
     Revenue model:
       PF outbound  : R$2.50 fixed per transaction
       PJ outbound  : max(R$3.00, 0.80% x avg_value) per transaction
-      PJ inbound   : max(R$0.49, 0.49% x avg_value) per transaction — pure revenue (no Asaas cost)
-      PF inbound   : R$0.00 — free by design
+      PJ inbound   : max(R$0.49, 0.49% x avg_value) per transaction
+      PF inbound   : R$0.00 — free by policy (structural subsidy)
 
-    Cost model:
+    Cost model (post-quota — 11/03/2026 onwards):
       Outbound Asaas: R$0.00 for first (30 - outbound_free_quota_used) transfers,
-                      R$2.00 flat for all subsequent.
-      Inbound Asaas:  R$0.00 (within free quota).
+                      R$2.00 flat for each subsequent transfer.
+      Inbound Asaas:  R$1.99 per charge (quota exhausted; discounts ended 11/03/2026).
+                      PF inbound is a structural net loss: R$0.00 revenue, R$1.99 cost.
+                      PJ inbound break-even: R$1.99 / 0.0049 = ~R$406 per charge.
 
     Args:
         active_users             : Total active users on the platform.
@@ -354,8 +370,13 @@ def monthly_revenue_projection(
     inbound_revenue  = pj_in_count * pj_in_fee_each
 
     asaas_outbound_cost = paid_out_count * float(ASAAS_PIX_OUTBOUND_COST)
+    # Every inbound charge now costs R$1.99 (quota exhausted 11/03/2026).
+    # PF inbound count approximated as (total_users * pf_ratio * inbound_tx_ratio * tx_rate).
+    pf_in_count = active_users * pf_ratio * inbound_tx_ratio * tx_per_user_per_month
+    total_in_count = pf_in_count + pj_in_count
+    asaas_inbound_cost = total_in_count * float(ASAAS_PIX_INBOUND_NET_COST)
     gross_revenue = outbound_revenue + inbound_revenue
-    net_profit    = gross_revenue - asaas_outbound_cost
+    net_profit    = gross_revenue - asaas_outbound_cost - asaas_inbound_cost
     margin_pct    = (net_profit / gross_revenue * 100.0) if gross_revenue > 0 else 0.0
 
     pf_margin_per_tx = pf_out_fee_each - float(ASAAS_PIX_OUTBOUND_COST)
@@ -373,7 +394,9 @@ def monthly_revenue_projection(
             "pf_outbound": round(pf_out_count),
             "pj_outbound": round(pj_out_count),
             "total_outbound": round(total_out_count),
+            "pf_inbound": round(pf_in_count),
             "pj_inbound": round(pj_in_count),
+            "total_inbound": round(total_in_count),
             "free_outbound_used": round(free_used),
             "paid_outbound": round(paid_out_count),
         },
@@ -386,8 +409,8 @@ def monthly_revenue_projection(
         },
         "costs": {
             "asaas_outbound": round(asaas_outbound_cost, 2),
-            "asaas_inbound": 0.0,
-            "total": round(asaas_outbound_cost, 2),
+            "asaas_inbound": round(asaas_inbound_cost, 2),
+            "total": round(asaas_outbound_cost + asaas_inbound_cost, 2),
         },
         "profit": {
             "net": round(net_profit, 2),
