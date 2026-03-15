@@ -1012,8 +1012,10 @@ async def matrix_audit(
 
         else:
             # asaas > internal: credit Matrix to restore parity
+            # Policy: no upper cap on surplus sweep — the full Asaas surplus is
+            # accumulated platform margin (network fee surplus from R$3.00 rede fee
+            # minus R$2.00 Asaas cost). Always sweep to Matrix.
             direction = "asaas_above_internal"
-            _AUTO_CORRECTION_MAX = 20.0
             if abs_diff < 10:
                 status = "WARN"
                 status_label = "Asaas com saldo superior ao interno — corrigindo"
@@ -1028,7 +1030,7 @@ async def matrix_audit(
                 "Auto-correcao: creditar diferenca na Conta Matrix para sincronizar."
             )
 
-            if matrix_user and abs_diff <= _AUTO_CORRECTION_MAX:
+            if matrix_user:  # surplus sweep is always allowed, regardless of amount
                 old_matrix = matrix_user.balance
                 matrix_user.balance = round(matrix_user.balance + abs_diff, 2)
                 db.add(matrix_user)
@@ -1069,8 +1071,8 @@ async def matrix_audit(
                     breakdown[4]["highlight"] = False
             else:
                 messages.append(
-                    f"Divergencia de R$ {abs_diff:.2f} fora do limite de autocorrecao automatica (max R$20.00). "
-                    "Verifique manualmente."
+                    "Conta Matrix nao encontrada. Impossivel aplicar autocorrecao. "
+                    "Verifique configuracao MATRIX_ACCOUNT_EMAIL."
                 )
 
     else:

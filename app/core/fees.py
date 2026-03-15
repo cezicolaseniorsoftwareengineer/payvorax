@@ -98,20 +98,28 @@ ASAAS_PIX_INBOUND_NET_COST   = Decimal("1.99")  # conservative effective cost: q
 ASAAS_BOLETO_COST            = Decimal("1.99")  # per boleto (do not use)
 ASAAS_PIX_FREE_MONTHLY       = 100              # legacy constant — use split constants below
 
+# ---------------------------------------------------------------- Fee structure (15/03/2026)
+# Every external outbound PIX charges the user R$4.00:
+#   R$3.00 "Taxa de rede"        — pass-through of Asaas R$2.00 + R$1.00 surplus that
+#                                   accumulates in Asaas and is swept to Matrix nightly.
+#   R$1.00 "Taxa de manutencao" — credited to Matrix immediately on every transaction.
+# The nightly audit sweep (00:00 BRT) transfers any Asaas surplus to Matrix.
+PIX_NETWORK_FEE      = Decimal("3.00")  # "Taxa de rede" shown to user
+PIX_MAINTENANCE_FEE  = Decimal("1.00")  # "Taxa de manutencao" credited to Matrix immediately
+
 # ---------------------------------------------------------------- PF constants
-_PIX_SENT_PF = Decimal("2.50")  # ASAAS_PIX_OUTBOUND_COST (R$2.00) + R$0.50 margin
-_PIX_RECV_PF = Decimal("0.00")  # Inbound free for PF — competitive requirement
+_PIX_SENT_PF = PIX_NETWORK_FEE + PIX_MAINTENANCE_FEE  # R$4.00 total outbound PF
+_PIX_RECV_PF = Decimal("2.00")  # Inbound: covers Asaas R$1.99 + R$0.01 margin
 
 # ---------------------------------------------------------------- PJ constants
-# Outbound: percentage scales above R$375; below, flat R$3.00 guarantees R$1.00 margin.
+# Outbound: percentage scales above R$500; below, flat R$4.00 covers costs.
 _PIX_SENT_RATE_PJ = Decimal("0.0080")  # 0.80% of value
-_PIX_SENT_MIN_PJ  = Decimal("3.00")   # min: Asaas R$2.00 + R$1.00 margin
+_PIX_SENT_MIN_PJ  = Decimal("4.00")   # min: Asaas R$2.00 + R$1.00 network surplus + R$1.00 manutencao
 
 # Inbound: Asaas cost is R$1.99/charge (quota exhausted 11/03/2026).
-# Break-even at 0.49% rate: R$1.99 / 0.0049 ≈ R$406. Charges below R$406 are a
-# net loss. This is a policy gap that must be monitored and corrected.
+# Floor R$2.00 ensures R$0.01 margin at every charge value.
 _PIX_RECV_RATE_PJ = Decimal("0.0049")  # 0.49% of received value
-_PIX_RECV_MIN_PJ  = Decimal("0.49")   # minimum per inbound charge
+_PIX_RECV_MIN_PJ  = Decimal("2.00")   # minimum: covers Asaas R$1.99 + R$0.01 margin
 
 # Boleto: legacy reference only — never offered to new clients.
 _BOLETO_PF = Decimal("2.49")
@@ -133,12 +141,13 @@ def calculate_pix_outbound_fee(cpf_cnpj: str, amount: float) -> Decimal:
     """
     Fee charged to the platform client for an EXTERNAL outbound PIX transfer.
 
-    Asaas underlying cost: R$2.00 (after free monthly quota).
-    Margin guaranteed: R$0.50 (PF) / R$1.00+ (PJ).
-
-    PF: R$2.50 fixed.
-    PJ: max(R$3.00, 0.80% of amount).
-        Break-even with Asaas cost at R$250; guaranteed R$1.00 margin at R$375+.
+    Fee structure (15/03/2026):
+      PF: R$4.00 fixed = R$3.00 taxa de rede + R$1.00 taxa de manutencao.
+          R$1.00 manutencao is credited to Matrix immediately.
+          R$1.00 surplus (from R$3.00 rede minus R$2.00 Asaas cost) accumulates
+          in Asaas and is swept to Matrix by the nightly audit at 00:00 BRT.
+      PJ: max(R$4.00, 0.80% of amount).
+          Minimum mirrors PF: R$2.00 Asaas + R$1.00 surplus + R$1.00 manutencao.
 
     Internal transfers → always call with is_external=False via calculate_pix_fee.
     """
@@ -151,19 +160,19 @@ def calculate_pix_outbound_fee(cpf_cnpj: str, amount: float) -> Decimal:
 
 def calculate_pix_receive_fee(cpf_cnpj: str, amount: float) -> Decimal:
     """
-    Fee charged to the platform client (PJ only) for RECEIVING a PIX via
+    Fee charged to the platform client for RECEIVING a PIX via
     cobranca, QR code (static or dynamic), copy-paste, or direct deposit.
 
-    Asaas underlying cost: R$0.00 net (fully discounted on current plan).
-    Every cent collected here is pure platform revenue with zero gateway liability.
+    Asaas underlying cost: R$1.99/charge (quota exhausted 11/03/2026).
+    Safe floor invariant: platform_fee >= R$2.00 at every charge value.
 
-    PF: R$0.00 — free, competitive requirement aligned with BCB Resolution 1/2020.
-    PJ: max(R$0.49, 0.49% of received amount).
-        Example: R$5 -> R$0.49; R$100 -> R$0.49; R$200 -> R$0.98; R$1,000 -> R$4.90.
-        Rate (0.49%) stays below Asaas reference market fee of R$1.99 per transaction.
+    PF: R$2.00 fixed — covers Asaas R$1.99 + R$0.01 margin.
+    PJ: max(R$2.00, 0.49% of received amount).
+        Break-even on percentage alone: R$2.00 / 0.0049 = ~R$408.
+        Below R$408: flat R$2.00 applies (zero structural loss guaranteed).
     """
     if not is_pj(cpf_cnpj):
-        return Decimal("0.00")
+        return _PIX_RECV_PF
     value = Decimal(str(amount))
     fee = value * _PIX_RECV_RATE_PJ
     return max(fee, _PIX_RECV_MIN_PJ).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
@@ -220,11 +229,11 @@ def minimum_viable_outbound_amount(cpf_cnpj: str) -> Decimal:
 
 
 # Network fee exposed to users as "Taxa de Rede" (hides Asaas identity).
-# For outbound: R$2.00 pass-through of Asaas cost.
-# For inbound: R$1.99 since quota exhaustion on 11/03/2026 — PF inbound is a
-#              structural loss (platform earns R$0.00, pays R$1.99 to Asaas).
-PLATFORM_PIX_OUTBOUND_NETWORK_FEE = ASAAS_PIX_OUTBOUND_COST   # R$2.00
-PLATFORM_PIX_INBOUND_NETWORK_FEE  = ASAAS_PIX_INBOUND_NET_COST  # R$1.99 (post-quota)
+# For outbound: R$3.00 charged to user (R$2.00 Asaas pass-through + R$1.00 surplus
+#              swept nightly to Matrix by balance audit).
+# For inbound: R$2.00 (covers Asaas R$1.99 + R$0.01 margin).
+PLATFORM_PIX_OUTBOUND_NETWORK_FEE = PIX_NETWORK_FEE              # R$3.00
+PLATFORM_PIX_INBOUND_NETWORK_FEE  = _PIX_RECV_PF                 # R$2.00 (post-quota floor)
 
 
 def calculate_pix_network_fee(cpf_cnpj: str, amount: float, *, is_external: bool, is_received: bool = False) -> Decimal:

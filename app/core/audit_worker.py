@@ -265,8 +265,12 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
                 finally:
                     db2.close()
 
-            elif Decimal(str(signed_diff)) < Decimal("-0.01") and abs_diff_dec <= _AUTO_CORRECTION_MAX and matrix_user is not None:
-                # Asaas exceeds internal: unregistered credit in gateway. Credit Matrix.
+            elif Decimal(str(signed_diff)) < Decimal("-0.01") and matrix_user is not None:
+                # Asaas exceeds internal: surplus in gateway — sweep full amount to Matrix.
+                # No upper cap: this is intentional design. Every real at Asaas above
+                # the internal total is accumulated platform margin (R$1.00/tx network
+                # surplus from the R$3.00 rede fee minus R$2.00 Asaas cost).
+                # Invariant preserved: correntista balances are never touched.
                 db2 = db_factory()
                 try:
                     from app.auth.models import User as _User
@@ -302,11 +306,13 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
                 finally:
                     db2.close()
             else:
-                # diff > R$20 on either side — structural imbalance, manual action required
+                # Remaining case: internal > asaas (signed_diff > 0) with diff > R$20,
+                # OR matrix account not found. Manual investigation required.
+                # Note: asaas > internal is always auto-corrected (no cap) when Matrix exists.
                 result["status"] = "ERROR" if abs_diff_dec >= Decimal("10.00") else "WARN"
                 logger.warning(
-                    f"[audit-worker] DIVERGENCE (no-autocorrect) "
-                    f"direction={'internal_above_asaas' if signed_diff > 0 else 'asaas_above_internal'} "
+                    f"[audit-worker] DIVERGENCE (manual-action-required) "
+                    f"direction={'internal_above_asaas' if signed_diff > 0 else 'asaas_above_internal_no_matrix'} "
                     f"diff=R${abs_diff:.2f} internal=R${total_internal:.2f} asaas=R${asaas_balance:.2f}"
                 )
 
@@ -447,16 +453,22 @@ async def balance_audit_loop(db_factory, gateway_factory, interval: int = _AUDIT
       - Executes a full balance audit cycle with auto-correction.
       - Calls OpenRouter AI to analyse any divergence or correction found.
 
-    Once per calendar day (UTC midnight detection):
+    Once per calendar day at 00:00 BRT (03:00 UTC):
       - Runs end-of-day comprehensive reconciliation that rounds all balances,
-        corrects residual divergences and logs a final AI summary.
+        sweeps any Asaas surplus to Matrix (no cap on surplus direction),
+        and logs a final AI summary.
+
+    Surplus sweep invariant:
+      asaas_balance - total_internal = surplus
+      If surplus > 0: credit Matrix with full surplus amount (no upper limit).
+      This captures the R$1.00/tx network surplus that accumulates in Asaas.
 
     Args:
         db_factory:      Callable returning a SQLAlchemy Session.
         gateway_factory: Callable returning a PaymentGatewayPort instance or None.
         interval:        Sleep duration in seconds between regular cycles.
     """
-    logger.info(f"[audit-worker] Started. Interval: {interval}s. EOD reconciliation: active (UTC midnight).")
+    logger.info(f"[audit-worker] Started. Interval: {interval}s. EOD sweep: 00:00 BRT (03:00 UTC).")
 
     # Let app fully boot before touching the database
     await asyncio.sleep(15)
@@ -467,9 +479,10 @@ async def balance_audit_loop(db_factory, gateway_factory, interval: int = _AUDIT
         now_utc = datetime.now(tz=timezone.utc)
         today   = now_utc.date()
 
-        # End-of-day reconciliation: fire once per day on the first cycle whose
-        # wall-clock time is past 23:55 UTC and the date has not yet been reconciled.
-        if now_utc.hour == 23 and now_utc.minute >= 55 and last_eod_date != today:
+        # End-of-day sweep: 00:00 BRT = 03:00 UTC.
+        # Fire once per calendar day on the first cycle whose UTC hour is 03
+        # and that date has not yet been reconciled.
+        if now_utc.hour == 3 and now_utc.minute < 5 and last_eod_date != today:
             try:
                 await _run_end_of_day_reconciliation(db_factory, gateway_factory)
                 last_eod_date = today
