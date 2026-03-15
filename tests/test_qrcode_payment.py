@@ -406,11 +406,12 @@ class TestCopiaECola:
         data = pay_resp.json()
         assert data["value"] == 75.0
 
-        # Balance must have been debited
+        # Balance must have been debited: value (R$75) + PF platform fee (R$2.50)
         balance_after = client.get("/pix/extrato", cookies=payer_cookies).json()["balance"]
-        assert balance_after == balance_before - 75.0, (
+        expected_debit = 75.0 + 2.50  # PF flat outbound fee
+        assert balance_after == balance_before - expected_debit, (
             f"Balance not debited after external payment. "
-            f"Before: {balance_before}, After: {balance_after}"
+            f"Before: {balance_before}, After: {balance_after}, Expected debit: R${expected_debit:.2f}"
         )
 
 
@@ -469,8 +470,10 @@ class TestChaveAleatoria:
         assert pay_resp.json()["value"] == 20.0
 
         balance_after = client.get("/pix/extrato", cookies=payer_cookies).json()["balance"]
-        assert balance_after == balance_before - 20.0, (
-            f"Balance not debited for EVP payment. Before: {balance_before}, After: {balance_after}"
+        expected_debit = 20.0 + 2.50  # PF flat outbound fee
+        assert balance_after == balance_before - expected_debit, (
+            f"Balance not debited for EVP payment. "
+            f"Before: {balance_before}, After: {balance_after}, Expected debit: R${expected_debit:.2f}"
         )
 
     def test_chave_aleatoria_asaas_error_returns_422(self, payer_token: str) -> None:

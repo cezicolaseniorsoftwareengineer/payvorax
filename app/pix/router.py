@@ -1530,7 +1530,25 @@ def pay_pix_qrcode(
     # -------------------------------------------------------------------------
     # Routing 2: no internal charge found — dispatch to Asaas.
     # -------------------------------------------------------------------------
-    if sender.balance <= 0:
+    # Pre-flight balance check: use EMV field-54 value when available so the user
+    # receives a meaningful error BEFORE the Asaas API call is dispatched.
+    # For static QRs and most dynamic QRs, field-54 carries the charge value.
+    # Dynamic QRs without embedded value fall back to the simple > 0 guard.
+    _pre_emv_val = _parse_emv_value(data.payload)
+    if _pre_emv_val > 0:
+        from app.core.fees import calculate_pix_fee as _pre_fee_calc, fee_display as _pre_fee_display
+        _pre_fee = float(_pre_fee_calc(sender.cpf_cnpj, _pre_emv_val, is_external=True, is_received=False))
+        _pre_total = _pre_emv_val + _pre_fee
+        if sender.balance < _pre_total:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Saldo insuficiente. Disponível: R$ {sender.balance:.2f}, "
+                    f"Necessário: R$ {_pre_total:.2f} "
+                    f"(valor R$ {_pre_emv_val:.2f} + taxa {_pre_fee_display(_pre_fee)})"
+                )
+            )
+    elif sender.balance <= 0:
         raise HTTPException(
             status_code=400,
             detail=f"Saldo insuficiente. Disponível: R$ {sender.balance:.2f}"
@@ -1625,10 +1643,22 @@ def pay_pix_qrcode(
             detail="Não foi possível determinar o valor do pagamento. Verifique o código QR."
         )
 
-    if sender.balance < payment_value:
+    # Calculate platform fee on the confirmed payment value.
+    # Mirrors the logic in service.py for regular PIX key transfers.
+    from app.core.fees import calculate_pix_fee as _qr_fee_calc, PLATFORM_PIX_OUTBOUND_NETWORK_FEE as _QR_NET_FEE
+    from app.core.matrix import credit_fee as _qr_credit_fee
+    from decimal import Decimal as _QRDec, ROUND_HALF_UP as _QR_ROUND
+    _qr_fee_amount = float(_qr_fee_calc(sender.cpf_cnpj, payment_value, is_external=True, is_received=False))
+    _qr_total_required = payment_value + _qr_fee_amount
+
+    if sender.balance < _qr_total_required:
         raise HTTPException(
             status_code=400,
-            detail=f"Saldo insuficiente. Disponível: R$ {sender.balance:.2f}, Necessário: R$ {payment_value:.2f}"
+            detail=(
+                f"Saldo insuficiente. Disponível: R$ {sender.balance:.2f}, "
+                f"Necessário: R$ {_qr_total_required:.2f} "
+                f"(valor R$ {payment_value:.2f} + taxa R$ {_qr_fee_amount:.2f})"
+            )
         )
 
     payment_id = result.get("payment_id") or str(uuid4())
@@ -1639,6 +1669,7 @@ def pay_pix_qrcode(
     pix = PixTransaction(
         id=payment_id,
         value=payment_value if payment_value > 0 else 0.01,
+        fee_amount=_qr_fee_amount,
         pix_key=pix_key_ref,
         key_type=PixKeyType.RANDOM.value,
         type=TransactionType.SENT,
@@ -1653,11 +1684,16 @@ def pay_pix_qrcode(
 
     if payment_value > 0:
         previous_balance = sender.balance
-        sender.balance -= payment_value
+        sender.balance -= _qr_total_required
         db.add(sender)
+        # Credit service margin (platform fee minus Asaas gateway cost) to Matrix
+        _qr_fee_dec = _QRDec(str(_qr_fee_amount))
+        _qr_svc_margin = (_qr_fee_dec - _QR_NET_FEE).quantize(_QRDec("0.01"), rounding=_QR_ROUND)
+        if _qr_svc_margin > _QRDec("0.00"):
+            _qr_credit_fee(db, float(_qr_svc_margin))
         logger.info(
             f"QR Code payment dispatched: id={payment_id}, user={sender.id}, "
-            f"amount=R${payment_value:.2f}, "
+            f"amount=R${payment_value:.2f}, fee=R${_qr_fee_amount:.2f}, total=R${_qr_total_required:.2f}, "
             f"balance: R${previous_balance:.2f} -> R${sender.balance:.2f}"
         )
 
@@ -1742,17 +1778,34 @@ async def asaas_webhook(
                     pix_tx.status = PixStatus.CONFIRMED
                 else:
                     # TRANSFER_FAILED: Asaas rejected/refunded the transfer.
-                    # The balance was already deducted at dispatch time; restore it now.
+                    # The balance was already deducted at dispatch time (value + fee_amount);
+                    # restore the full amount including the platform fee.
                     pix_tx.status = PixStatus.FAILED
                     if pix_tx.type == TransactionType.SENT:
                         sender = db.query(User).filter(User.id == pix_tx.user_id).first()
                         if sender:
                             previous = sender.balance
-                            sender.balance += pix_tx.value
+                            fee_to_restore = float(pix_tx.fee_amount or 0)
+                            total_to_restore = float(pix_tx.value) + fee_to_restore
+                            sender.balance += total_to_restore
                             db.add(sender)
+                            # Reverse service margin credited to Matrix on dispatch
+                            if fee_to_restore > 0:
+                                from app.core.fees import PLATFORM_PIX_OUTBOUND_NETWORK_FEE as _TF_NET
+                                from decimal import Decimal as _TFDec, ROUND_HALF_UP as _TF_ROUND
+                                from app.core.matrix import get_matrix_user as _get_matrix
+                                _tf_svc_margin = (
+                                    _TFDec(str(fee_to_restore)) - _TF_NET
+                                ).quantize(_TFDec("0.01"), rounding=_TF_ROUND)
+                                if _tf_svc_margin > _TFDec("0.00"):
+                                    _matrix = _get_matrix(db)
+                                    if _matrix:
+                                        _matrix.balance = max(0.0, _matrix.balance - float(_tf_svc_margin))
+                                        db.add(_matrix)
                             logger.info(
                                 f"TRANSFER_FAILED refund: user={sender.id}, "
-                                f"amount=R${pix_tx.value:.2f}, "
+                                f"value=R${pix_tx.value:.2f}, fee=R${fee_to_restore:.2f}, "
+                                f"total_restored=R${total_to_restore:.2f}, "
                                 f"balance: R${previous:.2f} -> R${sender.balance:.2f}"
                             )
                             audit_log(
@@ -1760,7 +1813,9 @@ async def asaas_webhook(
                                 user=sender.id,
                                 resource=f"pix_id={pix_tx.id}",
                                 details={
-                                    "amount": pix_tx.value,
+                                    "amount": float(pix_tx.value),
+                                    "fee_amount": fee_to_restore,
+                                    "total_restored": total_to_restore,
                                     "previous_balance": previous,
                                     "new_balance": sender.balance,
                                     "transfer_id": transfer_id,
