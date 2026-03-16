@@ -1944,6 +1944,17 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
         # -----------------------------------------------------------------------
         pix_transaction_raw = payment.get("pixTransaction")
         pix_transaction_data = pix_transaction_raw if isinstance(pix_transaction_raw, dict) else {}
+
+        # DEBUG: log the raw payload fields to understand what Asaas is sending.
+        # pixTransaction type and available keys are critical for resolver diagnostics.
+        logger.info(
+            f"[webhook/inbound-debug] payment_id={payment_id} "
+            f"pixTransaction_type={type(pix_transaction_raw).__name__} "
+            f"pixTransaction_raw={str(pix_transaction_raw)[:120] if not isinstance(pix_transaction_raw, dict) else 'dict'} "
+            f"pixTransaction_keys={list(pix_transaction_data.keys()) if pix_transaction_data else []} "
+            f"payment_keys={list(payment.keys())}"
+        )
+
         dest_key   = (pix_transaction_data.get("pixKey") or "").strip().lower()
         payer_name = (
             pix_transaction_data.get("payerName")
@@ -1959,11 +1970,69 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
             or payment.get("payerCpfCnpj")
             or ""
         )
+
+        # -----------------------------------------------------------------------
+        # API FALLBACK: when pixTransaction is a string (Asaas sends only the
+        # endToEnd/SPI transaction ID instead of a full object), OR when
+        # payer_doc is still empty after parsing the webhook payload, we call
+        # the Asaas REST API synchronously to fetch the full payment object.
+        # This is necessary to recover payerDocument for CPF/CNPJ resolution.
+        # -----------------------------------------------------------------------
+        if (not payer_doc or not dest_key) and payment_id and _settings.ASAAS_API_KEY:
+            try:
+                import httpx as _httpx
+                _base = (
+                    "https://sandbox.asaas.com/api/v3"
+                    if _settings.ASAAS_USE_SANDBOX
+                    else "https://api.asaas.com/v3"
+                )
+                _resp = _httpx.get(
+                    f"{_base}/payments/{payment_id}",
+                    headers={"access_token": _settings.ASAAS_API_KEY},
+                    timeout=10.0,
+                )
+                if _resp.status_code == 200:
+                    _full = _resp.json()
+                    _pix_full = _full.get("pixTransaction") or {}
+                    if isinstance(_pix_full, dict):
+                        if not dest_key:
+                            dest_key = (_pix_full.get("pixKey") or "").strip().lower()
+                        if not payer_doc:
+                            payer_doc = _raw_doc(
+                                _pix_full.get("payerDocument")
+                                or _pix_full.get("payerCpfCnpj")
+                                or ""
+                            )
+                        if payer_name == "Pagador externo":
+                            payer_name = _pix_full.get("payerName") or payer_name
+                    logger.info(
+                        f"[webhook/api-fallback] Fetched payment {payment_id}: "
+                        f"dest_key={dest_key!r} payer_doc={'*' * len(payer_doc)} "
+                        f"pix_type={type(_pix_full).__name__}"
+                    )
+                else:
+                    logger.warning(
+                        f"[webhook/api-fallback] Asaas returned {_resp.status_code} "
+                        f"for payment {payment_id}"
+                    )
+            except Exception as _api_exc:
+                logger.warning(
+                    f"[webhook/api-fallback] Failed to fetch payment {payment_id}: "
+                    f"{type(_api_exc).__name__}: {_api_exc}"
+                )
+
         raw_value  = payment.get("value") or pix_transaction_data.get("value") or 0
         try:
             inbound_value = float(raw_value)
         except (TypeError, ValueError):
             inbound_value = 0.0
+
+        logger.info(
+            f"[webhook/resolver] payment_id={payment_id} "
+            f"dest_key={dest_key!r} "
+            f"payer_doc_len={len(payer_doc)} "
+            f"inbound_value={inbound_value}"
+        )
 
         if inbound_value > 0:
             # Resolution order:
