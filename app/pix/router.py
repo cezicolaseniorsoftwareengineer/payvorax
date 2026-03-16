@@ -41,11 +41,13 @@ router = APIRouter(tags=["PIX"])
 
 # ---------------------------------------------------------------------------
 # Platform PIX receiving key (Asaas account random key).
-# All inbound external PIX flows arrive at this gateway key; the webhook then
-# resolves the actual recipient by matching pix_random_key or pix_email_key
-# stored on each User record.
+# Single shared deposit wallet. All inbound PIX — via virtual keys, CPF/CNPJ key
+# type, or direct self-deposit — arrive at this wallet. The webhook resolves the
+# recipient by: (1) pix_random_key / pix_email_key, (2) CPF/CNPJ key match,
+# (3) sender CPF/CNPJ self-deposit identification.
 # ---------------------------------------------------------------------------
-_PLATFORM_PIX_KEY = "1a923d7b-3230-46d4-a670-87bf7ee54817"
+_PLATFORM_PIX_KEY = "48a5b50d-902e-4d5f-8b40-8a9eeb093456"
+_SHARED_DEPOSIT_WALLET_ID = "48a5b50d-902e-4d5f-8b40-8a9eeb093456"
 
 # ---------------------------------------------------------------------------
 # Module-level helpers shared by /qrcode/consultar and /qrcode/pagar
@@ -1948,27 +1950,52 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
             or payment.get("customerName")
             or "Pagador externo"
         )
+        # Sender's CPF/CNPJ (raw digits) — used for self-deposit identification
+        _raw_doc = lambda s: re.sub(r"\D", "", s or "")
+        payer_doc = _raw_doc(
+            pix_transaction_data.get("payerDocument")
+            or pix_transaction_data.get("payerCpfCnpj")
+            or (payment.get("payer") or {}).get("cpfCnpj")
+            or payment.get("payerCpfCnpj")
+            or ""
+        )
         raw_value  = payment.get("value") or pix_transaction_data.get("value") or 0
         try:
             inbound_value = float(raw_value)
         except (TypeError, ValueError):
             inbound_value = 0.0
 
-        if dest_key and inbound_value > 0:
-            # Resolve recipient by virtual key (case-insensitive)
-            recipient_user: User | None = db.query(User).filter(
-                (User.pix_random_key == dest_key) | (User.pix_email_key == dest_key)
-            ).first()
+        if inbound_value > 0:
+            # Resolution order:
+            # 1. Virtual key match (pix_random_key or pix_email_key)
+            # 2. CPF/CNPJ key type — Asaas sends raw digits as pixKey for document keys
+            # 3. Self-deposit — payer CPF/CNPJ matches the platform account holder
+            recipient_user: User | None = None
+
+            if dest_key:
+                recipient_user = db.query(User).filter(
+                    (User.pix_random_key == dest_key) | (User.pix_email_key == dest_key)
+                ).first()
+
+            if not recipient_user and dest_key:
+                dest_digits = _raw_doc(dest_key)
+                if len(dest_digits) in (11, 14):
+                    for u in db.query(User).all():
+                        if _raw_doc(u.cpf_cnpj or "") == dest_digits:
+                            recipient_user = u
+                            break
+
+            if not recipient_user and payer_doc and len(payer_doc) in (11, 14):
+                for u in db.query(User).all():
+                    if _raw_doc(u.cpf_cnpj or "") == payer_doc:
+                        recipient_user = u
+                        break
 
             if recipient_user:
-                from app.core.fees import calculate_pix_receive_fee as _recv_fee
-                from app.core.matrix import credit_fee as _credit_fee_matrix
+                # All inbound deposits are free — zero fee, full amount credited
+                fee_float  = 0.0
+                net_credit = round(inbound_value, 2)
 
-                fee_dec   = _recv_fee(recipient_user.cpf_cnpj, inbound_value)
-                fee_float = float(fee_dec)
-                net_credit = round(inbound_value - fee_float, 2)
-
-                # Credit user (net of platform fee)
                 previous_bal = recipient_user.balance
                 recipient_user.balance = round(recipient_user.balance + net_credit, 2)
                 recipient_user.credit_limit = round(
@@ -1976,15 +2003,19 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                 )
                 db.add(recipient_user)
 
-                # Credit Matrix with service margin (fee minus Asaas cost)
-                _credit_fee_matrix(db, fee_dec)
-
-                # Record the inbound transaction
+                _eff_key = dest_key or payer_doc or "unknown"
+                _eff_key_digits = _raw_doc(_eff_key)
+                _eff_key_type = (
+                    "ALEATORIA" if (len(_eff_key) == 36 and "-" in _eff_key)
+                    else "CPF" if len(_eff_key_digits) == 11
+                    else "CNPJ" if len(_eff_key_digits) == 14
+                    else "EMAIL"
+                )
                 new_tx = PixTransaction(
                     id=payment_id,
                     value=net_credit,
-                    pix_key=dest_key,
-                    key_type="ALEATORIA" if len(dest_key) == 36 and "-" in dest_key else "EMAIL",
+                    pix_key=_eff_key,
+                    key_type=_eff_key_type,
                     type=TransactionType.RECEIVED,
                     status=PixStatus.CONFIRMED,
                     user_id=recipient_user.id,
@@ -1997,8 +2028,9 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                 db.commit()
 
                 logger.info(
-                    f"Inbound external PIX credited: user={recipient_user.id} key={dest_key} "
-                    f"gross=R${inbound_value:.2f} fee=R${fee_float:.2f} net=R${net_credit:.2f} "
+                    f"Inbound PIX credited (free): user={recipient_user.id} "
+                    f"key_type={_eff_key_type} gross=R${inbound_value:.2f} "
+                    f"fee=R$0.00 net=R${net_credit:.2f} "
                     f"balance: R${previous_bal:.2f} -> R${recipient_user.balance:.2f}"
                 )
                 audit_log(
@@ -2006,10 +2038,10 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                     user=recipient_user.id,
                     resource=f"payment_id={payment_id}",
                     details={
-                        "dest_key": dest_key,
+                        "dest_key": _eff_key,
                         "payer_name": payer_name,
                         "gross_value": inbound_value,
-                        "fee": fee_float,
+                        "fee": 0.0,
                         "net_credit": net_credit,
                         "balance_after": recipient_user.balance,
                     },
@@ -2022,10 +2054,10 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                 }
 
         logger.warning(
-            f"Asaas webhook: payment {payment_id} not found in DB and no matching virtual key "
-            f"(dest_key={dest_key!r}). Ignored."
+            f"Asaas webhook: payment {payment_id} not found in DB and no matching user "
+            f"(dest_key={dest_key!r} payer_doc={'*' * len(payer_doc)}). Ignored."
         )
-        return {"received": True, "action": "ignored", "reason": "no_matching_key"}
+        return {"received": True, "action": "ignored", "reason": "no_matching_user"}
 
     if pix.status.value == "CONFIRMADO":
         logger.info(f"Asaas webhook: charge already confirmed: {payment_id}")

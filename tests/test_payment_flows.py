@@ -144,9 +144,9 @@ class TestFeeCalculation:
         assert fee == Decimal("0.00")  # Internal transfers are free
 
     def test_pf_received_pix_fee_is_free(self):
-        # PF inbound external PIX: flat R$2.00 platform fee.
+        # Inbound deposits are free — R$0.00 for PF and PJ.
         fee = calculate_pix_fee("11111111111", 500.00, is_external=True, is_received=True)
-        assert fee == Decimal("2.00")
+        assert fee == Decimal("0.00")
 
     def test_pf_boleto_fee_is_249(self):
         fee = calculate_boleto_fee("11111111111")
@@ -164,9 +164,9 @@ class TestFeeCalculation:
         assert fee == Decimal("4.00")
 
     def test_pj_external_pix_fee_received(self):
-        # 0.49% of R$1000 = R$4.90 — pure platform revenue, Asaas net cost = R$0.00
+        # Inbound deposits are free — R$0.00 for PF and PJ.
         fee = calculate_pix_fee("61425124000103", 1000.00, is_external=True, is_received=True)
-        assert fee == Decimal("4.90")
+        assert fee == Decimal("0.00")
 
     def test_pj_boleto_fee_is_299(self):
         fee = calculate_boleto_fee("61425124000103")

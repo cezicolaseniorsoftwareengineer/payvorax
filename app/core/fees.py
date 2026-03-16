@@ -161,22 +161,11 @@ def calculate_pix_outbound_fee(cpf_cnpj: str, amount: float) -> Decimal:
 
 def calculate_pix_receive_fee(cpf_cnpj: str, amount: float) -> Decimal:
     """
-    Fee charged to the platform client for RECEIVING a PIX via
-    cobranca, QR code (static or dynamic), copy-paste, or direct deposit.
+    Fee charged for RECEIVING a PIX (cobranca, QR code, direct deposit).
 
-    Asaas underlying cost: R$1.99/charge (quota exhausted 11/03/2026).
-    Safe floor invariant: platform_fee >= R$2.00 at every charge value.
-
-    PF: R$2.00 fixed — covers Asaas R$1.99 + R$0.01 margin.
-    PJ: max(R$2.00, 0.49% of received amount).
-        Break-even on percentage alone: R$2.00 / 0.0049 = ~R$408.
-        Below R$408: flat R$2.00 applies (zero structural loss guaranteed).
+    Policy (current): all inbound deposits are FREE — R$0.00 for PF and PJ.
     """
-    if not is_pj(cpf_cnpj):
-        return _PIX_RECV_PF
-    value = Decimal(str(amount))
-    fee = value * _PIX_RECV_RATE_PJ
-    return max(fee, _PIX_RECV_MIN_PJ).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
+    return Decimal("0.00")
 
 
 def calculate_pix_fee(
@@ -281,15 +270,11 @@ def fee_breakdown(cpf_cnpj: str, amount: float, *, is_external: bool, is_receive
         }
 
     if is_received:
-        gw_cost  = ASAAS_PIX_INBOUND_NET_COST
-        p_fee    = calculate_pix_receive_fee(cpf_cnpj, amount)
-        net_fee  = PIX_INBOUND_NETWORK_FEE                   # R$1.00 rede component
-        svc_fee  = PIX_MAINTENANCE_FEE                        # R$1.00 manutenção (always fixed)
-        label    = (
-            "Taxa de recebimento PJ (0,49%, mín. R$ 2,00)"
-            if is_pj(cpf_cnpj)
-            else "Taxa de recebimento PIX (rede R$ 1,00 + manutenção R$ 1,00)"
-        )
+        gw_cost  = Decimal("0.00")
+        p_fee    = Decimal("0.00")
+        net_fee  = Decimal("0.00")
+        svc_fee  = Decimal("0.00")
+        label    = "Depósito PIX gratuito"
     else:
         gw_cost  = ASAAS_PIX_OUTBOUND_COST
         p_fee    = calculate_pix_outbound_fee(cpf_cnpj, amount)
