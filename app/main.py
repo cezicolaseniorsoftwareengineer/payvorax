@@ -45,6 +45,7 @@ from app.auth.router import router as auth_router
 from app.boleto.router import router as boleto_router
 from app.minha_conta.router import router as minha_conta_router
 import app.minha_conta.models  # noqa: F401 — registers UserSubscription in Base.metadata
+import app.ia.ai_interactions  # noqa: F401 — registers AiInteraction in Base.metadata
 from fastapi.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
