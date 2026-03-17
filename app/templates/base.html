@@ -424,6 +424,37 @@
         (function warmUpDatabase() {
             fetch('/health', { method: 'GET', priority: 'low' }).catch(() => { });
         })();
+
+        // Auto-logout: inactivity (60s) + tab/window hidden
+        (function setupAutoLogout() {
+            var INACTIVITY_MS = 60 * 1000;
+            var _timer = null;
+            var _loggedOut = false;
+
+            function _doLogout(reason) {
+                if (_loggedOut) return;
+                _loggedOut = true;
+                clearTimeout(_timer);
+                fetch('/auth/logout', { method: 'POST', keepalive: true }).catch(function () { });
+                localStorage.removeItem('user_name');
+                window.location.href = '/login?reason=' + reason;
+            }
+
+            function _resetTimer() {
+                clearTimeout(_timer);
+                _timer = setTimeout(function () { _doLogout('timeout'); }, INACTIVITY_MS);
+            }
+
+            _resetTimer();
+
+            ['mousemove', 'keydown', 'mousedown', 'scroll', 'touchstart'].forEach(function (evt) {
+                document.addEventListener(evt, _resetTimer, { passive: true });
+            });
+
+            document.addEventListener('visibilitychange', function () {
+                if (document.hidden) { _doLogout('tab_change'); }
+            });
+        })();
     </script>
     {% block scripts %}{% endblock %}
 
