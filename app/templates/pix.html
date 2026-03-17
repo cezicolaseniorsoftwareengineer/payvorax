@@ -2165,9 +2165,19 @@
 
             const token = localStorage.getItem('access_token');
 
-            const idempotencyKey = `qr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            // Idempotency key must be deterministic for the same QR payload so that
+            // a retry (network hiccup, user double-click) reuses the same Asaas operation
+            // instead of creating a second charge.  SHA-256 of the EMV string gives a
+            // stable key that changes only when the payload itself changes (new QR code).
+            const _idempEnc = new TextEncoder().encode(payload);
+            const _idempHash = await crypto.subtle.digest('SHA-256', _idempEnc);
+            const _idempHex = Array.from(new Uint8Array(_idempHash)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+            const idempotencyKey = `qr-emv-${_idempHex}`;
 
-            const body = { payload };
+            // Send value resolved from /consultar so the backend can debit even when
+            // Asaas returns a response without the value field (dynamic QR fallback path).
+            const resolvedValue = (_consultedDetails && _consultedDetails.value > 0) ? _consultedDetails.value : undefined;
+            const body = { payload, ...(resolvedValue !== undefined ? { value: resolvedValue } : {}) };
 
             const res = await fetch('/pix/qrcode/pagar', {
 

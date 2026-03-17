@@ -304,6 +304,7 @@ class AsaasAdapter(PaymentGatewayPort):
         return {
             "payment_id": response.get("id"),
             "status": normalized_status or "BANK_PROCESSING",
+            "value": float(value),  # always echo the requested value so the router can debit correctly
             "end_to_end_id": response.get("endToEndIdentifier"),
             "processed_at": datetime.fromisoformat(response["dateCreated"]) if response.get("dateCreated") else None
         }
@@ -389,13 +390,16 @@ class AsaasAdapter(PaymentGatewayPort):
                             f"key={pix_key[:30]}{'...' if len(pix_key) > 30 else ''} "
                             f"value={emv_amount}"
                         )
-                        return self.create_pix_payment(
+                        result = self.create_pix_payment(
                             value=Decimal(str(emv_amount)),
                             pix_key=pix_key,
                             pix_key_type=key_type,
                             description=description or "BioCodeTechPay QR Code Payment",
                             idempotency_key=idempotency_key
                         )
+                        # Ensure the caller always sees the value — create_pix_payment strips it.
+                        result.setdefault("value", emv_amount)
+                        return result
 
                     # --- Path 2: dynamic QR — fetch payloadLocation, resolve key ---
                     payload_url = parse_emv_payload_url(payload)
@@ -537,13 +541,23 @@ class AsaasAdapter(PaymentGatewayPort):
                             f"key={resolved_key[:30]}{'...' if len(resolved_key) > 30 else ''} "
                             f"value={resolved_amount}"
                         )
-                        return self.create_pix_payment(
+                        # Idempotency key must be deterministic for the same QR payload.
+                        # Using timestamp-based keys (frontend default) causes duplicate charges
+                        # when the user retries after a transient error: Asaas treats each
+                        # new key as a fresh transfer even if the previous one went through.
+                        import hashlib as _hashlib
+                        _payload_hash = _hashlib.sha256(payload.encode()).hexdigest()[:20]
+                        _deterministic_key = idempotency_key or f"qrfallback-{_payload_hash}"
+                        result = self.create_pix_payment(
                             value=Decimal(str(resolved_amount)),
                             pix_key=resolved_key,
                             pix_key_type=resolved_key_type,
                             description=description or "BioCodeTechPay QR Code Payment",
-                            idempotency_key=idempotency_key,
+                            idempotency_key=_deterministic_key,
                         )
+                        # Ensure the caller always sees the resolved value.
+                        result.setdefault("value", resolved_amount)
+                        return result
             raise
 
         asaas_status = response.get("status", "BANK_PROCESSING")
