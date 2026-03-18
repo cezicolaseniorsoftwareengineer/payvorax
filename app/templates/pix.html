@@ -92,11 +92,11 @@
 
 <div class="max-w-2xl mx-auto">
 
-    <div class="mb-4">
+    <div class="mb-3 sm:mb-4">
 
-        <h1 class="text-2xl font-bold text-gray-900">Área Pix</h1>
+        <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Area Pix</h1>
 
-        <p class="text-gray-500">Envie e receba pagamentos a qualquer hora.</p>
+        <p class="text-gray-500 text-sm">Envie e receba pagamentos a qualquer hora.</p>
 
     </div>
 
@@ -104,7 +104,7 @@
 
     <!-- Tabs -->
 
-    <div class="flex p-1 bg-gray-100 rounded-xl mb-6">
+    <div class="flex p-1 bg-gray-100 rounded-xl mb-4 sm:mb-6">
 
         <button onclick="switchTab('pagar')" id="tab-pagar"
             class="flex-1 py-2 px-1 sm:px-3 rounded-lg text-xs sm:text-sm font-medium transition-all bg-white text-blue-700 shadow-sm">
@@ -296,9 +296,9 @@
 
     <!-- Scan QR Code (Ler QR) -->
 
-    <div id="view-ler-qr" class="hidden bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
+    <div id="view-ler-qr" class="hidden bg-white rounded-xl p-4 sm:p-6 shadow-sm mb-4 sm:mb-6 animate-fade-in">
 
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Pagar com QR Code</h2>
+        <h2 class="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4">Pagar com QR Code</h2>
 
 
 
@@ -482,9 +482,17 @@
 
     <!-- Send Pix Form (Pagar) -->
 
-    <div id="view-pagar" class="bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
+    <div id="view-pagar" class="bg-white rounded-xl p-4 sm:p-6 shadow-sm mb-4 sm:mb-6 animate-fade-in">
 
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Transferir</h2>
+        <div class="flex items-center justify-between mb-3 sm:mb-4">
+            <h2 class="text-base sm:text-lg font-semibold text-gray-800">Transferir</h2>
+            <div id="pixBalanceDisplay"
+                class="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">
+                <i data-lucide="wallet" class="w-3.5 h-3.5 text-gray-500 flex-shrink-0"></i>
+                <span class="text-xs text-gray-500">Saldo:</span>
+                <span id="pixBalanceValue" class="text-xs font-bold text-gray-800 sensitive-data">R$ 0,00</span>
+            </div>
+        </div>
 
 
 
@@ -492,19 +500,19 @@
 
         <div id="pixInputStep">
 
-            <form id="pixForm" class="space-y-4">
+            <form id="pixForm" class="space-y-3 sm:space-y-4">
 
                 <div>
 
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Valor a transferir</label>
+                    <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Valor a transferir</label>
 
                     <div class="relative">
 
                         <span
-                            class="absolute left-3 top-3.5 text-gray-500 text-sm font-medium pointer-events-none">R$</span>
+                            class="absolute left-3 top-2.5 sm:top-3.5 text-gray-500 text-sm font-medium pointer-events-none">R$</span>
 
                         <input type="text" id="valor" inputmode="numeric" autocomplete="off"
-                            class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none text-lg font-semibold"
+                            class="w-full pl-10 p-2 sm:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none text-base sm:text-lg font-semibold"
                             placeholder="0,00">
 
                     </div>
@@ -518,10 +526,10 @@
 
                 <div>
 
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Chave</label>
+                    <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Tipo de Chave</label>
 
                     <select id="tipo"
-                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none bg-white">
+                        class="w-full p-2 sm:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none bg-white text-sm sm:text-base">
 
                         <option value="EMAIL">E-mail</option>
 
@@ -541,12 +549,12 @@
 
                 <div>
 
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Chave Pix</label>
+                    <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Chave Pix</label>
 
                     <div class="relative">
 
                         <input type="text" id="chave"
-                            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none pr-10"
+                            class="w-full p-2 sm:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none pr-10 text-sm sm:text-base"
                             placeholder="CPF, Email ou Telefone">
 
                         <div id="chaveSpinner"
@@ -562,16 +570,17 @@
 
                 <!-- Recipient validation card -->
 
-                <div id="recipientCard" class="hidden rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div id="recipientCard" class="hidden rounded-xl border border-gray-200 bg-gray-50 p-3 sm:p-4">
 
-                    <p class="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">Transferir para</p>
+                    <p class="text-xs text-gray-500 uppercase tracking-wide font-medium mb-1.5 sm:mb-2">Transferir para
+                    </p>
 
-                    <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2 sm:gap-3">
 
                         <div id="recipientAvatar"
-                            class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                            class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
 
-                            <i data-lucide="user" class="w-5 h-5 text-blue-700"></i>
+                            <i data-lucide="user" class="w-4 h-4 sm:w-5 sm:h-5 text-blue-700"></i>
 
                         </div>
 
@@ -617,42 +626,62 @@
 
                 <!-- Fee preview badge (shown after key resolution) -->
                 <div id="feePreviewBadge"
-                    class="hidden rounded-xl border border-blue-100 bg-blue-50 p-3 flex flex-col gap-1.5 text-sm">
+                    class="hidden rounded-xl border border-blue-100 bg-blue-50 p-2.5 sm:p-3 flex flex-col gap-1 sm:gap-1.5 text-xs sm:text-sm">
+
+                    <!-- Valor digitado -->
+                    <div class="flex items-center justify-between gap-2 text-gray-600">
+                        <div class="flex items-center gap-1.5">
+                            <i data-lucide="banknote" class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0"></i>
+                            <span>Valor digitado</span>
+                        </div>
+                        <span id="feeGrossValue" class="font-semibold text-gray-800 whitespace-nowrap"></span>
+                    </div>
 
                     <!-- Taxa de Rede -->
-                    <div class="flex items-center justify-between gap-2 text-blue-700">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="network" class="w-4 h-4 flex-shrink-0"></i>
+                    <div class="flex items-center justify-between gap-2 text-red-600">
+                        <div class="flex items-center gap-1.5">
+                            <i data-lucide="network" class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0"></i>
                             <span>Taxa de Rede</span>
                         </div>
-                        <span id="feeNetworkValue" class="font-semibold text-blue-800 whitespace-nowrap"></span>
+                        <span id="feeNetworkValue" class="font-semibold text-red-700 whitespace-nowrap"></span>
                     </div>
 
                     <!-- Taxa de Manutencao -->
-                    <div class="flex items-center justify-between gap-2 text-blue-700">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
+                    <div class="flex items-center justify-between gap-2 text-red-600">
+                        <div class="flex items-center gap-1.5">
+                            <i data-lucide="info" class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0"></i>
                             <span id="feePreviewLabel">Taxa de Manutencao</span>
                         </div>
-                        <span id="feePreviewValue" class="font-semibold text-blue-800 whitespace-nowrap"></span>
+                        <span id="feePreviewValue" class="font-semibold text-red-700 whitespace-nowrap"></span>
                     </div>
 
-                    <!-- Divisor + Total -->
+                    <!-- Divisor + Total de taxas -->
                     <div
                         class="border-t border-blue-200 pt-1 flex items-center justify-between gap-2 text-blue-900 font-semibold">
                         <span>Total de taxas</span>
                         <span id="feeTotalValue" class="whitespace-nowrap"></span>
                     </div>
+
+                    <!-- Divisor + Valor que sera enviado -->
+                    <div
+                        class="border-t border-green-300 pt-1.5 mt-0.5 flex items-center justify-between gap-2 bg-green-50 -mx-2.5 sm:-mx-3 -mb-2.5 sm:-mb-3 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-b-xl">
+                        <div class="flex items-center gap-1.5 text-green-800 font-bold">
+                            <i data-lucide="send" class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0"></i>
+                            <span>Valor que sera enviado</span>
+                        </div>
+                        <span id="feeNetAmount"
+                            class="font-black text-green-900 text-sm sm:text-base whitespace-nowrap"></span>
+                    </div>
                 </div>
 
                 <!-- Agendamento Toggle -->
-                <div class="flex items-center gap-2 pt-2">
+                <div class="flex items-center gap-2 pt-1 sm:pt-2">
 
                     <input type="checkbox" id="toggleAgendamento"
                         class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-600 cursor-pointer">
 
                     <label for="toggleAgendamento"
-                        class="text-sm font-medium text-gray-700 cursor-pointer select-none">Agendar
+                        class="text-xs sm:text-sm font-medium text-gray-700 cursor-pointer select-none">Agendar
 
                         transferencia</label>
 
@@ -664,17 +693,17 @@
 
                 <div id="agendamentoContainer" class="hidden transition-all duration-300 ease-in-out">
 
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Data do Agendamento</label>
+                    <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Data do Agendamento</label>
 
                     <input type="date" id="data_agendamento"
-                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none text-gray-600">
+                        class="w-full p-2 sm:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none text-gray-600">
 
                 </div>
 
 
 
                 <button type="submit"
-                    class="w-full nu-purple text-white font-bold py-4 rounded-full hover:bg-blue-900 transition-colors shadow-md flex justify-center items-center gap-2">
+                    class="w-full nu-purple text-white font-bold py-3 sm:py-4 rounded-full hover:bg-blue-900 transition-colors shadow-md flex justify-center items-center gap-2 text-sm sm:text-base">
 
                     <span>Enviar Pix</span>
 
@@ -906,9 +935,9 @@
 
 
 
-    <!-- Depositar — sessao unificada: QR estatico, chave copiavel e geracao de cobranca com valor -->
+    <!-- Depositar -- sessao unificada: QR estatico, chave copiavel e geracao de cobranca com valor -->
 
-    <div id="view-cobrar" class="hidden bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
+    <div id="view-cobrar" class="hidden bg-white rounded-xl p-4 sm:p-6 shadow-sm mb-4 sm:mb-6 animate-fade-in">
 
         <!-- Header -->
         <div class="flex items-center gap-3 mb-5">
@@ -940,24 +969,27 @@
         </div>
 
         <!-- QR Code estatico (livre de valor) -->
-        <p class="text-sm text-gray-500 mb-4">
+        <p class="text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4">
             Escaneie o QR Code abaixo com qualquer banco. O valor informado sera
             creditado integralmente, sem desconto.
         </p>
-        <div class="flex flex-col items-center mb-5">
-            <div class="bg-white border-2 border-blue-100 rounded-2xl p-4 shadow-sm mb-2">
-                <img src="{{ deposit_qr_url }}" alt="QR Code PIX Deposito" class="w-56 h-56" loading="lazy">
+        <div class="flex flex-col items-center mb-4 sm:mb-5">
+            <div class="bg-white border-2 border-blue-100 rounded-2xl p-3 sm:p-4 shadow-sm mb-2">
+                <img src="{{ deposit_qr_url }}" alt="QR Code PIX Deposito" class="w-40 h-40 sm:w-56 sm:h-56"
+                    loading="lazy">
             </div>
-            <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">QR Code sem valor fixo &mdash; voce
+            <p class="text-xs text-gray-400 font-medium uppercase tracking-wider text-center">QR Code sem valor fixo --
+                voce
                 digita o valor no seu banco</p>
         </div>
 
         <!-- Chave PIX para copiar -->
-        <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 mb-4">
-            <p class="text-xs text-gray-500 mb-1.5 font-medium">Ou copie a chave PIX</p>
-            <div class="flex items-center gap-2 bg-white rounded-lg px-3 py-2.5 border border-gray-200">
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-2.5 sm:p-3 mb-3 sm:mb-4">
+            <p class="text-xs text-gray-500 mb-1 sm:mb-1.5 font-medium">Ou copie a chave PIX</p>
+            <div
+                class="flex items-center gap-2 bg-white rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 border border-gray-200">
                 <code id="cobrarDepositKey"
-                    class="text-xs font-mono text-gray-700 flex-1 break-all select-all">{{ deposit_wallet_key }}</code>
+                    class="text-[10px] sm:text-xs font-mono text-gray-700 flex-1 break-all select-all">{{ deposit_wallet_key }}</code>
                 <button onclick="copyPixKey('cobrarDepositKey', this)"
                     class="flex-shrink-0 p-1 text-blue-600 hover:text-blue-800 transition-colors" title="Copiar">
                     <i data-lucide="copy" class="w-4 h-4"></i>
@@ -1077,7 +1109,7 @@
 
 
     <!-- Link de Pagamento Panel -->
-    <div id="view-link" class="hidden bg-white rounded-xl p-6 shadow-sm mb-6 animate-fade-in">
+    <div id="view-link" class="hidden bg-white rounded-xl p-4 sm:p-6 shadow-sm mb-4 sm:mb-6 animate-fade-in">
 
         <div class="flex items-center gap-3 mb-1">
             <div class="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
@@ -1492,6 +1524,7 @@
         // Seed balance from server-rendered value; PVX.refreshBalance() will keep it updated.
         // Round to 2dp immediately to prevent IEEE 754 float drift (e.g. DB float 3.1499999... != 3.15).
         PVX._currentBalance = Math.round({{ user_balance | default(0) }} * 100) / 100;
+    _updatePixBalanceDisplay();
 
     // Real-time balance validation as user types the amount
     document.getElementById('valor').addEventListener('input', updateBalanceFeedback);
@@ -2644,7 +2677,31 @@
         return 4.00;
     }
 
+    function _updatePixBalanceDisplay() {
+        const el = document.getElementById('pixBalanceValue');
+        if (!el) return;
+        const bal = PVX._currentBalance;
+        if (bal === null || bal === undefined) {
+            el.textContent = '...';
+            return;
+        }
+        const rounded = Math.round(bal * 100) / 100;
+        el.textContent = 'R$ ' + rounded.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
 
+    // Hook into PVX.refreshBalance to keep pix page balance display in sync
+    (function () {
+        const _origRefresh = PVX.refreshBalance;
+        PVX.refreshBalance = function () {
+            const result = _origRefresh.apply(this, arguments);
+            if (result && typeof result.then === 'function') {
+                result.then(_updatePixBalanceDisplay);
+            } else {
+                _updatePixBalanceDisplay();
+            }
+            return result;
+        };
+    })();
 
     function updateBalanceFeedback() {
 
@@ -2792,15 +2849,18 @@
             return;
         }
 
-        // External: show fee breakdown (R$3.00 rede + R$1.00 manutencao)
+        // External: show fee breakdown (R$3.00 rede + R$1.00 manutencao) + net amount
         if (internalBadge) internalBadge.classList.add('hidden');
         if (badge) {
             const networkFee = computePixFeeNumericNetwork(false);
             const serviceFee = computePixFeeNumericService(valueFloat, false);
             const totalFee = computePixFeeNumeric(valueFloat, false);
-            document.getElementById('feeNetworkValue').textContent = _fmtBRL(networkFee);
-            document.getElementById('feePreviewValue').textContent = _fmtBRL(serviceFee);
+            const netAmount = Math.max(0, Math.round((valueFloat - totalFee) * 100) / 100);
+            document.getElementById('feeGrossValue').textContent = _fmtBRL(valueFloat);
+            document.getElementById('feeNetworkValue').textContent = '- ' + _fmtBRL(networkFee);
+            document.getElementById('feePreviewValue').textContent = '- ' + _fmtBRL(serviceFee);
             document.getElementById('feeTotalValue').textContent = _fmtBRL(totalFee);
+            document.getElementById('feeNetAmount').textContent = _fmtBRL(netAmount);
             badge.classList.remove('hidden');
             lucide.createIcons();
         }
