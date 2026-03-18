@@ -56,8 +56,13 @@ class Settings(BaseSettings):
     # Configure in Render Dashboard as ASAAS_WITHDRAWAL_VALIDATION_TOKEN.
     # URL to register in Asaas: <APP_BASE_URL>/pix/webhook/asaas/validacao-saque
     ASAAS_WITHDRAWAL_VALIDATION_TOKEN: Optional[str] = None
-
-    # Admin access — only this email gets the admin panel
+    # BioCodeTechPay platform Asaas Wallet ID — used for automatic fee split on PIX charges.
+    # Find in: Asaas Dashboard → Configuracoes → Wallet ID.
+    # When set, every PIX cobranca automatically splits the inbound platform fee
+    # (R$3.00: R$2 rede + R$1 manutencao) to this wallet via Asaas split API.
+    # This guarantees fee collection at infrastructure level, independent of webhook logic.
+    # Set in Render Dashboard as ASAAS_PLATFORM_WALLET_ID.
+    ASAAS_PLATFORM_WALLET_ID: Optional[str] = None
     ADMIN_EMAIL: str = "biocodetechnology@gmail.com"
 
     # Matrix (fee-collection) account — internal system account, never exposed to end users
@@ -70,7 +75,7 @@ class Settings(BaseSettings):
     # Set in Render Dashboard as PLATFORM_PIX_KEY. Falls back to the bundled UUID when absent.
     PLATFORM_PIX_KEY: Optional[str] = None
 
-    # OpenRouter API key — required for the BIO TECH PAY I.A chat agent.
+    # OpenRouter API key — required for the Bio Tech Pay Intelligence chat agent.
     # Set in Render Dashboard as OPENROUTER_API_KEY. Never commit this value.
     OPENROUTER_API_KEY: Optional[str] = None
 

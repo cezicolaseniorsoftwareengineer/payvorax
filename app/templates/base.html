@@ -459,7 +459,7 @@
     {% block scripts %}{% endblock %}
 
     <!-- ============================================================
-         BIO TECH PAY I.A — Widget flutuante com efeito cosmico
+         Bio Tech Pay Intelligence — Widget flutuante com efeito cosmico
     ============================================================ -->
     <style>
         #btpai-fab-wrapper {
@@ -783,12 +783,12 @@
     <!-- Floating button + cosmic canvas -->
     <div id="btpai-fab-wrapper">
         <canvas id="btpai-canvas" width="120" height="120"></canvas>
-        <button id="btpai-btn" aria-label="BIO TECH PAY I.A" onclick="btpaiOpen()">
+        <button id="btpai-btn" aria-label="Bio Tech Pay Intelligence" onclick="btpaiOpen()">
             <svg viewBox="0 0 24 24">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
         </button>
-        <div id="btpai-tooltip">Gerente Ultra Moderno 24h</div>
+        <div id="btpai-tooltip">Inteligencia Financeira 24h</div>
     </div>
 
     <!-- Chat modal -->
@@ -797,8 +797,8 @@
             <div id="btpai-header">
                 <div id="btpai-avatar"><img src="/static/img/logo.png?v=logo3" alt="Bio Code Tech Pay"></div>
                 <div id="btpai-header-info">
-                    <h3>BIO TECH PAY I.A</h3>
-                    <p>&#9679; Online agora &mdash; Gerente Ultra Moderno</p>
+                    <h3>Bio Tech Pay Intelligence</h3>
+                    <p>&#9679; Online agora &mdash; Inteligencia Financeira</p>
                 </div>
                 <button id="btpai-close" onclick="btpaiClose()" aria-label="Fechar">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -870,14 +870,14 @@
             draw();
         })();
 
-        // ---- BIO TECH PAY I.A Chat State ----
+        // ---- Bio Tech Pay Intelligence Chat State ----
         var _btpai = { history: [], busy: false, opened: false };
 
         function btpaiOpen() {
             document.getElementById('btpai-modal').classList.add('open');
             if (!_btpai.opened) {
                 _btpai.opened = true;
-                btpaiAddMsg('bot', 'Olá! Sou o **BIO TECH PAY I.A**, seu gerente ultra moderno disponível 24h.\n\nPosso te ajudar com investimentos, análise de mercado, renda fixa, cripto, imóveis e muito mais.\n\nO que você quer saber hoje?');
+                btpaiAddMsg('bot', 'Bem-vindo. Sou a inteligencia financeira do Bio Tech Pay, disponivel 24 horas.\n\nPosso te ajudar a construir sua reserva de emergencia, proteger seu patrimonio com ouro, bitcoin e dolar, e tracar um plano real para aumentar sua renda.\n\nO que voce precisa resolver?');
             }
             setTimeout(function () {
                 var inp = document.getElementById('btpai-input');
