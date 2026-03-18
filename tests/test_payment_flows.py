@@ -4,7 +4,7 @@ Comprehensive payment flow tests — BioCodeTechPay.
 Covers:
   - Deposit (internal credit)
   - Internal PIX transfer (BioCodeTechPay to BioCodeTechPay) by CPF, CNPJ, EMAIL
-  - External PIX transfer (other banks) — PF fee R$ 2.50, PJ fee 0.8% min R$ 3.00
+  - External PIX transfer (other banks) — free, no fee (17/03/2026)
   - PIX copia e cola (EMV QR code payload parsed and matched to internal charge)
   - QR code generation and payment (charge flow: CREATED -> CONFIRMED)
   - Insufficient balance guard on internal and external transfers
@@ -135,9 +135,9 @@ class TestDeposit:
 
 class TestFeeCalculation:
     # PF — external sent
-    def test_pf_external_pix_fee_is_025(self):
+    def test_pf_external_pix_fee_is_zero(self):
         fee = calculate_pix_fee("11111111111", 200.00, is_external=True)
-        assert fee == Decimal("4.00")
+        assert fee == Decimal("0.00")
 
     def test_pf_internal_pix_fee_is_zero(self):
         fee = calculate_pix_fee("11111111111", 200.00, is_external=False)
@@ -152,16 +152,16 @@ class TestFeeCalculation:
         fee = calculate_boleto_fee("11111111111")
         assert fee == Decimal("2.49")
 
-    # PJ — external sent (0.8% min R$4.00)
+    # PJ — external sent (gratuito desde 17/03/2026)
     def test_pj_external_pix_fee_minimum(self):
-        # 0.8% of R$50 = R$0.40 -> floor to minimum R$4.00
+        # Pix externo gratuito: any external PJ transfer returns R$0.00
         fee = calculate_pix_fee("61425124000103", 50.00, is_external=True)
-        assert fee == Decimal("4.00")
+        assert fee == Decimal("0.00")
 
     def test_pj_external_pix_fee_percentage(self):
-        # 0.8% of R$500 = R$4.00
+        # Pix externo gratuito: no percentage either
         fee = calculate_pix_fee("61425124000103", 500.00, is_external=True)
-        assert fee == Decimal("4.00")
+        assert fee == Decimal("0.00")
 
     def test_pj_external_pix_fee_received(self):
         # Inbound deposits are free — R$0.00 for PF and PJ.
@@ -297,8 +297,8 @@ class TestInternalPixTransfer:
 # ---------------------------------------------------------------------------
 
 class TestExternalPixTransfer:
-    def test_pf_external_deducts_value_plus_025_fee(self, db, pf_alice):
-        """PF external PIX: R$200 value + R$4.00 fee = R$204.00 debited."""
+    def test_pf_external_deducts_value_only_no_fee(self, db, pf_alice):
+        """PF external PIX: R$200 value, no fee — R$200.00 debited (17/03/2026)."""
         deposit_funds(db, pf_alice.id, 1000.00)
 
         req = PixCreateRequest(value=200.00, pix_key="99999999999",
@@ -310,10 +310,10 @@ class TestExternalPixTransfer:
 
         db.refresh(pf_alice)
         assert tx.status == PixStatus.CONFIRMED
-        assert pf_alice.balance == pytest.approx(796.00, abs=0.01)  # 1000 - 200 - 4.00
+        assert pf_alice.balance == pytest.approx(800.00, abs=0.01)  # 1000 - 200 (no fee)
 
-    def test_pj_external_deducts_percentage_fee(self, db, pj_carlos):
-        """PJ external PIX R$1000: fee = 0.5% = R$5.00 → balance = 1994.95 + initial."""
+    def test_pj_external_deducts_value_only_no_fee(self, db, pj_carlos):
+        """PJ external PIX R$1000: no fee — R$1000.00 debited (17/03/2026)."""
         deposit_funds(db, pj_carlos.id, 2000.00)
 
         req = PixCreateRequest(value=1000.00, pix_key="88888888888888",
@@ -324,12 +324,12 @@ class TestExternalPixTransfer:
                             type=TransactionType.SENT)
 
         db.refresh(pj_carlos)
-        # 0.8% of 1000 = 8.00
+        # Pix externo gratuito: only value debited
         assert tx.status == PixStatus.CONFIRMED
-        assert pj_carlos.balance == pytest.approx(992.00, abs=0.01)  # 2000 - 1000 - 8.00
+        assert pj_carlos.balance == pytest.approx(1000.00, abs=0.01)  # 2000 - 1000 (no fee)
 
-    def test_pj_external_minimum_fee_applies(self, db, pj_carlos):
-        """PJ external PIX R$50: 0.8% = R$0.40 < min R$4.00 → minimum applies."""
+    def test_pj_external_no_fee_on_small_amount(self, db, pj_carlos):
+        """PJ external PIX R$50: no fee — R$50.00 debited (17/03/2026)."""
         deposit_funds(db, pj_carlos.id, 200.00)
 
         req = PixCreateRequest(value=50.00, pix_key="88888888888888",
@@ -340,11 +340,11 @@ class TestExternalPixTransfer:
                        type=TransactionType.SENT)
 
         db.refresh(pj_carlos)
-        assert pj_carlos.balance == pytest.approx(146.00, abs=0.01)  # 200 - 50 - 4.00
+        assert pj_carlos.balance == pytest.approx(150.00, abs=0.01)  # 200 - 50 (no fee)
 
     def test_pf_external_insufficient_balance_includes_fee_message(self, db, pf_alice):
-        """Error message must inform: disponivel, necessario, valor, taxa."""
-        deposit_funds(db, pf_alice.id, 200.00)  # R$200 — not enough for R$200 + R$4.00
+        """Error message must inform: disponivel e necessario (sem taxa)."""
+        deposit_funds(db, pf_alice.id, 150.00)  # R$150 — not enough for R$200 transfer
 
         req = PixCreateRequest(value=200.00, pix_key="77777777777",
                                key_type=PixKeyType.CPF)
@@ -355,8 +355,8 @@ class TestExternalPixTransfer:
                            type=TransactionType.SENT)
 
         error_msg = str(exc_info.value)
-        assert "200.00" in error_msg   # valor disponivel
-        assert "204.00" in error_msg   # total necessario
+        assert "150.00" in error_msg   # saldo disponivel
+        assert "200.00" in error_msg   # total necessario (sem taxa)
 
     def test_pf_external_zero_balance_raises(self, db, pf_alice):
         """Zero balance must raise before any gateway call."""
@@ -385,9 +385,9 @@ class TestExternalPixTransfer:
         ).count()
         assert recv_count == 0
 
-    def test_pf_external_exact_balance_plus_fee_succeeds(self, db, pf_alice):
-        """Balance = value + R$4.00 exactly — must succeed."""
-        deposit_funds(db, pf_alice.id, 104.00)
+    def test_pf_external_exact_balance_succeeds(self, db, pf_alice):
+        """Balance = value exactly — must succeed (no fee on external PIX, 17/03/2026)."""
+        deposit_funds(db, pf_alice.id, 100.00)
 
         req = PixCreateRequest(value=100.00, pix_key="44444444444",
                                key_type=PixKeyType.CPF)
@@ -537,7 +537,7 @@ class TestComprehensiveFlow:
         Full scenario:
           1. Alice deposits R$1000
           2. Alice sends R$200 to Bob internally (free)
-          3. Alice sends R$100 externally to another bank (fee R$4.00)
+          3. Alice sends R$100 externally to another bank (no fee since 17/03/2026)
           Final balances verified.
         """
         deposit_funds(db, pf_alice.id, 1000.00)
@@ -560,18 +560,18 @@ class TestComprehensiveFlow:
         db.refresh(pf_alice)
         db.refresh(pf_bob)
 
-        # Alice: 1000 - 200 (internal, no fee) - 100 - 4.00 (external fee) = 696.00
-        assert pf_alice.balance == pytest.approx(696.00, abs=0.01)
+        # Alice: 1000 - 200 (internal, no fee) - 100 (external, no fee) = 700.00
+        assert pf_alice.balance == pytest.approx(700.00, abs=0.01)
         # Bob: received R$200 internally
         assert pf_bob.balance == pytest.approx(200.00, abs=0.01)
 
-    def test_pj_full_flow_fee_accumulation(self, db, pj_carlos, pj_diana):
+    def test_pj_full_flow_no_fee_accumulation(self, db, pj_carlos, pj_diana):
         """
-        PJ scenario:
+        PJ scenario (gratuito desde 17/03/2026):
           1. Carlos deposits R$5000
           2. Carlos sends R$1000 to Diana internally (free)
-          3. Carlos sends R$500 externally (fee = 0.5% = R$2.50)
-          4. Diana sends R$200 to external bank (fee = 0.5% of R$200 = R$1.00, min R$0.50)
+          3. Carlos sends R$500 externally (no fee)
+          4. Diana sends R$200 to external bank (no fee)
         """
         deposit_funds(db, pj_carlos.id, 5000.00)
 
@@ -595,15 +595,16 @@ class TestComprehensiveFlow:
         db.refresh(pj_carlos)
         db.refresh(pj_diana)
 
-        # Carlos: 5000 - 1000 (internal, no fee) - 500 - 4.00 (0.8% of 500) = 3496.00
-        assert pj_carlos.balance == pytest.approx(3496.00, abs=0.01)
-        # Diana: 1000 (received) - 200 - 4.00 (0.8% of 200=R$1.60 < min R$4.00) = 796.00
-        assert pj_diana.balance == pytest.approx(796.00, abs=0.01)
+        # Carlos: 5000 - 1000 (internal, no fee) - 500 (external, no fee) = 3500.00
+        assert pj_carlos.balance == pytest.approx(3500.00, abs=0.01)
+        # Diana: 1000 (received) - 200 (external, no fee) = 800.00
+        assert pj_diana.balance == pytest.approx(800.00, abs=0.01)
 
     def test_insufficient_balance_after_partial_spending(self, db, pf_alice, pf_bob):
         """
         Alice has R$150. After sending R$100 internally she has R$50.
-        Attempt to send R$50 externally must fail because R$50 + R$2.50 fee > R$50.
+        Attempt to send R$100 externally must fail because R$100 > R$50 available.
+        (PIX externos gratuitos desde 17/03/2026 — only value is checked against balance.)
         """
         deposit_funds(db, pf_alice.id, 150.00)
 
@@ -615,8 +616,8 @@ class TestComprehensiveFlow:
         db.refresh(pf_alice)
         assert pf_alice.balance == pytest.approx(50.00, abs=0.01)
 
-        # Second transfer (external) — balance insufficient for value + fee
-        req2 = PixCreateRequest(value=50.00, pix_key="33333333333", key_type=PixKeyType.CPF)
+        # Second transfer (external) — balance insufficient: R$100 > R$50
+        req2 = PixCreateRequest(value=100.00, pix_key="33333333333", key_type=PixKeyType.CPF)
         with _patch("app.pix.service.get_payment_gateway", return_value=None):
             with pytest.raises(ValueError, match="(?i)saldo insuficiente|insufficient"):
                 create_pix(db, req2, idempotency_key=str(uuid4()),

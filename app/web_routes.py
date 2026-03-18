@@ -111,10 +111,8 @@ async def pix_ui(request: Request, current_user: User = Depends(get_current_user
             "deposit_qr_url":     _DEPOSIT_QR_URL,
             "user_cpf_masked":     _mask_cpf(current_user.cpf_cnpj or ""),
             # Labels derived from the real fee engine — no hardcoded strings.
-            "pix_fee_outbound_label": outbound_fee_label,
-            "pix_fee_outbound_rate_label": (
-                "0,80% do valor, min R$ 4,00" if user_pj else "R$ 4,00 fixo"
-            ),
+            "pix_fee_outbound_label": "Gratuito",
+            "pix_fee_outbound_rate_label": "Gratuito",
             "pix_fee_receive_label": "Gratuito",
         }
     )

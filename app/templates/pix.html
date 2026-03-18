@@ -2695,13 +2695,8 @@
 
     function computePixFeeNumeric(valueFloat, isInternal) {
 
-        if (isInternal || valueFloat <= 0) return 0;
-
-        // Fee structure (15/03/2026): R$4,00 PF / max(0,80%, R$4,00) PJ
-        // Must mirror app/core/fees.py -> _PIX_SENT_PF and _PIX_SENT_MIN_PJ
-        if (!USER_IS_PJ) return 4.00;
-
-        return Math.max(valueFloat * 0.008, 4.00);
+        // Pix externo gratuito — 17/03/2026
+        return 0;
 
     }
 
@@ -2823,52 +2818,27 @@
 
 
     function computePixFeeNumericNetwork() {
-        // Taxa de Rede (15/03/2026): R$3,00 pass-through
-        // (R$2,00 Asaas cost + R$1,00 surplus swept nightly to Matrix)
-        return 3.00;
+        // Pix externo gratuito — 17/03/2026
+        return 0.00;
     }
 
     function computePixFeeNumericService(valueFloat) {
-        // Taxa de Servico = margem imediata da plataforma (total - rede)
-        if (!USER_IS_PJ) return 4.00 - 3.00; // R$1,00
-        return Math.max(valueFloat * 0.008, 4.00) - 3.00;
+        // Pix externo gratuito — 17/03/2026
+        return 0.00;
     }
 
     function computePixFeeDisplay(valueFloat, isInternal) {
-        if (isInternal) return 'Gratuito';
-        if (!USER_IS_PJ) return 'R$ 4,00';
-        const rate = valueFloat * 0.008;
-        const fee = Math.max(rate, 4.00);
-        return 'R$ ' + fee.toFixed(2).replace('.', ',');
+        return 'Gratuito';
     }
 
     const _fmtBRL = (n) => 'R$ ' + n.toFixed(2).replace('.', ',');
 
     function showFeePreview(isInternal, valueFloat) {
+        // Pix externo gratuito — 17/03/2026: always show green gratuito badge
         const badge = document.getElementById('feePreviewBadge');
         const internalBadge = document.getElementById('feeInternalBadge');
-        const label = document.getElementById('feePreviewLabel');
-        const valueEl = document.getElementById('feePreviewValue');
-        const netEl = document.getElementById('feeNetworkValue');
-        const totalEl = document.getElementById('feeTotalValue');
-        if (!badge) return;
-        if (isInternal) {
-            badge.classList.add('hidden');
-            if (internalBadge) { internalBadge.classList.remove('hidden'); lucide.createIcons(); }
-            return;
-        }
-        if (internalBadge) internalBadge.classList.add('hidden');
-        const networkFee = computePixFeeNumericNetwork();
-        const serviceFee = computePixFeeNumericService(valueFloat || 0);
-        const totalFee = networkFee + serviceFee;
-
-        if (netEl) netEl.textContent = _fmtBRL(networkFee);
-        if (valueEl) valueEl.textContent = _fmtBRL(serviceFee);
-        if (totalEl) totalEl.textContent = _fmtBRL(totalFee);
-        if (label) label.textContent = USER_IS_PJ ? 'Serviço PJ (0,8% do valor, mín. R$ 4,00)' : 'Serviço PF';
-
-        badge.classList.remove('hidden');
-        lucide.createIcons();
+        if (badge) badge.classList.add('hidden');
+        if (internalBadge) { internalBadge.classList.remove('hidden'); lucide.createIcons(); }
     }
 
     function hideFeePreview() {

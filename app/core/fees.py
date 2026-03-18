@@ -109,13 +109,13 @@ PIX_MAINTENANCE_FEE     = Decimal("1.00")  # "Taxa de manutencao" — applies to
 PIX_INBOUND_NETWORK_FEE = Decimal("1.00")  # "Taxa de rede" — inbound component (Asaas R$1.99 rounded)
 
 # ---------------------------------------------------------------- PF constants
-_PIX_SENT_PF = PIX_NETWORK_FEE + PIX_MAINTENANCE_FEE             # R$4.00 outbound PF
+_PIX_SENT_PF = Decimal("0.00")                                    # Pix externo gratuito — 17/03/2026
 _PIX_RECV_PF = PIX_INBOUND_NETWORK_FEE + PIX_MAINTENANCE_FEE     # R$2.00 inbound PF (rede R$1 + manut. R$1)
 
 # ---------------------------------------------------------------- PJ constants
-# Outbound: percentage scales above R$500; below, flat R$4.00 covers costs.
-_PIX_SENT_RATE_PJ = Decimal("0.0080")  # 0.80% of value
-_PIX_SENT_MIN_PJ  = Decimal("4.00")   # min: Asaas R$2.00 + R$1.00 network surplus + R$1.00 manutencao
+# Outbound: sem taxa — Pix externo gratuito a partir de 17/03/2026.
+_PIX_SENT_RATE_PJ = Decimal("0.00")   # Pix externo gratuito — 17/03/2026
+_PIX_SENT_MIN_PJ  = Decimal("0.00")   # Pix externo gratuito — 17/03/2026
 
 # Inbound: Asaas cost is R$1.99/charge (quota exhausted 11/03/2026).
 # Floor R$2.00 ensures R$0.01 margin at every charge value.
