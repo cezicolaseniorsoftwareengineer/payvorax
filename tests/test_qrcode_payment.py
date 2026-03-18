@@ -406,10 +406,10 @@ class TestCopiaECola:
         data = pay_resp.json()
         assert data["value"] == 75.0
 
-        # Balance must have been debited: value (R$75) only — no fee (17/03/2026)
+        # Balance must be debited: value R$75 + fee R$4 (rede+manutencao) = R$79 total
         balance_after = client.get("/pix/extrato", cookies=payer_cookies).json()["balance"]
-        expected_debit = 75.0  # Pix externo gratuito desde 17/03/2026
-        assert balance_after == balance_before - expected_debit, (
+        expected_debit = 79.0  # R$75 value + R$4 platform fee
+        assert abs((balance_before - balance_after) - expected_debit) < 0.01, (
             f"Balance not debited after external payment. "
             f"Before: {balance_before}, After: {balance_after}, Expected debit: R${expected_debit:.2f}"
         )
@@ -470,8 +470,8 @@ class TestChaveAleatoria:
         assert pay_resp.json()["value"] == 20.0
 
         balance_after = client.get("/pix/extrato", cookies=payer_cookies).json()["balance"]
-        expected_debit = 20.0  # Pix externo gratuito desde 17/03/2026
-        assert balance_after == balance_before - expected_debit, (
+        expected_debit = 24.0  # R$20 value + R$4 platform fee (rede+manutencao)
+        assert abs((balance_before - balance_after) - expected_debit) < 0.01, (
             f"Balance not debited for EVP payment. "
             f"Before: {balance_before}, After: {balance_after}, Expected debit: R${expected_debit:.2f}"
         )
@@ -764,9 +764,9 @@ class TestValueFallback:
             f"Transaction value should be {payment_value}, got {data['value']}"
         )
 
-        # Balance must be debited (value only — no fee since 17/03/2026)
+        # Balance must be debited (value + platform fee R$4.00)
         balance_after = client.get("/pix/extrato", cookies=payer_cookies).json()["balance"]
-        expected_debit = payment_value
+        expected_debit = payment_value + 4.0  # R$4.90 value + R$4 platform fee = R$8.90
         assert abs((balance_before - balance_after) - expected_debit) < 0.01, (
             f"Balance not debited correctly. Before: {balance_before}, After: {balance_after}, "
             f"Expected debit: R${expected_debit:.2f}"

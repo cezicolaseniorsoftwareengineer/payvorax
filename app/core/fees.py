@@ -105,17 +105,23 @@ ASAAS_PIX_FREE_MONTHLY       = 100              # legacy constant — use split 
 #   R$1.00 "Taxa de manutencao" — credited to Matrix immediately on every transaction.
 # The nightly audit sweep (00:00 BRT) transfers any Asaas surplus to Matrix.
 PIX_NETWORK_FEE         = Decimal("3.00")  # "Taxa de rede" — outbound component
-PIX_MAINTENANCE_FEE     = Decimal("1.00")  # "Taxa de manutencao" — applies to external operations only
-PIX_INBOUND_NETWORK_FEE = Decimal("1.00")  # "Taxa de rede" — inbound component (Asaas R$1.99 rounded)
+PIX_MAINTENANCE_FEE     = Decimal("1.00")  # "Taxa de manutencao" — applies to all external operations
+# Inbound rede component: R$2.00 - covers Asaas inbound cost + R$0.01 surplus.
+# Changed 18/03/2026: user requirement established R$2 rede + R$1 manutencao = R$3 flat for inbound.
+PIX_INBOUND_NETWORK_FEE = Decimal("2.00")  # "Taxa de rede" — inbound component (18/03/2026)
 
 # ---------------------------------------------------------------- PF constants
-_PIX_SENT_PF = Decimal("0.00")                                    # Pix externo gratuito — 17/03/2026
-_PIX_RECV_PF = PIX_INBOUND_NETWORK_FEE + PIX_MAINTENANCE_FEE     # R$2.00 inbound PF (rede R$1 + manut. R$1)
+# Outbound: R$3.00 rede + R$1.00 manutencao = R$4.00 total.
+# Reinstated 18/03/2026 after cost incident: Asaas charges R$2.00/transfer;
+# platform must collect R$4.00 to cover gateway cost and maintain positive margin.
+_PIX_SENT_PF = PIX_NETWORK_FEE + PIX_MAINTENANCE_FEE             # R$4.00 = R$3 rede + R$1 manutencao
+_PIX_RECV_PF = PIX_INBOUND_NETWORK_FEE + PIX_MAINTENANCE_FEE     # R$3.00 = R$2 rede + R$1 manutencao
 
 # ---------------------------------------------------------------- PJ constants
-# Outbound: sem taxa — Pix externo gratuito a partir de 17/03/2026.
-_PIX_SENT_RATE_PJ = Decimal("0.00")   # Pix externo gratuito — 17/03/2026
-_PIX_SENT_MIN_PJ  = Decimal("0.00")   # Pix externo gratuito — 17/03/2026
+# Outbound: minimum R$4.00; percentage 0.80% applies above R$500 (0.80% x 500 = R$4.00 breakeven).
+# Reinstated 18/03/2026 — zero-fee policy removed after cost incident.
+_PIX_SENT_RATE_PJ = Decimal("0.0080")  # 0.80% of value for PJ clients
+_PIX_SENT_MIN_PJ  = PIX_NETWORK_FEE + PIX_MAINTENANCE_FEE        # R$4.00 minimum
 
 # Inbound: Asaas cost is R$1.99/charge (quota exhausted 11/03/2026).
 # Floor R$2.00 ensures R$0.01 margin at every charge value.
@@ -161,11 +167,13 @@ def calculate_pix_outbound_fee(cpf_cnpj: str, amount: float) -> Decimal:
 
 def calculate_pix_receive_fee(cpf_cnpj: str, amount: float) -> Decimal:
     """
-    Fee charged for RECEIVING a PIX (cobranca, QR code, direct deposit).
+    Fee charged for RECEIVING a PIX from another bank (bank-to-bank deposit).
 
-    Policy (current): all inbound deposits are FREE — R$0.00 for PF and PJ.
+    Policy (18/03/2026): R$2.00 rede + R$1.00 manutencao = R$3.00 flat for all users.
+    Deducted from the gross received value before crediting the account holder.
+    Net credit = max(0.00, gross - R$3.00). Minimum viable deposit: > R$3.00.
     """
-    return Decimal("0.00")
+    return PIX_INBOUND_NETWORK_FEE + PIX_MAINTENANCE_FEE
 
 
 def calculate_pix_fee(

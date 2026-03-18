@@ -1532,6 +1532,12 @@ def pay_pix_qrcode(
                 )
             previous_balance = sender.balance
             sender.balance -= _total_debit
+            if sender.balance < 0:
+                logger.error(
+                    f"BALANCE_INVARIANT_VIOLATION [internal_qr]: user={sender.id} "
+                    f"post-debit={sender.balance:.2f} total_debit={_total_debit:.2f}. Clamping to 0.00."
+                )
+                sender.balance = 0.0
             db.add(sender)
             _qr_credit_internal(db, _maint_val)
             logger.info(
@@ -1771,6 +1777,12 @@ def pay_pix_qrcode(
     if payment_value > 0:
         previous_balance = sender.balance
         sender.balance -= _qr_total_required
+        if sender.balance < 0:
+            logger.error(
+                f"BALANCE_INVARIANT_VIOLATION [qrcode_pay]: user={sender.id} "
+                f"post-debit={sender.balance:.2f} total={_qr_total_required:.2f}. Clamping to 0.00."
+            )
+            sender.balance = 0.0
         db.add(sender)
         # Credit service margin (platform fee minus Asaas gateway cost) to Matrix
         _qr_fee_dec = _QRDec(str(_qr_fee_amount))
@@ -2151,9 +2163,12 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                             )
 
             if recipient_user:
-                # All inbound deposits are free — zero fee, full amount credited
-                fee_float  = 0.0
-                net_credit = round(inbound_value, 2)
+                # Inbound bank-to-bank deposit fee: R$2 rede + R$1 manutencao = R$3.00.
+                # Net credit = max(0, gross - fee); deposits <= R$3 yield zero credit.
+                from app.core.fees import calculate_pix_receive_fee as _recv_fee_calc
+                from app.core.matrix import credit_fee as _credit_inbound_fee
+                fee_float  = round(float(_recv_fee_calc(recipient_user.cpf_cnpj, inbound_value)), 2)
+                net_credit = round(max(0.0, inbound_value - fee_float), 2)
 
                 previous_bal = recipient_user.balance
                 recipient_user.balance = round(recipient_user.balance + net_credit, 2)
@@ -2161,6 +2176,9 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                     getattr(recipient_user, "credit_limit", 0) + net_credit * 0.50, 2
                 )
                 db.add(recipient_user)
+                # Credit full inbound fee to Matrix immediately.
+                if fee_float > 0:
+                    _credit_inbound_fee(db, fee_float)
 
                 _eff_key = dest_key or payer_doc or "unknown"
                 _eff_key_digits = _raw_doc(_eff_key)
@@ -2187,9 +2205,9 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                 db.commit()
 
                 logger.info(
-                    f"Inbound PIX credited (free): user={recipient_user.id} "
+                    f"Inbound PIX credited: user={recipient_user.id} "
                     f"key_type={_eff_key_type} gross=R${inbound_value:.2f} "
-                    f"fee=R$0.00 net=R${net_credit:.2f} "
+                    f"fee=R${fee_float:.2f} net=R${net_credit:.2f} "
                     f"balance: R${previous_bal:.2f} -> R${recipient_user.balance:.2f}"
                 )
                 audit_log(
@@ -2200,7 +2218,7 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                         "dest_key": _eff_key,
                         "payer_name": payer_name,
                         "gross_value": inbound_value,
-                        "fee": 0.0,
+                        "fee": fee_float,
                         "net_credit": net_credit,
                         "balance_after": recipient_user.balance,
                     },

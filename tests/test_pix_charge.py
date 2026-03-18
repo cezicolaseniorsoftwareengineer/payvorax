@@ -76,9 +76,10 @@ def test_process_pix_receipt_success():
     # Setup query return
     # 1. Get Charge (PixTransaction)
     # 2. Get Receiver (User)
-    # 3. build_pix_response -> Get Owner (User)  [credit_fee skipped: fee = R$0.00]
-    # 4. build_pix_response -> Get Sender Transaction (PixTransaction) - None
-    mock_db.query.return_value.filter.return_value.first.side_effect = [mock_tx, mock_user, mock_user, None]
+    # 3. Matrix account lookup inside credit_fee (returns None -> warning, no credit)
+    # 4. build_pix_response -> Get Owner (User)
+    # 5. build_pix_response -> Get Sender Transaction (PixTransaction) - None
+    mock_db.query.return_value.filter.return_value.first.side_effect = [mock_tx, mock_user, None, mock_user, None]
 
     # Override dependencies
     app.dependency_overrides[get_db] = lambda: mock_db
@@ -197,15 +198,15 @@ class TestAsaasWebhookFeeDeduction:
 
     def test_webhook_pf_charge_deducts_receive_fee(self, monkeypatch):
         """
-        Deposits are now free — R$0.00 fee for PF.
-        Deposit of R$9.25 via webhook must credit user the full R$9.25.
+        Inbound deposits from external banks carry a fee of R$3.00 (R$2 rede + R$1 manutencao).
+        Deposit of R$9.25 via webhook must net R$6.25 to the user.
         Also verifies that the request is authenticated via the Asaas webhook token.
         """
         monkeypatch.setattr(_app_settings, "ASAAS_WEBHOOK_TOKEN", _TEST_WEBHOOK_TOKEN)
 
         gross = 9.25
-        expected_fee = 0.00
-        expected_net = gross - expected_fee
+        expected_fee = 3.00
+        expected_net = round(gross - expected_fee, 2)
 
         mock_db = MagicMock()
         charge_tx = self._make_charge_tx(gross)
@@ -242,10 +243,10 @@ class TestAsaasWebhookFeeDeduction:
 
         # Balance must be net, never gross
         assert abs(pf_user.balance - expected_net) < 0.01, (
-            f"PF user balance should be R${expected_net:.2f} (full gross), got R${pf_user.balance:.2f}. "
-            "Free deposit policy: no fee deducted."
+            f"PF user balance should be R${expected_net:.2f} (gross R${gross:.2f} - fee R${expected_fee:.2f}), "
+            f"got R${pf_user.balance:.2f}."
         )
-        # Matrix receives nothing when fee is zero
+        # Matrix receives the fee amount
         assert abs(matrix_user.balance - expected_fee) < 0.01, (
             f"Matrix balance should be R${expected_fee:.2f}, got R${matrix_user.balance:.2f}."
         )
@@ -281,14 +282,14 @@ class TestAsaasWebhookFeeDeduction:
 
     def test_webhook_pj_charge_deducts_receive_fee(self, monkeypatch):
         """
-        Deposits are now free — R$0.00 fee for PJ.
-        Deposit of R$500.00 via webhook must credit user the full R$500.00.
+        Inbound deposits from external banks carry a fee of R$3.00 (R$2 rede + R$1 manutencao).
+        Deposit of R$500.00 via webhook must net R$497.00 to the PJ user.
         Also verifies that the request is authenticated via the Asaas webhook token.
         """
         monkeypatch.setattr(_app_settings, "ASAAS_WEBHOOK_TOKEN", _TEST_WEBHOOK_TOKEN)
 
         gross = 500.00
-        expected_fee = 0.00
+        expected_fee = 3.00
         expected_net = round(gross - expected_fee, 2)
 
         mock_db = MagicMock()

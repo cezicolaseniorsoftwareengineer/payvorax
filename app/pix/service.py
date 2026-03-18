@@ -164,6 +164,17 @@ def create_pix(
 
                 # Debit only after successful gateway dispatch (or local fallback)
                 sender.balance -= total_required
+                # Absolute invariant: balance must never go negative.
+                # The pre-check above should prevent this; this guard is defense-in-depth
+                # against edge cases (concurrent requests, stale read from SQLAlchemy cache).
+                if sender.balance < 0:
+                    logger.error(
+                        f"BALANCE_INVARIANT_VIOLATION: user={sender.id} "
+                        f"post-debit balance={sender.balance:.2f} "
+                        f"(value={data.value:.2f} fee={float(pix_fee):.2f}). "
+                        "Clamping to 0.00 and generating audit record."
+                    )
+                    sender.balance = 0.0
                 db.add(sender)
 
                 # Credit only the SERVICE margin to Matrix.
