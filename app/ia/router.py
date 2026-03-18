@@ -73,9 +73,12 @@ Keep responses concise but complete. Use short paragraphs and bullet points when
 
 
 _LLM_MODELS = [
-    "openai/gpt-4o-mini",
-    "google/gemini-2.0-flash-001",
-    "meta-llama/llama-3.3-70b-instruct",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "z-ai/glm-4.5-air:free",
+    "stepfun/step-3.5-flash:free",
+    "nvidia/nemotron-nano-9b-v2:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "mistralai/mistral-small-3.1-24b-instruct:free",
 ]
 
 
@@ -163,7 +166,7 @@ async def ia_chat(
             )
             if resp.status_code == 401:
                 raise HTTPException(status_code=502, detail="Credencial de IA invalida. Contate o suporte.")
-            # For 429 or 5xx, try next model
+            # For 402 (credits exhausted), 429 (rate limited) or 5xx, try next model
             resp = None
 
     if resp is None or resp.status_code != 200:
