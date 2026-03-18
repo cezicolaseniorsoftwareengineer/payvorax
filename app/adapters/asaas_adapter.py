@@ -190,10 +190,20 @@ class AsaasAdapter(PaymentGatewayPort):
         description: str,
         customer_id: str,
         due_date: Optional[datetime] = None,
-        idempotency_key: Optional[str] = None
+        idempotency_key: Optional[str] = None,
+        platform_wallet_id: Optional[str] = None,
+        platform_fee: Optional[Decimal] = None,
     ) -> Dict[str, Any]:
         """
-        Creates PIX charge (cobrança) on Asaas.
+        Creates PIX charge (cobranca) on Asaas.
+
+        When platform_wallet_id and platform_fee are provided, adds a split
+        so the platform fee is automatically routed to the BioCodeTechPay
+        Asaas wallet at payment time — guaranteed by Asaas infrastructure,
+        independent of webhook handler correctness.
+
+        Split is calculated on netValue (gross minus Asaas own fee).
+        The platform_fee must not exceed the expected netValue.
 
         Asaas API: POST /payments
         Docs: https://docs.asaas.com/reference/criar-nova-cobranca
@@ -210,6 +220,17 @@ class AsaasAdapter(PaymentGatewayPort):
         else:
             # Default: due today (PIX charges are immediate — no deferred scheduling)
             payload["dueDate"] = datetime.now().strftime("%Y-%m-%d")
+
+        # Automatic fee split: routes platform fee to BioCodeTechPay Asaas wallet.
+        # Guarantees fee collection at the Asaas level regardless of webhook handler state.
+        # The platform must NOT include its own walletId to avoid Asaas API exception.
+        if platform_wallet_id and platform_fee and platform_fee > Decimal("0"):
+            payload["split"] = [
+                {
+                    "walletId": platform_wallet_id,
+                    "fixedValue": round(float(platform_fee), 2),
+                }
+            ]
 
         response = self._make_request(
             method="POST",

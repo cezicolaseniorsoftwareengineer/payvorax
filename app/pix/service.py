@@ -465,13 +465,24 @@ def create_pix_charge_with_qrcode(
         db.refresh(pix)
         return pix
 
-    # Create charge on Asaas
+    # Create charge on Asaas with automatic split for platform fee collection.
+    # When ASAAS_PLATFORM_WALLET_ID is configured, the R$3 inbound fee is routed
+    # to BioCodeTechPay's own Asaas wallet at payment time — guaranteed by Asaas
+    # infrastructure. The webhook handler still deducts the fee from the user's
+    # DB balance for internal accounting.
+    from app.core.config import settings as _settings
+    from app.core.fees import PIX_INBOUND_NETWORK_FEE, PIX_MAINTENANCE_FEE
+    _platform_wallet = _settings.ASAAS_PLATFORM_WALLET_ID
+    # Fee is flat R$3.00 for all users (18/03/2026 policy): R$2 rede + R$1 manutencao
+    _platform_fee: Optional[Decimal] = (PIX_INBOUND_NETWORK_FEE + PIX_MAINTENANCE_FEE) if _platform_wallet else None
     try:
         charge_data = gateway.create_pix_charge(
             value=Decimal(str(value)),
             description=description,
             customer_id=customer_id,
-            idempotency_key=idempotency_key
+            idempotency_key=idempotency_key,
+            platform_wallet_id=_platform_wallet,
+            platform_fee=_platform_fee,
         )
 
         # Store transaction in database

@@ -22,7 +22,9 @@ class PaymentGatewayPort(ABC):
         description: str,
         customer_id: str,
         due_date: Optional[datetime] = None,
-        idempotency_key: Optional[str] = None
+        idempotency_key: Optional[str] = None,
+        platform_wallet_id: Optional[str] = None,
+        platform_fee: Optional[Decimal] = None,
     ) -> Dict[str, Any]:
         """
         Creates a PIX charge (receivable).
@@ -33,6 +35,10 @@ class PaymentGatewayPort(ABC):
             customer_id: External customer identifier
             due_date: Optional expiration date
             idempotency_key: Idempotency key for duplicate prevention
+            platform_wallet_id: Asaas wallet ID of the platform account.
+                When provided together with platform_fee, a split is added
+                to the charge so the fee is routed automatically by Asaas.
+            platform_fee: Fixed fee amount to split to platform_wallet_id.
 
         Returns:
             {
