@@ -22,7 +22,49 @@ from app.core.pix_emv import build_pix_static_emv_no_amount as _build_deposit_em
 # Run `python scripts/check_pix_key.py` to discover the correct key for your Asaas account.
 _FALLBACK_DEPOSIT_KEY = "1a923d7b-3230-46d4-a670-87bf7ee54817"
 _DEPOSIT_WALLET_KEY: str = settings.PLATFORM_PIX_KEY or _FALLBACK_DEPOSIT_KEY
-_DEPOSIT_QR_URL = _build_qr_url(_build_deposit_emv(_DEPOSIT_WALLET_KEY))
+
+# Locally generated QR (fallback): EMV built per BACEN BR Code spec, rendered via qrserver.com.
+_DEPOSIT_QR_URL_LOCAL = _build_qr_url(_build_deposit_emv(_DEPOSIT_WALLET_KEY))
+
+
+def _fetch_asaas_deposit_qr() -> Optional[str]:
+    """
+    Fetches the official Asaas QR code image for the registered EVP deposit key.
+
+    Asaas returns a verified base64 PNG registered with BACEN DICT — guaranteed to be
+    accepted by all Brazilian bank apps. Falls back to locally generated QR on any failure.
+
+    Returns a data URL (data:image/png;base64,...) or None if unavailable.
+    """
+    if not settings.ASAAS_API_KEY:
+        return None
+    try:
+        import httpx as _httpx
+        _base = (
+            "https://sandbox.asaas.com/api/v3"
+            if settings.ASAAS_USE_SANDBOX
+            else "https://api.asaas.com/v3"
+        )
+        resp = _httpx.get(
+            f"{_base}/pix/addressKeys",
+            headers={"access_token": settings.ASAAS_API_KEY, "User-Agent": "BioCodeTechPay/1.0"},
+            timeout=6.0,
+        )
+        if resp.status_code != 200:
+            return None
+        for entry in resp.json().get("data", []):
+            if entry.get("key") == _DEPOSIT_WALLET_KEY and entry.get("status") == "ACTIVE":
+                b64 = (entry.get("qrCode") or {}).get("encodedImage", "")
+                if b64:
+                    return f"data:image/png;base64,{b64}"
+    except Exception:
+        pass
+    return None
+
+
+# At startup, prefer the official Asaas QR image (BACEN-registered, accepted by all PSPs).
+# Falls back to locally-generated qrserver.com URL when Asaas is unreachable.
+_DEPOSIT_QR_URL: str = _fetch_asaas_deposit_qr() or _DEPOSIT_QR_URL_LOCAL
 from app.pix.schemas import PixKeyType
 from app.pix.models import PixTransaction, TransactionType
 from app.boleto.models import BoletoTransaction
