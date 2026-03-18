@@ -5,7 +5,10 @@ The LLM receives deterministic engine outputs — never raw DB data or PII.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List
+import logging
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -69,7 +72,11 @@ Always respond in the same language the user writes in. Default to Brazilian Por
 Keep responses concise but complete. Use short paragraphs and bullet points when helpful."""
 
 
-_LLM_MODEL = "openai/gpt-4o-mini"
+_LLM_MODELS = [
+    "openai/gpt-4o-mini",
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.1-8b-instruct:free",
+]
 
 
 class ChatMessage:
@@ -118,37 +125,62 @@ async def ia_chat(
         (m.content for m in reversed(request.messages) if m.role == "user"), ""
     )
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://new-credit-fintech.onrender.com",
-                    "X-Title": "BioCodeTechPay",
-                },
-                json={
-                    "model": _LLM_MODEL,
-                    "messages": messages,
-                    "max_tokens": 800,
-                    "temperature": 0.7,
-                },
-            )
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="Timeout ao conectar com servico de IA")
-        except httpx.RequestError:
-            raise HTTPException(status_code=502, detail="Erro de conexao com servico de IA")
+    resp = None
+    used_model = _LLM_MODELS[0]
 
-    if resp.status_code == 401:
-        raise HTTPException(status_code=502, detail="Credencial de IA invalida")
-    if resp.status_code == 429:
-        raise HTTPException(status_code=429, detail="Limite de requisicoes atingido. Tente em alguns instantes.")
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Servico de IA retornou erro inesperado")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for model in _LLM_MODELS:
+            used_model = model
+            try:
+                resp = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://new-credit-fintech.onrender.com",
+                        "X-Title": "BioCodeTechPay",
+                    },
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "max_tokens": 800,
+                        "temperature": 0.7,
+                    },
+                )
+            except httpx.TimeoutException:
+                logger.warning("OpenRouter timeout model=%s", model)
+                continue
+            except httpx.RequestError as exc:
+                logger.warning("OpenRouter connection error model=%s err=%s", model, exc)
+                continue
+
+            if resp.status_code == 200:
+                break
+
+            logger.warning(
+                "OpenRouter non-200 model=%s status=%s body=%s",
+                model, resp.status_code, resp.text[:500],
+            )
+            if resp.status_code == 401:
+                raise HTTPException(status_code=502, detail="Credencial de IA invalida. Contate o suporte.")
+            # For 429 or 5xx, try next model
+            resp = None
+
+    if resp is None or resp.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail="Servico de IA temporariamente indisponivel. Tente novamente em alguns instantes.",
+        )
 
     data = resp.json()
-    reply = data["choices"][0]["message"]["content"]
+    try:
+        reply = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError):
+        logger.error("OpenRouter unexpected payload model=%s body=%s", used_model, data)
+        raise HTTPException(
+            status_code=502,
+            detail="Resposta inesperada do servico de IA. Tente novamente.",
+        )
 
     # Audit log (non-blocking)
     log_interaction(
@@ -157,7 +189,7 @@ async def ia_chat(
         question=last_question,
         snapshot_dict=snapshot.model_dump(),
         response=reply,
-        model=_LLM_MODEL,
+        model=used_model,
     )
 
     return {"reply": reply}

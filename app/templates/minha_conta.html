@@ -437,9 +437,9 @@
     {% endif %}
 </div>
 
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="max-w-2xl mx-auto">
 
-    <!-- ---- LEFT COLUMN ---- -->
+    <!-- ---- MAIN COLUMN ---- -->
     <div class="space-y-6">
 
         <!-- Perfil card -->
@@ -589,142 +589,147 @@
 
     </div>
 
-    <!-- ---- RIGHT COLUMN ---- -->
-    <div class="space-y-6">
-
-        <!-- Bio Tech I.A Gerente plan card -->
-        <div class="ua-plan-card">
-            <!-- Top row -->
-            <div class="flex items-start justify-between gap-4 mb-4 relative z-10">
-                <div class="flex-1 min-w-0">
-                    <div class="text-xs font-bold tracking-widest text-purple-300 uppercase mb-1">Bio Tech I.A</div>
-                    <h2 class="text-xl font-black text-white leading-tight">
-                        Gerente da Conta<br>
-                        <span class="text-purple-300">24 horas</span>
-                    </h2>
-                </div>
-                <div class="text-right flex-shrink-0">
-                    <div class="text-2xl font-black text-white">R$ 9,90</div>
-                    <div class="text-xs text-purple-300 font-medium">por mes</div>
-                </div>
-            </div>
-
-            <!-- Benefits list -->
-            <ul class="space-y-2 mb-5 relative z-10">
-                <li class="flex items-center gap-2 text-sm text-gray-300">
-                    <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
-                    Conselheiro bancario, administrativo e financeiro
-                </li>
-                <li class="flex items-center gap-2 text-sm text-gray-300">
-                    <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
-                    Analise de investimentos e patrimonio
-                </li>
-                <li class="flex items-center gap-2 text-sm text-gray-300">
-                    <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
-                    Estrategia de crescimento de riqueza
-                </li>
-                <li class="flex items-center gap-2 text-sm text-gray-300">
-                    <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
-                    Disponivel 24h, 7 dias por semana
-                </li>
-                <li class="flex items-center gap-2 text-sm text-gray-300">
-                    <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
-                    O modelo mais inteligente do mercado financeiro
-                </li>
-            </ul>
-
-            <!-- CTA -->
-            {% if is_subscribed %}
-            <div class="flex items-center gap-2 bg-green-900 bg-opacity-60 rounded-xl px-4 py-3 relative z-10">
-                <span class="ua-pulse-dot"></span>
-                <span class="text-sm text-green-300 font-semibold">
-                    Gerente ativo ate
-                    {% if subscription.expires_at %}
-                    {{ subscription.expires_at.strftime('%d/%m/%Y') }}
-                    {% endif %}
-                </span>
-            </div>
-            {% else %}
-            <button onclick="openSubscribeModal()"
-                class="relative z-10 w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition-all text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5">
-                Ativar Gerente por R$ 9,90/mes
-            </button>
-            {% endif %}
-        </div>
-
-        <!-- Chat area (full if subscribed, locked if not) -->
-        <div class="ua-card">
-            <div class="flex items-center gap-3 mb-4">
-                <div
-                    class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
-                    <i data-lucide="bot" style="width:20px;height:20px;color:white;"></i>
-                </div>
-                <div>
-                    <div class="font-bold text-gray-900 text-sm">Bio Tech I.A</div>
-                    <div class="text-xs text-gray-400 flex items-center gap-1">
-                        {% if is_subscribed %}
-                        <span class="ua-pulse-dot" style="width:6px;height:6px;"></span>
-                        Online — Gerente ativo
-                        {% else %}
-                        Bloqueado — assine o plano
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            {% if is_subscribed %}
-            <!-- Chat window -->
-            <div id="ua-chat" class="ua-chat-window">
-                <div class="ua-bubble-ia" id="ia-welcome">
-                    Ola, {{ user.name.split(' ')[0] }}! Sou o seu Gerente de Conta Bio Tech I.A. Estou aqui 24h para te
-                    ajudar com conselhos bancarios, financeiros e administrativos. No que posso ajudar hoje?
-                </div>
-            </div>
-            <!-- Input -->
-            <div class="flex gap-2 mt-3">
-                <input id="ua-chat-input" type="text" placeholder="Pergunte ao seu Gerente..."
-                    class="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-                    onkeydown="if(event.key==='Enter')sendIAMessage()">
-                <button onclick="sendIAMessage()"
-                    class="bg-blue-700 hover:bg-blue-600 text-white rounded-xl p-2 transition-colors flex-shrink-0">
-                    <i data-lucide="send" style="width:18px;height:18px;"></i>
-                </button>
-            </div>
-            {% else %}
-            <!-- Locked preview -->
-            <div class="ua-locked-overlay">
-                <div class="ua-chat-window" style="pointer-events:none;">
-                    <div class="ua-bubble-ia" style="filter:blur(4px);">
-                        Ola! Sou o seu Gerente de Conta personalizado. Aqui voce recebe conselhos financeiros sobre
-                        investimentos, estrategia patrimonial, analise de risco e muito mais...
-                    </div>
-                    <div class="ua-bubble-user" style="filter:blur(4px);">
-                        Como posso investir R$ 500 por mes?
-                    </div>
-                    <div class="ua-bubble-ia" style="filter:blur(4px);">
-                        Com R$ 500 por mes voce pode diversificar em renda fixa (Tesouro Direto), ETFs e uma reserva de
-                        emergencia...
-                    </div>
-                </div>
-                <div
-                    style="position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;">
-                    <div class="text-center">
-                        <i data-lucide="lock" class="w-8 h-8 text-gray-400 mx-auto mb-2"></i>
-                        <p class="text-sm font-semibold text-gray-600">Assine para acessar o Gerente</p>
-                        <button onclick="openSubscribeModal()"
-                            class="mt-2 bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
-                            Ativar por R$ 9,90/mes
-                        </button>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-        </div>
-
-    </div>
 </div>
 
-<!-- ---- SUBSCRIBE MODAL ---- -->
+{% if false %}
+<!-- REMOVED: Bio Tech I.A embedded chat (minha_conta) -->
+<!-- The BIO TECH PAY I.A floating widget (base.html) is the single IA entry point. -->
+<div class="ua-plan-card x-removed">
+    <!-- Top row -->
+    <div class="flex items-start justify-between gap-4 mb-4 relative z-10">
+        <div class="flex-1 min-w-0">
+            <div class="text-xs font-bold tracking-widest text-purple-300 uppercase mb-1">Bio Tech I.A</div>
+            <h2 class="text-xl font-black text-white leading-tight">
+                Gerente da Conta<br>
+                <span class="text-purple-300">24 horas</span>
+            </h2>
+        </div>
+        <div class="text-right flex-shrink-0">
+            <div class="text-2xl font-black text-white">R$ 9,90</div>
+            <div class="text-xs text-purple-300 font-medium">por mes</div>
+        </div>
+    </div>
+
+    <!-- Benefits list -->
+    <ul class="space-y-2 mb-5 relative z-10">
+        <li class="flex items-center gap-2 text-sm text-gray-300">
+            <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+            Conselheiro bancario, administrativo e financeiro
+        </li>
+        <li class="flex items-center gap-2 text-sm text-gray-300">
+            <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+            Analise de investimentos e patrimonio
+        </li>
+        <li class="flex items-center gap-2 text-sm text-gray-300">
+            <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+            Estrategia de crescimento de riqueza
+        </li>
+        <li class="flex items-center gap-2 text-sm text-gray-300">
+            <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+            Disponivel 24h, 7 dias por semana
+        </li>
+        <li class="flex items-center gap-2 text-sm text-gray-300">
+            <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+            O modelo mais inteligente do mercado financeiro
+        </li>
+    </ul>
+
+    <!-- CTA -->
+    {% if is_subscribed %}
+    <div class="flex items-center gap-2 bg-green-900 bg-opacity-60 rounded-xl px-4 py-3 relative z-10">
+        <span class="ua-pulse-dot"></span>
+        <span class="text-sm text-green-300 font-semibold">
+            Gerente ativo ate
+            {% if subscription.expires_at %}
+            {{ subscription.expires_at.strftime('%d/%m/%Y') }}
+            {% endif %}
+        </span>
+    </div>
+    {% else %}
+    <button onclick="openSubscribeModal()"
+        class="relative z-10 w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition-all text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+        Ativar Gerente por R$ 9,90/mes
+    </button>
+    {% endif %}
+</div>
+
+<!-- Chat area (full if subscribed, locked if not) -->
+<div class="ua-card">
+    <div class="flex items-center gap-3 mb-4">
+        <div
+            class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
+            <i data-lucide="bot" style="width:20px;height:20px;color:white;"></i>
+        </div>
+        <div>
+            <div class="font-bold text-gray-900 text-sm">Bio Tech I.A</div>
+            <div class="text-xs text-gray-400 flex items-center gap-1">
+                {% if is_subscribed %}
+                <span class="ua-pulse-dot" style="width:6px;height:6px;"></span>
+                Online — Gerente ativo
+                {% else %}
+                Bloqueado — assine o plano
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if is_subscribed %}
+    <!-- Chat window -->
+    <div id="ua-chat" class="ua-chat-window">
+        <div class="ua-bubble-ia" id="ia-welcome">
+            Ola, {{ user.name.split(' ')[0] }}! Sou o seu Gerente de Conta Bio Tech I.A. Estou aqui 24h para te
+            ajudar com conselhos bancarios, financeiros e administrativos. No que posso ajudar hoje?
+        </div>
+    </div>
+    <!-- Input -->
+    <div class="flex gap-2 mt-3">
+        <input id="ua-chat-input" type="text" placeholder="Pergunte ao seu Gerente..."
+            class="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+            onkeydown="if(event.key==='Enter')sendIAMessage()">
+        <button onclick="sendIAMessage()"
+            class="bg-blue-700 hover:bg-blue-600 text-white rounded-xl p-2 transition-colors flex-shrink-0">
+            <i data-lucide="send" style="width:18px;height:18px;"></i>
+        </button>
+    </div>
+    {% else %}
+    <!-- Locked preview -->
+    <div class="ua-locked-overlay">
+        <div class="ua-chat-window" style="pointer-events:none;">
+            <div class="ua-bubble-ia" style="filter:blur(4px);">
+                Ola! Sou o seu Gerente de Conta personalizado. Aqui voce recebe conselhos financeiros sobre
+                investimentos, estrategia patrimonial, analise de risco e muito mais...
+            </div>
+            <div class="ua-bubble-user" style="filter:blur(4px);">
+                Como posso investir R$ 500 por mes?
+            </div>
+            <div class="ua-bubble-ia" style="filter:blur(4px);">
+                Com R$ 500 por mes voce pode diversificar em renda fixa (Tesouro Direto), ETFs e uma reserva de
+                emergencia...
+            </div>
+        </div>
+        <div style="position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;">
+            <div class="text-center">
+                <i data-lucide="lock" class="w-8 h-8 text-gray-400 mx-auto mb-2"></i>
+                <p class="text-sm font-semibold text-gray-600">Assine para acessar o Gerente</p>
+                <button onclick="openSubscribeModal()"
+                    class="mt-2 bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
+                    Ativar por R$ 9,90/mes
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+</div>
+</div>
+
+{% endif %}
+
+<!-- SUBSCRIBE MODAL REMOVED: subscription to embedded IA no longer available.
+     The BIO TECH PAY I.A floating widget (base.html) is always enabled.
+-->
+{% if false %}
 <div id="ua-modal-bg" class="ua-modal-bg" onclick="if(event.target===this)closeSubscribeModal()">
     <div class="ua-modal">
         <div class="flex items-center justify-between mb-4">
@@ -810,150 +815,23 @@
 
         <p id="modal-error" class="text-red-500 text-xs mt-3 hidden"></p>
     </div>
-</div>
+</div>{% endif %}
 
 <script>
     lucide.createIcons();
 
-    // ---- Modal controls ----
-    function openSubscribeModal() {
-        document.getElementById('ua-modal-bg').classList.add('open');
-        lucide.createIcons();
-    }
-    function closeSubscribeModal() {
-        document.getElementById('ua-modal-bg').classList.remove('open');
-    }
+    // ---- REMOVED: openSubscribeModal, closeSubscribeModal, switchTab,
+    //               handleSubscribeBalance, handleSubscribeCard,
+    //               sendIAMessage, formatIAReply, _iaHistory
+    // The BIO TECH PAY I.A floating widget (base.html) is the only IA entry point.
 
-    // ---- Tab switch ----
-    function switchTab(tab) {
-        const tabs = ['saldo', 'cartao'];
-        tabs.forEach(t => {
-            document.getElementById('tab-' + t).classList.toggle('active', t === tab);
-            document.getElementById('panel-' + t).classList.toggle('hidden', t !== tab);
-        });
-        lucide.createIcons();
-    }
+    // placeholder to avoid reference errors from any residual inline onclick attributes
+    function openSubscribeModal() { }
+    function closeSubscribeModal() { }
 
-    // ---- Subscribe with balance ----
-    async function handleSubscribeBalance() {
-        const btn = document.getElementById('btn-saldo');
-        const errEl = document.getElementById('modal-error');
-        errEl.classList.add('hidden');
-        btn.disabled = true;
-        btn.textContent = 'Processando...';
-        try {
-            const res = await fetch('/minha-conta/assinar/saldo', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || 'Erro ao processar pagamento');
-            closeSubscribeModal();
-            showToast('Gerente ativado com sucesso!', 'success');
-            setTimeout(() => location.reload(), 1400);
-        } catch (e) {
-            errEl.textContent = e.message;
-            errEl.classList.remove('hidden');
-            btn.disabled = false;
-            btn.textContent = 'Pagar R$ 9,90 com saldo';
-        }
-    }
-
-    // ---- Subscribe with card ----
-    async function handleSubscribeCard() {
-        const errEl = document.getElementById('modal-error');
-        errEl.classList.add('hidden');
-        const selected = document.querySelector('input[name="selected-card"]:checked');
-        if (!selected) {
-            errEl.textContent = 'Selecione um cartao.';
-            errEl.classList.remove('hidden');
-            return;
-        }
-        try {
-            const res = await fetch('/minha-conta/assinar/cartao', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ card_id: selected.value })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || 'Erro ao processar pagamento');
-            closeSubscribeModal();
-            showToast('Gerente ativado com sucesso!', 'success');
-            setTimeout(() => location.reload(), 1400);
-        } catch (e) {
-            errEl.textContent = e.message;
-            errEl.classList.remove('hidden');
-        }
-    }
-
-    // ---- IA Chat ----
-    const _iaHistory = [];
-
-    async function sendIAMessage() {
-        const input = document.getElementById('ua-chat-input');
-        const chat = document.getElementById('ua-chat');
-        const text = input.value.trim();
-        if (!text) return;
-        input.value = '';
-
-        // Add user bubble
-        const userBubble = document.createElement('div');
-        userBubble.className = 'ua-bubble-user';
-        userBubble.textContent = text;
-        chat.appendChild(userBubble);
-
-        // Add history entry
-        _iaHistory.push({ role: 'user', content: text });
-
-        // Typing indicator
-        const typing = document.createElement('div');
-        typing.className = 'ua-typing';
-        typing.innerHTML = '<span></span><span></span><span></span>';
-        chat.appendChild(typing);
-        chat.scrollTop = chat.scrollHeight;
-
-        try {
-            const res = await fetch('/ia/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages: _iaHistory })
-            });
-            const data = await res.json();
-            typing.remove();
-
-            if (!res.ok) {
-                const errBubble = document.createElement('div');
-                errBubble.className = 'ua-bubble-ia';
-                errBubble.style.color = '#ef4444';
-                errBubble.textContent = data.detail || 'Servico de IA temporariamente indisponivel.';
-                chat.appendChild(errBubble);
-            } else {
-                const reply = data.reply || '';
-                _iaHistory.push({ role: 'assistant', content: reply });
-                const iaBubble = document.createElement('div');
-                iaBubble.className = 'ua-bubble-ia';
-                iaBubble.innerHTML = formatIAReply(reply);
-                chat.appendChild(iaBubble);
-            }
-        } catch (e) {
-            typing.remove();
-            const errBubble = document.createElement('div');
-            errBubble.className = 'ua-bubble-ia';
-            errBubble.style.color = '#ef4444';
-            errBubble.textContent = 'Erro de conexao. Verifique sua internet.';
-            chat.appendChild(errBubble);
-        }
-        chat.scrollTop = chat.scrollHeight;
-    }
-
-    function formatIAReply(text) {
-        // Convert markdown-style bullets and line breaks to HTML
-        return text
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.+?)\*/g, '<em>$1</em>')
-            .replace(/^- (.+)$/gm, '<li style="list-style:disc;margin-left:16px;">$1</li>')
-            .replace(/(<li[^>]*>.*<\/li>)/s, '<ul>$1</ul>')
-            .replace(/\n\n/g, '<br><br>')
-            .replace(/\n/g, '<br>');
-    }
+    // no-op stubs — embedded IA removed; use the floating BIO TECH PAY I.A widget
+    function sendIAMessage() { }
+    function formatIAReply() { return ''; }
 
     // ---- Utils ----
     function showToast(msg, type) {
