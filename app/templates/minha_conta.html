@@ -675,10 +675,20 @@
             {% endif %}
         </div>
         {% else %}
-        <button onclick="openSubscribeModal()"
-            class="relative z-10 w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition-all text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5">
-            Ativar Gerente por R$ 9,90/mes
-        </button>
+        <div class="relative z-10 space-y-3">
+            <button onclick="openSubscribeModal()"
+                class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition-all text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+                Ativar Gerente por R$ 9,90/mes
+            </button>
+            {% if not trial_used %}
+            <button onclick="handleActivateTrial()" id="btn-trial"
+                class="w-full border border-purple-400 border-opacity-40 text-purple-200 font-semibold py-2.5 rounded-xl transition-all text-sm hover:bg-purple-900 hover:bg-opacity-30">
+                Testar gratis por 24 horas
+            </button>
+            <p class="text-xs text-purple-300 text-opacity-60 text-center">Teste unico e intransferivel. Apos 24h,
+                somente assinatura paga.</p>
+            {% endif %}
+        </div>
         {% endif %}
     </div>
 </div>
@@ -884,6 +894,29 @@
             setTimeout(function () { location.reload(); }, 1200);
         } catch (e) {
             showToast('Falha de conexao. Tente novamente.', 'error');
+        }
+    }
+
+    async function handleActivateTrial() {
+        if (!confirm('Ativar teste gratuito de 24 horas do Gerente I.A?\n\nEste teste e unico — apos expirar, somente assinatura paga estara disponivel.')) return;
+        var btn = document.getElementById('btn-trial');
+        if (btn) { btn.disabled = true; btn.textContent = 'Ativando...'; }
+        try {
+            var resp = await fetch('/minha-conta/trial', {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                showToast(data.detail || 'Erro ao ativar teste.', 'error');
+                if (btn) { btn.disabled = false; btn.textContent = 'Testar gratis por 24 horas'; }
+                return;
+            }
+            showToast('Teste de 24h ativado com sucesso!', 'success');
+            setTimeout(function () { location.reload(); }, 1200);
+        } catch (e) {
+            showToast('Falha de conexao. Tente novamente.', 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Testar gratis por 24 horas'; }
         }
     }
 

@@ -187,6 +187,74 @@ def cancel_subscription(db: Session, user: User) -> Dict[str, Any]:
     }
 
 
+TRIAL_HOURS: int = 24
+
+
+def activate_trial(db: Session, user: User) -> Dict[str, Any]:
+    """Grant a one-time 24-hour free trial. Can only be used once per user."""
+    sub = _get_or_create(db, user.id)
+    if sub.trial_used:
+        raise ValueError("Periodo de teste ja utilizado. Assine o plano para continuar.")
+    if sub.status == SubscriptionStatus.ACTIVE:
+        raise ValueError("Voce ja possui uma assinatura ativa.")
+
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(hours=TRIAL_HOURS)
+
+    sub.status = SubscriptionStatus.ACTIVE
+    sub.payment_method = "TRIAL"
+    sub.card_id = None
+    sub.plan_amount = 0.0
+    sub.subscribed_at = now
+    sub.expires_at = expires
+    sub.last_renewed_at = None
+    sub.auto_renew = False
+    sub.trial_used = True
+
+    db.commit()
+    db.refresh(sub)
+
+    audit_log(
+        action="SUBSCRIPTION_TRIAL_ACTIVATED",
+        user=user.id,
+        resource=f"subscription_id={sub.id}",
+        details={"expires_at": expires.isoformat()},
+    )
+
+    return {"ok": True, "expires_at": expires.isoformat()}
+
+
+def admin_grant_subscription(db: Session, target_user_id: str, admin_user_id: str) -> Dict[str, Any]:
+    """Admin grants a 30-day subscription to any user at no cost."""
+    sub = _get_or_create(db, target_user_id)
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(days=SUBSCRIPTION_DAYS)
+
+    sub.status = SubscriptionStatus.ACTIVE
+    sub.payment_method = "ADMIN_GRANT"
+    sub.card_id = None
+    sub.plan_amount = 0.0
+    sub.subscribed_at = now
+    sub.expires_at = expires
+    sub.last_renewed_at = now
+    sub.auto_renew = False
+
+    db.commit()
+    db.refresh(sub)
+
+    audit_log(
+        action="SUBSCRIPTION_ADMIN_GRANTED",
+        user=admin_user_id,
+        resource=f"subscription_id={sub.id}",
+        details={
+            "target_user_id": target_user_id,
+            "expires_at": expires.isoformat(),
+        },
+    )
+
+    return {"ok": True, "user_id": target_user_id, "expires_at": expires.isoformat()}
+
+
 def get_financial_health(db: Session, user: User) -> Dict[str, Any]:
     """
     Compute financial health metrics and a composite 0-100 score.

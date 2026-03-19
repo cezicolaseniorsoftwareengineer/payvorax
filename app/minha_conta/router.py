@@ -47,6 +47,7 @@ async def minha_conta_page(
             "health": health,
             "subscription": subscription,
             "is_subscribed": is_subscribed,
+            "trial_used": subscription.trial_used,
             "cards": cards,
         },
     )
@@ -86,6 +87,17 @@ async def cancel_subscription(
 ):
     try:
         return sub_service.cancel_subscription(db, current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/minha-conta/trial")
+async def activate_trial(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return sub_service.activate_trial(db, current_user)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

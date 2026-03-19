@@ -252,12 +252,26 @@ async def admin_panel(
     if current_user.email != settings.ADMIN_EMAIL:
         raise HTTPException(status_code=403, detail="Acesso restrito.")
 
+    from app.minha_conta.models import UserSubscription, SubscriptionStatus
+
     all_users = db.query(User).order_by(User.created_at.desc()).all()
 
     # Remove only the internal matrix account from the customer list
     matrix_user = next((u for u in all_users if u.email == settings.MATRIX_ACCOUNT_EMAIL), None)
     users = [u for u in all_users if u.email != settings.MATRIX_ACCOUNT_EMAIL]
     matrix_balance = matrix_user.balance if matrix_user else 0.0
+
+    # Build subscription status map for the admin panel
+    all_subs = db.query(UserSubscription).all()
+    now = _datetime.now(_timezone.utc)
+    ia_active = set()
+    for s in all_subs:
+        if s.status == SubscriptionStatus.ACTIVE:
+            exp = s.expires_at
+            if exp and exp.tzinfo is None:
+                exp = exp.replace(tzinfo=_timezone.utc)
+            if exp and exp > now:
+                ia_active.add(s.user_id)
 
     return templates.TemplateResponse("admin.html", {
         "request": request,
@@ -271,6 +285,7 @@ async def admin_panel(
         "matrix_balance": matrix_balance,
         "admin_email": settings.ADMIN_EMAIL,
         "matrix_email": settings.MATRIX_ACCOUNT_EMAIL,
+        "ia_active_users": ia_active,
     })
 
 
@@ -564,6 +579,27 @@ async def delete_user(
         "deleted": {"user_id": user_id, "name": deleted_name},
         "orphans_removed": {"pix": pix_count, "boleto": boleto_count, "cards": card_count},
     }
+
+
+@router.post("/admin/users/{user_id}/grant-ia")
+async def admin_grant_ia(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Grant a 30-day I.A subscription to any user at no cost. Admin only."""
+    from app.core.logger import logger
+    from app.minha_conta import service as sub_service
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso restrito.")
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuario nao encontrado.")
+
+    result = sub_service.admin_grant_subscription(db, user_id, current_user.id)
+    logger.info(f"ADMIN granted I.A subscription to user id={user_id} email={target.email}")
+    return result
 
 
 @router.get("/admin/users/{user_id}")

@@ -51,6 +51,7 @@ class UserSubscription(Base):
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_renewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     auto_renew: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
+    trial_used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )
