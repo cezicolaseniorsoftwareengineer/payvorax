@@ -197,31 +197,35 @@
     <div id="pvx-toast" class="pvx-toast"></div>
 
     <!-- Mobile-first Header -->
-    <header class="nu-purple text-white p-4 shadow-lg" style="position:fixed;top:0;left:0;width:100%;z-index:1000;">
+    <header class="nu-purple text-white px-4 py-2 shadow-lg"
+        style="position:fixed;top:0;left:0;width:100%;z-index:1000;">
         <div class="w-full max-w-md md:max-w-6xl mx-auto flex justify-between items-center">
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2.5">
                 <img src="/static/img/logo.png?v=logo3" alt="BioCodeTechPay"
-                    class="w-16 h-16 rounded-full object-cover shadow-md">
-                <span class="font-semibold text-lg" id="user-greeting">Olá, {{ user_name.split(' ')[0] if user_name else
+                    class="w-11 h-11 md:w-14 md:h-14 rounded-full object-cover shadow-md">
+                <span class="font-semibold text-base md:text-lg" id="user-greeting">Olá, {{ user_name.split(' ')[0] if
+                    user_name else
                     'Cliente' }}</span>
             </div>
-            <div class="flex gap-4">
+            <div class="flex gap-3">
                 <i data-lucide="eye" id="toggle-balance"
-                    class="w-6 h-6 cursor-pointer hover:text-gray-200 transition-colors"></i>
-                <i data-lucide="help-circle" class="w-6 h-6 cursor-pointer hover:text-gray-200"></i>
-                <i data-lucide="log-out" onclick="logout()" class="w-6 h-6 cursor-pointer hover:text-gray-200"></i>
+                    class="w-5 h-5 md:w-6 md:h-6 cursor-pointer hover:text-gray-200 transition-colors"></i>
+                <i data-lucide="help-circle" class="w-5 h-5 md:w-6 md:h-6 cursor-pointer hover:text-gray-200"></i>
+                <i data-lucide="log-out" onclick="logout()"
+                    class="w-5 h-5 md:w-6 md:h-6 cursor-pointer hover:text-gray-200"></i>
             </div>
         </div>
     </header>
 
     <!-- Main Content -->
-    <main class="flex-grow min-h-0 w-full max-w-md md:max-w-6xl mx-auto px-4 pb-4 space-y-6 overflow-y-auto"
-        style="padding-top:112px;">
+    <main class="flex-grow min-h-0 w-full max-w-md md:max-w-6xl mx-auto px-4 pb-6 space-y-4 overflow-y-auto"
+        style="padding-top:72px;">
         {% block content %}{% endblock %}
     </main>
 
     <!-- Bottom Navigation (App Style) -->
-    <nav class="bg-white border-t border-gray-200 flex-shrink-0 pb-4 pt-2 px-6">
+    <nav class="bg-white border-t border-gray-200 flex-shrink-0 px-4"
+        style="padding-top:6px;padding-bottom:max(10px,env(safe-area-inset-bottom));">
         <div
             class="w-full max-w-md md:max-w-6xl mx-auto flex justify-between items-center text-gray-500 text-xs font-medium">
             <a href="/"
