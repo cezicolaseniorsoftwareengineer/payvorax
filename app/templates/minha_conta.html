@@ -591,160 +591,121 @@
 
 </div>
 
-{% if false %}
-<!-- REMOVED: Bio Tech I.A embedded chat (minha_conta) -->
-<!-- The Bio Tech Pay Intelligence floating widget (base.html) is the single IA entry point. -->
-<div class="ua-plan-card x-removed">
-    <!-- Top row -->
-    <div class="flex items-start justify-between gap-4 mb-4 relative z-10">
-        <div class="flex-1 min-w-0">
-            <div class="text-xs font-bold tracking-widest text-purple-300 uppercase mb-1">Bio Tech I.A</div>
-            <h2 class="text-xl font-black text-white leading-tight">
-                Gerente da Conta<br>
-                <span class="text-purple-300">24 horas</span>
-            </h2>
+<!-- ---- SUBSCRIPTION PLAN CARD ---- -->
+<div class="max-w-2xl mx-auto mt-6">
+    <div class="ua-plan-card">
+        <div class="flex items-start justify-between gap-4 mb-4 relative z-10">
+            <div class="flex-1 min-w-0">
+                <div class="text-xs font-bold tracking-widest text-purple-300 uppercase mb-1">Bio Tech Pay Intelligence
+                </div>
+                <h2 class="text-xl font-black text-white leading-tight">
+                    Gerente Financeiro<br>
+                    <span class="text-purple-300">24 horas por dia</span>
+                </h2>
+            </div>
+            <div class="text-right flex-shrink-0">
+                <div class="text-2xl font-black text-white">R$ 9,90</div>
+                <div class="text-xs text-purple-300 font-medium">por mes</div>
+            </div>
         </div>
-        <div class="text-right flex-shrink-0">
-            <div class="text-2xl font-black text-white">R$ 9,90</div>
-            <div class="text-xs text-purple-300 font-medium">por mes</div>
-        </div>
-    </div>
 
-    <!-- Benefits list -->
-    <ul class="space-y-2 mb-5 relative z-10">
-        <li class="flex items-center gap-2 text-sm text-gray-300">
-            <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
-            Conselheiro bancario, administrativo e financeiro
-        </li>
-        <li class="flex items-center gap-2 text-sm text-gray-300">
-            <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
-            Analise de investimentos e patrimonio
-        </li>
-        <li class="flex items-center gap-2 text-sm text-gray-300">
-            <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
-            Estrategia de crescimento de riqueza
-        </li>
-        <li class="flex items-center gap-2 text-sm text-gray-300">
-            <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
-            Disponivel 24h, 7 dias por semana
-        </li>
-        <li class="flex items-center gap-2 text-sm text-gray-300">
-            <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
-            O modelo mais inteligente do mercado financeiro
-        </li>
-    </ul>
+        <ul class="space-y-2 mb-5 relative z-10">
+            <li class="flex items-center gap-2 text-sm text-gray-300">
+                <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+                Conselheiro bancario, administrativo e financeiro
+            </li>
+            <li class="flex items-center gap-2 text-sm text-gray-300">
+                <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+                Analise de investimentos e patrimonio
+            </li>
+            <li class="flex items-center gap-2 text-sm text-gray-300">
+                <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+                Estrategia personalizada de crescimento
+            </li>
+            <li class="flex items-center gap-2 text-sm text-gray-300">
+                <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+                Disponivel 24h, 7 dias por semana
+            </li>
+            <li class="flex items-center gap-2 text-sm text-gray-300">
+                <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+                Renovacao automatica mensal
+            </li>
+        </ul>
 
-    <!-- CTA -->
-    {% if is_subscribed %}
-    <div class="flex items-center gap-2 bg-green-900 bg-opacity-60 rounded-xl px-4 py-3 relative z-10">
-        <span class="ua-pulse-dot"></span>
-        <span class="text-sm text-green-300 font-semibold">
-            Gerente ativo ate
-            {% if subscription.expires_at %}
-            {{ subscription.expires_at.strftime('%d/%m/%Y') }}
+        {% if is_subscribed %}
+        <div class="relative z-10 space-y-3">
+            <div class="flex items-center gap-2 bg-green-900 bg-opacity-60 rounded-xl px-4 py-3">
+                <span class="ua-pulse-dot"></span>
+                <span class="text-sm text-green-300 font-semibold">
+                    Gerente ativo ate
+                    {% if subscription.expires_at %}
+                    {{ subscription.expires_at.strftime('%d/%m/%Y') }}
+                    {% endif %}
+                </span>
+            </div>
+            <div class="flex items-center justify-between gap-3 bg-white bg-opacity-10 rounded-xl px-4 py-3">
+                <div class="text-sm text-gray-300">
+                    <span class="font-semibold text-white">Pagamento:</span>
+                    {% if subscription.payment_method == 'SALDO' %}
+                    Saldo em conta
+                    {% elif subscription.payment_method == 'CARTAO' %}
+                    Cartao de credito
+                    {% else %}
+                    {{ subscription.payment_method or 'N/A' }}
+                    {% endif %}
+                </div>
+                <div class="text-sm">
+                    {% if subscription.auto_renew %}
+                    <span class="text-green-400 font-semibold">Renovacao ativa</span>
+                    {% else %}
+                    <span class="text-yellow-400 font-semibold">Cancela no vencimento</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% if subscription.auto_renew %}
+            <button onclick="handleCancelSubscription()"
+                class="relative z-10 w-full border border-red-400 border-opacity-40 text-red-300 font-semibold py-2.5 rounded-xl transition-all text-sm hover:bg-red-900 hover:bg-opacity-30">
+                Cancelar renovacao automatica
+            </button>
+            {% else %}
+            <button onclick="openSubscribeModal()"
+                class="relative z-10 w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition-all text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+                Renovar plano por R$ 9,90/mes
+            </button>
             {% endif %}
-        </span>
-    </div>
-    {% else %}
-    <button onclick="openSubscribeModal()"
-        class="relative z-10 w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition-all text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5">
-        Ativar Gerente por R$ 9,90/mes
-    </button>
-    {% endif %}
-</div>
-
-<!-- Chat area (full if subscribed, locked if not) -->
-<div class="ua-card">
-    <div class="flex items-center gap-3 mb-4">
-        <div
-            class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
-            <i data-lucide="bot" style="width:20px;height:20px;color:white;"></i>
         </div>
-        <div>
-            <div class="font-bold text-gray-900 text-sm">Bio Tech I.A</div>
-            <div class="text-xs text-gray-400 flex items-center gap-1">
-                {% if is_subscribed %}
-                <span class="ua-pulse-dot" style="width:6px;height:6px;"></span>
-                Online — Gerente ativo
-                {% else %}
-                Bloqueado — assine o plano
-                {% endif %}
-            </div>
-        </div>
-    </div>
-
-    {% if is_subscribed %}
-    <!-- Chat window -->
-    <div id="ua-chat" class="ua-chat-window">
-        <div class="ua-bubble-ia" id="ia-welcome">
-            Ola, {{ user.name.split(' ')[0] }}! Sou o seu Gerente de Conta Bio Tech I.A. Estou aqui 24h para te
-            ajudar com conselhos bancarios, financeiros e administrativos. No que posso ajudar hoje?
-        </div>
-    </div>
-    <!-- Input -->
-    <div class="flex gap-2 mt-3">
-        <input id="ua-chat-input" type="text" placeholder="Pergunte ao seu Gerente..."
-            class="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-            onkeydown="if(event.key==='Enter')sendIAMessage()">
-        <button onclick="sendIAMessage()"
-            class="bg-blue-700 hover:bg-blue-600 text-white rounded-xl p-2 transition-colors flex-shrink-0">
-            <i data-lucide="send" style="width:18px;height:18px;"></i>
+        {% else %}
+        <button onclick="openSubscribeModal()"
+            class="relative z-10 w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition-all text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+            Ativar Gerente por R$ 9,90/mes
         </button>
+        {% endif %}
     </div>
-    {% else %}
-    <!-- Locked preview -->
-    <div class="ua-locked-overlay">
-        <div class="ua-chat-window" style="pointer-events:none;">
-            <div class="ua-bubble-ia" style="filter:blur(4px);">
-                Ola! Sou o seu Gerente de Conta personalizado. Aqui voce recebe conselhos financeiros sobre
-                investimentos, estrategia patrimonial, analise de risco e muito mais...
-            </div>
-            <div class="ua-bubble-user" style="filter:blur(4px);">
-                Como posso investir R$ 500 por mes?
-            </div>
-            <div class="ua-bubble-ia" style="filter:blur(4px);">
-                Com R$ 500 por mes voce pode diversificar em renda fixa (Tesouro Direto), ETFs e uma reserva de
-                emergencia...
-            </div>
-        </div>
-        <div style="position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;">
-            <div class="text-center">
-                <i data-lucide="lock" class="w-8 h-8 text-gray-400 mx-auto mb-2"></i>
-                <p class="text-sm font-semibold text-gray-600">Assine para acessar o Gerente</p>
-                <button onclick="openSubscribeModal()"
-                    class="mt-2 bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
-                    Ativar por R$ 9,90/mes
-                </button>
-            </div>
-        </div>
-    </div>
-    {% endif %}
 </div>
 
-</div>
-</div>
-
-{% endif %}
-
-<!-- SUBSCRIBE MODAL REMOVED: subscription to embedded IA no longer available.
-     The Bio Tech Pay Intelligence floating widget (base.html) is always enabled.
--->
-{% if false %}
+<!-- ---- SUBSCRIBE MODAL ---- -->
 <div id="ua-modal-bg" class="ua-modal-bg" onclick="if(event.target===this)closeSubscribeModal()">
     <div class="ua-modal">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-bold text-gray-900">Ativar Gerente Bio Tech I.A</h3>
+            <h3 class="text-lg font-bold text-gray-900">Ativar Gerente Bio Tech Pay Intelligence</h3>
             <button onclick="closeSubscribeModal()" class="text-gray-400 hover:text-gray-600">
                 <i data-lucide="x" class="w-5 h-5"></i>
             </button>
         </div>
 
-        <div class="bg-purple-50 rounded-xl p-4 mb-5 flex items-center justify-between">
+        <div class="bg-purple-50 rounded-xl p-4 mb-4 flex items-center justify-between">
             <div>
-                <div class="font-bold text-purple-900">Plano Mensal</div>
+                <div class="font-bold text-purple-900">Plano Mensal Recorrente</div>
                 <div class="text-sm text-purple-600">Renovacao automatica a cada 30 dias</div>
             </div>
             <div class="text-2xl font-black text-purple-700">R$ 9,90</div>
+        </div>
+
+        <div class="bg-gray-50 rounded-xl p-3 mb-5 text-xs text-gray-600 leading-relaxed">
+            <p class="font-semibold text-gray-800 mb-1">Como funciona a recorrencia:</p>
+            <p>O valor de R$ 9,90 sera cobrado automaticamente a cada 30 dias usando o metodo de pagamento selecionado.
+                Para pagamento via saldo, o valor sera debitado automaticamente na data de renovacao. Voce pode cancelar
+                a qualquer momento — o plano continua ativo ate o vencimento.</p>
         </div>
 
         <!-- Tab selector -->
@@ -763,7 +724,7 @@
                 {% if health.balance >= 9.90 %}
                 <div class="text-xs text-green-600 font-medium mt-1 flex items-center gap-1">
                     <i data-lucide="check-circle" style="width:12px;height:12px;"></i>
-                    Saldo suficiente
+                    Saldo suficiente para ativacao e renovacoes futuras
                 </div>
                 {% else %}
                 <div class="text-xs text-red-500 font-medium mt-1 flex items-center gap-1">
@@ -774,7 +735,7 @@
             </div>
             <button onclick="handleSubscribeBalance()" id="btn-saldo" {% if health.balance < 9.90 %}disabled{% endif %}
                 class="ua-btn-primary disabled:opacity-40 disabled:cursor-not-allowed">
-                Pagar R$ 9,90 com saldo
+                Assinar R$ 9,90/mes com saldo
             </button>
         </div>
 
@@ -799,7 +760,7 @@
                 {% endfor %}
             </div>
             <button onclick="handleSubscribeCard()" class="ua-btn-primary">
-                Pagar R$ 9,90 com cartao
+                Assinar R$ 9,90/mes com cartao
             </button>
             {% else %}
             <div class="text-center py-8 text-gray-400">
@@ -815,31 +776,123 @@
 
         <p id="modal-error" class="text-red-500 text-xs mt-3 hidden"></p>
     </div>
-</div>{% endif %}
+</div>
 
 <script>
     lucide.createIcons();
 
-    // ---- REMOVED: openSubscribeModal, closeSubscribeModal, switchTab,
-    //               handleSubscribeBalance, handleSubscribeCard,
-    //               sendIAMessage, formatIAReply, _iaHistory
-    // The Bio Tech Pay Intelligence floating widget (base.html) is the only IA entry point.
+    function openSubscribeModal() {
+        document.getElementById('ua-modal-bg').classList.add('open');
+        lucide.createIcons();
+    }
 
-    // placeholder to avoid reference errors from any residual inline onclick attributes
-    function openSubscribeModal() { }
-    function closeSubscribeModal() { }
+    function closeSubscribeModal() {
+        document.getElementById('ua-modal-bg').classList.remove('open');
+        document.getElementById('modal-error').classList.add('hidden');
+    }
 
-    // no-op stubs — embedded IA removed; use the floating Bio Tech Pay Intelligence widget
-    function sendIAMessage() { }
-    function formatIAReply() { return ''; }
+    function switchTab(tab) {
+        var saldoBtn = document.getElementById('tab-saldo');
+        var cartaoBtn = document.getElementById('tab-cartao');
+        var saldoPanel = document.getElementById('panel-saldo');
+        var cartaoPanel = document.getElementById('panel-cartao');
+        if (tab === 'saldo') {
+            saldoBtn.classList.add('active');
+            cartaoBtn.classList.remove('active');
+            saldoPanel.classList.remove('hidden');
+            cartaoPanel.classList.add('hidden');
+        } else {
+            cartaoBtn.classList.add('active');
+            saldoBtn.classList.remove('active');
+            cartaoPanel.classList.remove('hidden');
+            saldoPanel.classList.add('hidden');
+        }
+    }
 
-    // ---- Utils ----
+    async function handleSubscribeBalance() {
+        var btn = document.getElementById('btn-saldo');
+        var errEl = document.getElementById('modal-error');
+        btn.disabled = true;
+        btn.textContent = 'Processando...';
+        errEl.classList.add('hidden');
+        try {
+            var resp = await fetch('/minha-conta/assinar/saldo', {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                errEl.textContent = data.detail || 'Erro ao processar pagamento.';
+                errEl.classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = 'Assinar R$ 9,90/mes com saldo';
+                return;
+            }
+            showToast('Plano ativado com sucesso! Renovacao automatica habilitada.', 'success');
+            setTimeout(function () { location.reload(); }, 1200);
+        } catch (e) {
+            errEl.textContent = 'Falha de conexao. Tente novamente.';
+            errEl.classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = 'Assinar R$ 9,90/mes com saldo';
+        }
+    }
+
+    async function handleSubscribeCard() {
+        var selected = document.querySelector('input[name="selected-card"]:checked');
+        var errEl = document.getElementById('modal-error');
+        if (!selected) {
+            errEl.textContent = 'Selecione um cartao.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+        errEl.classList.add('hidden');
+        try {
+            var resp = await fetch('/minha-conta/assinar/cartao', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ card_id: selected.value })
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                errEl.textContent = data.detail || 'Erro ao processar pagamento.';
+                errEl.classList.remove('hidden');
+                return;
+            }
+            showToast('Plano ativado com sucesso! Renovacao automatica habilitada.', 'success');
+            setTimeout(function () { location.reload(); }, 1200);
+        } catch (e) {
+            errEl.textContent = 'Falha de conexao. Tente novamente.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    async function handleCancelSubscription() {
+        if (!confirm('Tem certeza que deseja cancelar a renovacao automatica? Seu plano continua ativo ate o vencimento.')) return;
+        try {
+            var resp = await fetch('/minha-conta/cancelar', {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                showToast(data.detail || 'Erro ao cancelar.', 'error');
+                return;
+            }
+            showToast('Renovacao automatica cancelada.', 'success');
+            setTimeout(function () { location.reload(); }, 1200);
+        } catch (e) {
+            showToast('Falha de conexao. Tente novamente.', 'error');
+        }
+    }
+
     function showToast(msg, type) {
-        const el = document.getElementById('pvx-toast');
+        var el = document.getElementById('pvx-toast');
         if (!el) return;
         el.textContent = msg;
         el.className = 'pvx-toast show ' + (type || 'success');
-        setTimeout(() => { el.classList.remove('show'); }, 3000);
+        setTimeout(function () { el.classList.remove('show'); }, 3000);
     }
 </script>
 {% endblock %}

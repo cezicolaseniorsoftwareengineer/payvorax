@@ -34,13 +34,35 @@ def _get_or_create(db: Session, user_id: str) -> UserSubscription:
 
 
 def _check_expiry(db: Session, sub: UserSubscription) -> UserSubscription:
-    """Mark subscription as EXPIRED when the expiry date has passed."""
+    """Mark subscription as EXPIRED when the expiry date has passed.
+    If auto_renew is enabled, attempt to deduct balance and renew automatically."""
     if sub.status == SubscriptionStatus.ACTIVE and sub.expires_at:
         now = datetime.now(timezone.utc)
         exp = sub.expires_at
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=timezone.utc)
         if exp < now:
+            if sub.auto_renew:
+                user = db.query(User).filter(User.id == sub.user_id).first()
+                if user and user.balance >= SUBSCRIPTION_AMOUNT:
+                    user.balance -= SUBSCRIPTION_AMOUNT
+                    expires = now + timedelta(days=SUBSCRIPTION_DAYS)
+                    sub.expires_at = expires
+                    sub.last_renewed_at = now
+                    db.commit()
+                    db.refresh(sub)
+                    db.refresh(user)
+                    audit_log(
+                        action="SUBSCRIPTION_AUTO_RENEWED",
+                        user=sub.user_id,
+                        resource=f"subscription_id={sub.id}",
+                        details={
+                            "amount": SUBSCRIPTION_AMOUNT,
+                            "new_balance": user.balance,
+                            "expires_at": expires.isoformat(),
+                        },
+                    )
+                    return sub
             sub.status = SubscriptionStatus.EXPIRED
             db.commit()
             db.refresh(sub)
@@ -76,6 +98,7 @@ def subscribe_with_balance(db: Session, user: User) -> Dict[str, Any]:
     sub.subscribed_at = now
     sub.expires_at = expires
     sub.last_renewed_at = now
+    sub.auto_renew = True
 
     db.commit()
     db.refresh(sub)
@@ -123,6 +146,7 @@ def subscribe_with_card(db: Session, user: User, card_id: str) -> Dict[str, Any]
     sub.subscribed_at = now
     sub.expires_at = expires
     sub.last_renewed_at = now
+    sub.auto_renew = True
 
     db.commit()
     db.refresh(sub)
@@ -140,6 +164,27 @@ def subscribe_with_card(db: Session, user: User, card_id: str) -> Dict[str, Any]
     )
 
     return {"ok": True, "expires_at": expires.isoformat()}
+
+
+def cancel_subscription(db: Session, user: User) -> Dict[str, Any]:
+    """Cancel auto-renewal. Subscription stays active until expires_at."""
+    sub = _get_or_create(db, user.id)
+    if sub.status != SubscriptionStatus.ACTIVE:
+        raise ValueError("Nenhuma assinatura ativa para cancelar.")
+    sub.auto_renew = False
+    db.commit()
+    db.refresh(sub)
+    audit_log(
+        action="SUBSCRIPTION_CANCELLED",
+        user=user.id,
+        resource=f"subscription_id={sub.id}",
+        details={"expires_at": sub.expires_at.isoformat() if sub.expires_at else None},
+    )
+    return {
+        "ok": True,
+        "message": "Renovacao automatica cancelada. Seu plano continua ativo ate o vencimento.",
+        "expires_at": sub.expires_at.isoformat() if sub.expires_at else None,
+    }
 
 
 def get_financial_health(db: Session, user: User) -> Dict[str, Any]:

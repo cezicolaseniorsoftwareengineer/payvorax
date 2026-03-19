@@ -79,6 +79,17 @@ async def subscribe_card(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.post("/minha-conta/cancelar")
+async def cancel_subscription(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return sub_service.cancel_subscription(db, current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/minha-conta/saude-financeira")
 async def financial_health_api(
     db: Session = Depends(get_db),

@@ -2,7 +2,7 @@
 UserSubscription — domain model for the R$9.90/month account manager subscription.
 Backed by table `user_subscriptions`. Tracks status, payment method and renewal cycle.
 """
-from sqlalchemy import String, Float, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy import String, Float, DateTime, Boolean, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -50,6 +50,7 @@ class UserSubscription(Base):
     subscribed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_renewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    auto_renew: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )
