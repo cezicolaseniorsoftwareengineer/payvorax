@@ -1041,7 +1041,7 @@ async def matrix_audit(
         if abs_diff < 0.01:
             status = "OK"
             status_label = "Saldos consistentes"
-            messages.append("Saldo interno e Asaas estao sincronizados.")
+            messages.append("Saldo interno e Asaas estão sincronizados.")
 
         elif diff > 0:
             # internal > asaas: Asaas deducted a gateway fee not reflected in the internal ledger.
@@ -1051,17 +1051,17 @@ async def matrix_audit(
             _AUTO_CORRECTION_MAX = 20.0
             if abs_diff < 10:
                 status = "WARN"
-                status_label = "Divergencia detectada — custo gateway Asaas nao refletido internamente"
+                status_label = "Divergência detectada — custo gateway Asaas não refletido internamente"
             else:
                 status = "ERROR"
-                status_label = "Divergencia critica — reconciliacao necessaria"
+                status_label = "Divergência crítica — reconciliação necessária"
 
             messages.append(
-                f"Total interno (R$ {total_internal:.2f}) e maior que Asaas (R$ {asaas_balance:.2f}). "
-                f"Diferenca: R$ {abs_diff:.2f}. "
-                "Causa provavel: Asaas deduziu taxa de gateway nao refletida internamente. "
-                "Correcao: debitar da Conta Matrix (plataforma absorve o custo como reducao de margem). "
-                "INVARIANTE: saldo de correntistas NUNCA e alterado pela auditoria."
+                f"Total interno (R$ {total_internal:.2f}) é maior que Asaas (R$ {asaas_balance:.2f}). "
+                f"Diferença: R$ {abs_diff:.2f}. "
+                "Causa provável: Asaas deduziu taxa de gateway não refletida internamente. "
+                "Correção: debitar da Conta Matrix (plataforma absorve o custo como redução de margem). "
+                "INVARIANTE: saldo de correntistas NUNCA é alterado pela auditoria."
             )
 
             if abs_diff <= _AUTO_CORRECTION_MAX:
@@ -1092,8 +1092,8 @@ async def matrix_audit(
                     )
                     if _remainder_unfunded > 0.01:
                         messages.append(
-                            f"AVISO: R$ {_remainder_unfunded:.2f} nao cobertos — saldo Matrix insuficiente "
-                            "para absorver a divergencia completa. Acao manual necessaria."
+                            f"AVISO: R$ {_remainder_unfunded:.2f} não cobertos — saldo Matrix insuficiente "
+                            "para absorver a divergência completa. Ação manual necessária."
                         )
                     audit_log(
                         action="AUDIT_AUTO_CORRECTION",
@@ -1118,12 +1118,12 @@ async def matrix_audit(
                         breakdown[4]["highlight"] = False
                 else:
                     messages.append(
-                        "Conta Matrix nao encontrada. Correcao automatica impossivel. Verifique a configuracao."
+                        "Conta Matrix não encontrada. Correção automática impossível. Verifique a configuração."
                     )
             else:
                 messages.append(
-                    f"Divergencia de R$ {abs_diff:.2f} acima do limite de autocorrecao (max R${_AUTO_CORRECTION_MAX:.2f}). "
-                    "Reconciliacao manual necessaria."
+                    f"Divergência de R$ {abs_diff:.2f} acima do limite de autocorreção (max R${_AUTO_CORRECTION_MAX:.2f}). "
+                    "Reconciliação manual necessária."
                 )
 
         else:
@@ -1137,13 +1137,13 @@ async def matrix_audit(
                 status_label = "Asaas com saldo superior ao interno — corrigindo"
             else:
                 status = "ERROR"
-                status_label = "Divergencia critica — reconciliacao necessaria"
+                status_label = "Divergência crítica — reconciliação necessária"
 
             messages.append(
-                f"Asaas (R$ {asaas_balance:.2f}) e maior que total interno (R$ {total_internal:.2f}). "
-                f"Diferenca: R$ {abs_diff:.2f}. "
-                "Causa provavel: saldo Asaas nao refletido internamente (transacao ou ajuste nao registrado). "
-                "Auto-correcao: creditar diferenca na Conta Matrix para sincronizar."
+                f"Asaas (R$ {asaas_balance:.2f}) é maior que total interno (R$ {total_internal:.2f}). "
+                f"Diferença: R$ {abs_diff:.2f}. "
+                "Causa provável: saldo Asaas não refletido internamente (transação ou ajuste não registrado). "
+                "Autocorreção: creditar diferença na Conta Matrix para sincronizar."
             )
 
             if matrix_user:  # surplus sweep is always allowed, regardless of amount
@@ -1187,8 +1187,8 @@ async def matrix_audit(
                     breakdown[4]["highlight"] = False
             else:
                 messages.append(
-                    "Conta Matrix nao encontrada. Impossivel aplicar autocorrecao. "
-                    "Verifique configuracao MATRIX_ACCOUNT_EMAIL."
+                    "Conta Matrix não encontrada. Impossível aplicar autocorreção. "
+                    "Verifique configuração MATRIX_ACCOUNT_EMAIL."
                 )
 
     else:
@@ -1196,7 +1196,7 @@ async def matrix_audit(
         status = "WARN"
         status_label = "Auditoria parcial — Asaas não acessível"
 
-    messages.append(f"Total de {len(customers)} contas auditadas (conta de taxas excluida, conta proprietario incluida).")
+    messages.append(f"Total de {len(customers)} contas auditadas (conta de taxas excluída, conta proprietário incluída).")
 
     # ── OpenRouter: generate natural language explanation ────────────────────
     if settings.OPENROUTER_API_KEY and (status != "OK" or correction_applied):
@@ -1206,33 +1206,33 @@ async def matrix_audit(
             if _action == "matrix_debited":
                 _correction_desc = (
                     f"sim — Matrix debitada em R$ {correction_applied.get('amount', 0.0):.2f}. "
-                    "Correntistas preservados (invariante absoluto: saldo de correntistas nunca e modificado pela auditoria)."
+                    "Correntistas preservados (invariante absoluto: saldo de correntistas nunca é modificado pela auditoria)."
                 )
             elif _action == "matrix_credited":
                 _correction_desc = f"sim — Matrix creditada em R$ {correction_applied['amount']:.2f}"
             else:
-                _correction_desc = f"sim — acao: {_action}, valor R$ {correction_applied['amount']:.2f}"
+                _correction_desc = f"sim — ação: {_action}, valor R$ {correction_applied['amount']:.2f}"
         else:
-            _correction_desc = "nao"
+            _correction_desc = "não"
 
         context_prompt = (
-            f"Voce e o sistema de auditoria financeira do BioCodeTechPay (fintech brasileira). "
+            f"Você é o sistema de auditoria financeira do BioCodeTechPay (fintech brasileira). "
             f"Acabou de rodar uma auditoria de saldos com os seguintes dados:\n"
             f"- Saldo clientes: R$ {internal_sum:.2f}\n"
-            f"- Saldo Conta Matrix (acumulo de taxas da plataforma): R$ {matrix_balance:.2f}\n"
+            f"- Saldo Conta Matrix (acúmulo de taxas da plataforma): R$ {matrix_balance:.2f}\n"
             f"- Total interno: R$ {total_internal:.2f}\n"
-            f"- Saldo Asaas (conta real): R$ {f'{asaas_balance:.2f}' if asaas_balance is not None else 'indisponivel'}\n"
-            f"- Diferenca: R$ {abs(diff):.2f} | Direcao: {direction}\n"
+            f"- Saldo Asaas (conta real): R$ {f'{asaas_balance:.2f}' if asaas_balance is not None else 'indisponível'}\n"
+            f"- Diferença: R$ {abs(diff):.2f} | Direção: {direction}\n"
             f"- Status: {status_label}\n"
-            f"- Correcao aplicada: {_correction_desc}\n\n"
-            "Regra de negocio: a Conta Matrix acumula apenas a margem da plataforma (taxa cobrada ao "
+            f"- Correção aplicada: {_correction_desc}\n\n"
+            "Regra de negócio: a Conta Matrix acumula apenas a margem da plataforma (taxa cobrada ao "
             "correntista menos o custo Asaas). Quando o saldo interno excede o Asaas, o custo de gateway "
-            "Asaas nao foi refletido internamente — a Conta Matrix absorve esse custo como reducao de margem. "
-            "INVARIANTE ABSOLUTO: saldo de correntistas NUNCA e modificado pela auditoria ou qualquer "
-            "correcao automatica. "
-            "Em 2 a 4 frases curtas, explique em portugues brasileiro o que provavelmente causou "
-            "esta divergencia, o que foi feito automaticamente e o que o admin deve verificar. "
-            "Seja tecnico e preciso."
+            "Asaas não foi refletido internamente — a Conta Matrix absorve esse custo como redução de margem. "
+            "INVARIANTE ABSOLUTO: saldo de correntistas NUNCA é modificado pela auditoria ou qualquer "
+            "correção automática. "
+            "Em 2 a 4 frases curtas, explique em português brasileiro o que provavelmente causou "
+            "esta divergência, o que foi feito automaticamente e o que o admin deve verificar. "
+            "Seja técnico e preciso."
         )
         try:
             async with _httpx.AsyncClient(timeout=10.0) as client:

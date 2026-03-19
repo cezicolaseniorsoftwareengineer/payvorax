@@ -81,7 +81,7 @@ def compute_wealth_score(
     elif total >= 40:
         label = "Regular"
     else:
-        label = "Atencao"
+        label = "Atenção"
 
     return WealthScore(
         score=total,
@@ -110,13 +110,13 @@ def analyze_cashflow(snapshot: FinancialSnapshot, window_days: int = 30) -> Cash
 
     alerts: List[str] = []
     if snapshot.savings_rate < 0.05:
-        alerts.append("LOW_SAVINGS_ALERT: taxa de poupanca abaixo de 5%")
+        alerts.append("LOW_SAVINGS_ALERT: taxa de poupança abaixo de 5%")
     if burn_rate < 30:
         alerts.append(f"BURN_RATE_CRITICAL: saldo cobre apenas {burn_rate:.0f} dias")
     elif burn_rate < 90:
         alerts.append(f"BURN_RATE_WARNING: saldo cobre {burn_rate:.0f} dias")
     if snapshot.net_cashflow < 0:
-        alerts.append("NEGATIVE_CASHFLOW: gastos superaram receitas no periodo")
+        alerts.append("NEGATIVE_CASHFLOW: gastos superaram receitas no período")
 
     return CashflowWindow(
         window_days=window_days,
@@ -153,12 +153,12 @@ def generate_strategy(snapshot: FinancialSnapshot, wealth: WealthScore) -> Strat
     if emergency_remaining > 0:
         priority = "emergency_fund_first"
         savings_target = min(capacity * 0.8, emergency_remaining)
-        notes.append(f"Priorize reserva de emergencia: faltam R$ {emergency_remaining:.2f} para {_EMERGENCY_TARGET_MONTHS} meses.")
-        investment_suggestion = "Renda fixa liquidez diaria (Tesouro Selic ou CDB 100%+ CDI)"
+        notes.append(f"Priorize reserva de emergência: faltam R$ {emergency_remaining:.2f} para {_EMERGENCY_TARGET_MONTHS} meses.")
+        investment_suggestion = "Renda fixa liquidez diária (Tesouro Selic ou CDB 100%+ CDI)"
     else:
         priority = "wealth_growth"
         savings_target = capacity * 0.3
-        notes.append("Reserva de emergencia completa. Foco em crescimento patrimonial.")
+        notes.append("Reserva de emergência completa. Foco em crescimento patrimonial.")
         if capacity >= 2000:
             investment_suggestion = "60% ETFs (BOVA11 / IVVB11) + 40% Tesouro IPCA+"
         elif capacity >= 500:
@@ -167,7 +167,7 @@ def generate_strategy(snapshot: FinancialSnapshot, wealth: WealthScore) -> Strat
             investment_suggestion = "Tesouro Selic enquanto aumenta capacidade de aporte"
 
     if snapshot.savings_rate < 0.10:
-        notes.append("Revise gastos fixos e variaveis para elevar taxa de poupanca acima de 10%.")
+        notes.append("Revise gastos fixos e variáveis para elevar taxa de poupança acima de 10%.")
 
     return StrategyPlan(
         monthly_savings_target=round(savings_target, 2),
@@ -215,9 +215,9 @@ def simulate_wealth_growth(
 # ---------------------------------------------------------------------------
 
 _OPPORTUNITY_CATALOG = [
-    {"type": "small_business", "title": "Maquininha de cartao como agente autonomo", "startup_cost": 2500.0, "roi_months": 6, "min_capacity": 800.0},
-    {"type": "small_business", "title": "Vending machine (snacks / cafe)", "startup_cost": 7000.0, "roi_months": 8, "min_capacity": 3000.0},
-    {"type": "investment", "title": "CDB liquidez diaria (110% CDI)", "startup_cost": 500.0, "roi_months": 12, "min_capacity": 300.0},
+    {"type": "small_business", "title": "Maquininha de cartão como agente autônomo", "startup_cost": 2500.0, "roi_months": 6, "min_capacity": 800.0},
+    {"type": "small_business", "title": "Vending machine (snacks / café)", "startup_cost": 7000.0, "roi_months": 8, "min_capacity": 3000.0},
+    {"type": "investment", "title": "CDB liquidez diária (110% CDI)", "startup_cost": 500.0, "roi_months": 12, "min_capacity": 300.0},
     {"type": "investment", "title": "Tesouro IPCA+ 2029", "startup_cost": 100.0, "roi_months": 36, "min_capacity": 100.0},
     {"type": "small_business", "title": "Revenda de infoprodutos / cursos digitais", "startup_cost": 500.0, "roi_months": 3, "min_capacity": 300.0},
     {"type": "investment", "title": "ETF BOVA11 — aporte mensal disciplinado", "startup_cost": 100.0, "roi_months": 60, "min_capacity": 200.0},

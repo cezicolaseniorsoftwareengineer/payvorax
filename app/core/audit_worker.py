@@ -59,45 +59,45 @@ async def _call_openrouter_analysis(
     direction = (
         "internal > Asaas (correntista creditado a maior)"
         if signed_diff and signed_diff > 0
-        else "Asaas > internal (saldo gateway nao refletido internamente)"
+        else "Asaas > internal (saldo gateway não refletido internamente)"
         if signed_diff and signed_diff < 0
-        else "sem divergencia"
+        else "sem divergência"
     )
 
     if correction_applied:
         action = correction_applied.get("action", "desconhecido")
         amount = correction_applied.get("amount") or correction_applied.get("matrix_debited", 0.0)
-        corr_desc = f"sim — acao '{action}', valor R${amount:.2f}"
+        corr_desc = f"sim — ação '{action}', valor R${amount:.2f}"
     else:
-        corr_desc = "nao"
+        corr_desc = "não"
 
     prompt = (
-        "Voce e o sistema de inteligencia financeira autonoma do BioCodeTechPay (fintech brasileira).\n"
-        "Acabou de concluir um ciclo de auditoria de saldos perpetua (intervalo 60 segundos).\n\n"
+        "Você é o sistema de inteligência financeira autônoma do BioCodeTechPay (fintech brasileira).\n"
+        "Acabou de concluir um ciclo de auditoria de saldos perpétua (intervalo 60 segundos).\n\n"
         "Dados do ciclo atual:\n"
         f"  - Saldo clientes (soma): R$ {internal_sum:.2f}\n"
-        f"  - Saldo Conta Matrix (acumulo de taxas da plataforma): R$ {matrix_balance:.2f}\n"
+        f"  - Saldo Conta Matrix (acúmulo de taxas da plataforma): R$ {matrix_balance:.2f}\n"
         f"  - Total interno (clientes + Matrix): R$ {total_internal:.2f}\n"
-        f"  - Saldo Asaas (conta real do gateway): {f'R$ {asaas_balance:.2f}' if asaas_balance is not None else 'indisponivel'}\n"
-        f"  - Diferenca absoluta: R$ {abs_diff:.2f}\n"
-        f"  - Direcao: {direction}\n"
+        f"  - Saldo Asaas (conta real do gateway): {f'R$ {asaas_balance:.2f}' if asaas_balance is not None else 'indisponível'}\n"
+        f"  - Diferença absoluta: R$ {abs_diff:.2f}\n"
+        f"  - Direção: {direction}\n"
         f"  - Status auditoria: {status}\n"
-        f"  - Correcao automatica aplicada: {corr_desc}\n"
+        f"  - Correção automática aplicada: {corr_desc}\n"
         f"  - Numero de correntistas: {customers}\n\n"
-        "Regras de negocio invariantes:\n"
+        "Regras de negócio invariantes:\n"
         "  1. Conta Matrix acumula APENAS a margem da plataforma (taxa cobrada ao correntista menos "
         "custo Asaas). Nunca deve ir negativa.\n"
-        "  2. Quando total interno > Asaas: Asaas cobrou taxa de gateway nao refletida internamente. "
-        "A correcao correta e debitar da Conta Matrix (plataforma absorve o custo como reducao de margem). "
-        "NUNCA modificar saldo de correntistas — esse e um invariante absoluto do sistema.\n"
-        "  3. Quando Asaas > total interno: existe um credito no Asaas nao registrado internamente. "
-        "Creditar a Matrix ate igualar.\n"
-        "  4. O sistema auto-corrige divergencias ate R$20,00 por ciclo.\n\n"
-        "Com base nesses dados, responda EM PORTUGUES BRASILEIRO em ate 3 frases curtas:\n"
-        "  a) Qual a causa mais provavel da divergencia (se houver)?\n"
-        "  b) A correcao aplicada foi a correta?\n"
-        "  c) Ha alguma acao adicional necessaria pelo operador?\n"
-        "Se status for OK, confirme brevemente que tudo esta correto e nenhuma acao e necessaria."
+        "  2. Quando total interno > Asaas: Asaas cobrou taxa de gateway não refletida internamente. "
+        "A correção correta é debitar da Conta Matrix (plataforma absorve o custo como redução de margem). "
+        "NUNCA modificar saldo de correntistas — esse é um invariante absoluto do sistema.\n"
+        "  3. Quando Asaas > total interno: existe um crédito no Asaas não registrado internamente. "
+        "Creditar a Matrix até igualar.\n"
+        "  4. O sistema auto-corrige divergências até R$20,00 por ciclo.\n\n"
+        "Com base nesses dados, responda EM PORTUGUÊS BRASILEIRO em até 3 frases curtas:\n"
+        "  a) Qual a causa mais provável da divergência (se houver)?\n"
+        "  b) A correção aplicada foi a correta?\n"
+        "  c) Há alguma ação adicional necessária pelo operador?\n"
+        "Se status for OK, confirme brevemente que tudo está correto e nenhuma ação é necessária."
     )
 
     try:
@@ -391,21 +391,21 @@ async def _run_end_of_day_reconciliation(db_factory, gateway_factory) -> dict:
         _eod_asaas = (
             f"R$ {result['asaas_balance']:.2f}"
             if result["asaas_balance"] is not None
-            else "indisponivel"
+            else "indisponível"
         )
         eod_prompt = (
-            "Voce e o sistema de inteligencia financeira autonoma do BioCodeTechPay.\n"
-            "E o FIM DO DIA. Acabou de ser executada a reconciliacao completa de saldos.\n\n"
+            "Você é o sistema de inteligência financeira autônoma do BioCodeTechPay.\n"
+            "É o FIM DO DIA. Acabou de ser executada a reconciliação completa de saldos.\n\n"
             f"Resultado final:\n"
             f"  - Status: {result['status']}\n"
             f"  - Saldo clientes: R$ {result['internal_sum']:.2f}\n"
             f"  - Saldo Matrix: R$ {result['matrix_balance']:.2f}\n"
             f"  - Total interno: R$ {result['total_internal']:.2f}\n"
             f"  - Saldo Asaas: {_eod_asaas}\n"
-            f"  - Diferenca residual: R$ {(result['diff'] or 0):.2f}\n"
-            f"  - Correcao final aplicada: {'sim' if result['correction_applied'] else 'nao'}\n\n"
+            f"  - Diferença residual: R$ {(result['diff'] or 0):.2f}\n"
+            f"  - Correção final aplicada: {'sim' if result['correction_applied'] else 'não'}\n\n"
             "Em 2 frases, confirme se o dia foi encerrado com saldos corretos, ou indique o que "
-            "permanece pendente para acao manual no proximo dia util. Seja objetivo."
+            "permanece pendente para ação manual no próximo dia útil. Seja objetivo."
         )
         try:
             async with httpx.AsyncClient(timeout=12.0) as client:
