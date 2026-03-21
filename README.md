@@ -14,8 +14,6 @@ Fictitious Credit Cards (DEMO)
 
 <img width="1906" height="1064" alt="image" src="https://github.com/user-attachments/assets/21804d91-1cfe-41b9-b5a4-8d113e49ed4b" />
 
-
-
 ## Implemented Challenges
 
 ### 1. Installment Simulation Engine
@@ -36,11 +34,26 @@ Fictitious Credit Cards (DEMO)
 
 ### 3. Simplified Anti-Fraud Engine
 
-- Real-time risk analysis
-- Configurable rule system
-- Scoring from 0-100
-- Multiple rules (night time, high value, excessive attempts)
+- Real-time risk analysis integrated into PIX transaction and QR code payment flows
+- Configurable rule system with 4 active rules
+- Scoring from 0-100 (threshold: score >= 60 blocks the transaction)
+- Rules: NightTime (+40), HighValue >R$300 (+30), ExcessiveAttempts >3 (+50), ExtremeValue >R$1000 (+60)
 - Risk classification (LOW/MEDIUM/HIGH)
+- HTTP 403 rejection with risk score detail
+
+### 4. Boleto Payment Engine
+
+- Brazilian barcode validation (mod-10 per field, mod-11 general verifier)
+- Support for 47-digit typeable line, 44-digit banking barcode, 48-digit utility boleto
+- Asaas BaaS integration for boleto simulation and payment
+- Fallback to mock when external API is unavailable
+
+### 5. Credit Card Management
+
+- Virtual card creation with auto-generated numbers
+- Card listing, detail view, and soft-delete
+- Expiration validation with timezone-aware timestamps
+- CVV masking in responses
 
 ---
 
@@ -65,44 +78,88 @@ Applied Principles:
 ## Project Structure
 
 ```text
-fintech-tech-challenge/
-│
-├── app/
-│   ├── core/
-│   │   ├── config.py           # Centralized configuration
-│   │   ├── database.py         # SQLAlchemy connection
-│   │   ├── security.py         # JWT, bcrypt, masking
-│   │   └── logger.py           # Structured logging + correlation IDs
-│   │
-│   ├── parcelamento/           # Challenge 1
-│   │   ├── models.py           # SQLAlchemy Model
-│   │   ├── schemas.py          # Pydantic Validation
-│   │   ├── service.py          # Business Logic
-│   │   └── router.py           # FastAPI Endpoints
-│   │
-│   ├── pix/                    # Challenge 2
-│   │   ├── models.py           # SQLAlchemy Model
-│   │   ├── schemas.py          # Pydantic Validation
-│   │   ├── service.py          # Business Logic
-│   │   └── router.py           # FastAPI Endpoints
-│   │
-│   ├── antifraude/             # Challenge 3
-│   │   ├── rules.py            # Rule Engine
-│   │   ├── schemas.py          # Pydantic Validation
-│   │   └── router.py           # FastAPI Endpoints
-│   │
-│   └── main.py                 # Main FastAPI App
-│
-├── tests/
-│   ├── test_parcelamento.py   # 8 tests
-│   ├── test_pix.py             # 9 tests
-│   └── test_antifraude.py      # 10 tests
-│
-├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
-├── .env.example
-└── README.md
+biocodetechpay/
+|
++-- app/
+|   +-- core/
+|   |   +-- config.py               # Centralized configuration (pydantic-settings)
+|   |   +-- database.py             # SQLAlchemy connection + session management
+|   |   +-- security.py             # JWT, bcrypt, masking, RBAC
+|   |   +-- logger.py               # Structured logging + correlation IDs
+|   |
+|   +-- adapters/
+|   |   +-- asaas_adapter.py        # Asaas BaaS integration (PIX, boleto, webhooks)
+|   |   +-- gateway_factory.py      # Payment gateway factory
+|   |
+|   +-- auth/
+|   |   +-- models.py               # User model (balance as Numeric 15,2)
+|   |   +-- router.py               # Login, register, password reset
+|   |
+|   +-- parcelamento/               # Installment simulation engine
+|   |   +-- models.py               # SQLAlchemy Model
+|   |   +-- schemas.py              # Pydantic Validation
+|   |   +-- service.py              # Business Logic (Price Table, CET)
+|   |   +-- router.py               # FastAPI Endpoints
+|   |
+|   +-- pix/                        # PIX transaction engine
+|   |   +-- models.py               # PixTransaction (Numeric 15,2, payload_hash)
+|   |   +-- schemas.py              # Pydantic Validation
+|   |   +-- service.py              # credit_pix_receipt, R$50k cap, audit log
+|   |   +-- router.py               # Endpoints, antifraud, webhooks, QR code
+|   |
+|   +-- boleto/                     # Boleto payment engine
+|   |   +-- models.py               # BoletoTransaction model
+|   |   +-- service.py              # Barcode validation (mod-10/mod-11), Asaas
+|   |
+|   +-- cards/                      # Credit card management
+|   |   +-- models.py               # CreditCard model (timezone-aware)
+|   |   +-- schemas.py              # Pydantic Validation
+|   |   +-- service.py              # CRUD with expiration checks
+|   |
+|   +-- antifraude/                 # Anti-fraud engine
+|   |   +-- rules.py                # Rule Engine (4 rules, scoring 0-100)
+|   |   +-- schemas.py              # Pydantic Validation
+|   |   +-- router.py               # FastAPI Endpoints
+|   |
+|   +-- minha_conta/                # Account management
+|   +-- ia/                         # AI features
+|   +-- services/                   # Shared services
+|   +-- templates/                  # Jinja2 templates (Tailwind + Lucide)
+|   +-- static/                     # Static assets
+|   +-- web_routes.py               # Public pages, rate limiter, UUID validation
+|   +-- main.py                     # FastAPI app + lifespan
+|
++-- tests/
+|   +-- conftest.py                 # Shared fixtures (SQLite in-memory)
+|   +-- test_parcelamento.py        # Installment engine tests
+|   +-- test_pix.py                 # PIX core tests
+|   +-- test_pix_features_v2.py     # PIX advanced features + antifraud
+|   +-- test_pix_charge.py          # PIX charge creation tests
+|   +-- test_pix_internal_integration.py  # Internal transfer tests
+|   +-- test_qrcode_payment.py      # QR code payment flow tests
+|   +-- test_pix_link.py            # Payment link tests
+|   +-- test_webhook.py             # Webhook handler tests
+|   +-- test_concurrency.py         # Concurrent balance operation tests
+|   +-- test_antifraude.py          # Anti-fraud engine tests
+|   +-- test_cards.py               # Card CRUD tests
+|   +-- test_cards_management.py    # Card management tests
+|   +-- test_payment_flows.py       # End-to-end payment flows
+|   +-- test_internal_banking.py    # Internal banking tests
+|   +-- test_asaas_config.py        # Asaas adapter configuration tests
+|   +-- test_asaas_integration.py   # Asaas API integration tests
+|   +-- test_verification.py        # User verification tests
+|   +-- test_admin_delete_user.py   # Admin user deletion tests
+|   +-- test_admin_edit_user.py     # Admin user edit tests
+|   +-- test_admin_template_integrity.py  # Template integrity tests
+|
++-- scripts/                        # Migration and maintenance scripts
++-- docs/adr/                       # Architecture Decision Records
++-- requirements.txt
++-- Dockerfile
++-- docker-compose.yml
++-- render.yaml                     # Render deployment config
++-- Makefile
++-- pytest.ini
 ```
 
 ---
@@ -158,6 +215,8 @@ http://localhost:8000/redoc
 
 ## Tests
 
+**211 tests passing, 0 failures** across 20 test files.
+
 ```bash
 # Run all tests
 pytest
@@ -165,11 +224,30 @@ pytest
 # With coverage
 pytest --cov=app --cov-report=html
 
-# Specific tests
-pytest tests/test_parcelamento.py
-pytest tests/test_pix.py
-pytest tests/test_antifraude.py
+# Specific module tests
+pytest tests/test_parcelamento.py      # Installment engine
+pytest tests/test_pix.py               # PIX core
+pytest tests/test_webhook.py           # Webhook handlers
+pytest tests/test_concurrency.py       # Concurrent operations
+pytest tests/test_antifraude.py        # Anti-fraud engine
+pytest tests/test_qrcode_payment.py    # QR code flows
+pytest tests/test_pix_link.py          # Payment links
+pytest tests/test_cards.py             # Card management
 ```
+
+### Test Coverage by Domain
+
+| Domain           | Tests | Coverage                                                         |
+| ---------------- | ----: | ---------------------------------------------------------------- |
+| PIX transactions |   60+ | Idempotency, status control, antifraud, webhooks, QR code, links |
+| Installments     |     8 | Compound interest, CET, amortization, validation                 |
+| Anti-fraud       |   10+ | All 4 rules, scoring, thresholds, risk classification            |
+| Cards            |   15+ | CRUD, expiration, masking, virtual cards                         |
+| Webhooks         |     9 | Signature validation, idempotency, status mapping, refunds       |
+| Payment links    |     5 | Valid rendering, expired, paid, invalid UUID, not found          |
+| Concurrency      |     3 | Double debit protection, convergence, unique IDs                 |
+| Admin            |   10+ | User CRUD, template integrity, access control                    |
+| Integration      |   20+ | Asaas adapter, internal banking, payment flows                   |
 
 ---
 
@@ -270,12 +348,37 @@ Body:
 
 ## Security
 
-- **Rigorous Input Validation** with Pydantic
-- **Sensitive Data Masking** in logs
-- **Correlation IDs** for traceability
-- **Auditable Logs** for compliance
-- **JWT** and **bcrypt** implemented (security module)
-- **CORS** configured
+### Authentication and Authorization
+
+- **JWT** with httpOnly cookie transport, `exp` + `aud` verification, `alg=none` rejection
+- **bcrypt** password hashing via passlib
+- **RBAC** with `get_current_user` dependency injection
+- **CORS** configured with explicit origin allowlist
+
+### Input Validation and Sanitization
+
+- **Pydantic v2** schemas at all API boundaries
+- **UUID format validation** on public endpoints (regex check before database query)
+- **Barcode validation** with mod-10/mod-11 check digits for Brazilian boletos
+- **SQL injection prevention** via SQLAlchemy ORM (no raw SQL)
+
+### Financial Security Controls
+
+- **Timing-safe webhook signature** comparison via `hmac.compare_digest()`
+- **Server-side transaction values** -- credit operations use database value, never client-supplied
+- **Credit limit cap** at R$50,000 per transaction
+- **Withdrawal validation** -- rejects negative/zero values, enforces R$50,000 max, validates operation type
+- **Decimal precision** -- all monetary columns use `Numeric(15, 2)`, no floating-point arithmetic
+- **Anti-fraud scoring** integrated into transaction and QR code payment flows
+- **Idempotency** via `idempotency_key` unique constraint + `payload_hash` deduplication
+
+### Infrastructure Security
+
+- **Rate limiting** -- 30 requests per 60 seconds per IP (sliding window)
+- **Cache-Control: no-store** on pages displaying financial data
+- **Sandbox/production guard** -- API key prefix detection prevents cross-environment misconfiguration
+- **Sensitive data masking** in structured logs (CPF, email, account numbers)
+- **Correlation IDs** for end-to-end request tracing
 - **Health checks** in Docker
 
 ---
@@ -310,52 +413,74 @@ X-Process-Time: 0.123
 
 ## Technical Differentiators
 
-### Architecture Differentiators
+### Architecture
 
 - DDD + Hexagonal (domain isolated from frameworks)
-- Clear Separation of Concerns
+- Clear Separation of Concerns with ports and adapters
 - Dependency Injection via FastAPI
+- Centralized credit operation (`credit_pix_receipt`) with audit trail
+- Gateway factory pattern for payment provider abstraction
 
 ### Code Quality
 
-- Complete Type Hints
-- Docstrings in all modules
-- 27+ Unit Tests
+- Complete Type Hints with Pydantic v2 models
+- 211 automated tests across 20 test files (0 failures)
+- Concurrency tests validating balance integrity under parallel access
+- Contract tests for webhook handlers (signature, idempotency, status mapping)
 - Input Validation at all boundaries
 
-### Security Features
+### Financial Integrity
 
-- Rigorous Input Validation
-- Masked Logs
-- Mandatory Audit
-- Guaranteed Idempotency
+- `Numeric(15, 2)` on all monetary database columns (no floating-point)
+- Server-side value enforcement (never trust client-supplied amounts)
+- R$50,000 credit cap per transaction
+- Antifraud scoring integrated pre-transaction
+- Idempotency via unique key + payload hash deduplication
+- Timezone-aware timestamps (`datetime.now(timezone.utc)`)
 
-### Observability Features
+### Security Hardening
 
-- Structured Logging
-- Correlation IDs
-- Health Checks
-- Processing Time
+- Timing-safe signature comparison (`hmac.compare_digest`)
+- IP-based rate limiting (30 req/60s sliding window)
+- UUID validation before database queries
+- Sandbox/production environment guard
+- Withdrawal type and value validation
+- Cache-Control headers on sensitive pages
+
+### Observability
+
+- Structured Logging with JSON format
+- Correlation IDs on all requests
+- Health Checks (Docker + application)
+- Processing time headers (`X-Process-Time`)
+- PostgreSQL trigram index recommendations for LIKE queries
 
 ### DevOps
 
-- Multi-stage Docker
+- Multi-stage Docker build
 - Ready-to-use docker-compose
-- Configured Health Checks
-- Volumes for persistence
+- Render deployment configuration (`render.yaml`)
+- Makefile for standardized development tasks
+- Migration scripts in `scripts/` directory
 
 ---
 
 ## Technology Stack
 
-- **FastAPI** 0.104.1 - Modern web framework
-- **SQLAlchemy** 2.0.23 - Robust ORM
-- **Pydantic** 2.5.0 - Data validation
-- **Python-JOSE** - JWT
-- **Passlib** - Hashing bcrypt
-- **Pytest** - Testing
+- **Python 3.13** - Runtime
+- **FastAPI** - Modern async web framework
+- **SQLAlchemy 2.0** - ORM with `Mapped` type annotations and `Numeric(15, 2)` precision
+- **Pydantic v2** - Data validation and settings management
+- **PostgreSQL** (Neon) - Production database
+- **SQLite** - Test database (in-memory + file-based for concurrency)
+- **Jinja2** + **Tailwind CSS** + **Lucide Icons** - Server-side rendered UI
+- **Python-JOSE** - JWT token handling
+- **Passlib** + **argon2/bcrypt** - Password hashing
+- **HTTPX** - Async HTTP client for external API calls
+- **Pytest** - Testing framework (211 tests)
 - **Uvicorn** - ASGI server
-- **SQLite** - Database (pluggable for PostgreSQL)
+- **Docker** + **docker-compose** - Containerization
+- **Asaas BaaS** - Payment gateway (PIX, boleto, webhooks)
 
 ---
 
@@ -390,81 +515,36 @@ We maintain a log of significant architectural decisions in `docs/adr`.
 
 ---
 
-## Suggested Semantic Commit
-
-```bash
-git init
-git add .
-git commit -m "feat: implement complete fintech project with 3 challenges
-
-- Installment engine with compound interest and CET
-- PIX API with idempotency and status control
-- Anti-fraud engine with configurable rule system
-- DDD + Hexagonal Architecture
-- 27+ unit tests
-- Docker ready with docker-compose
-- Auditable logs and correlation IDs
-- Complete Swagger/ReDoc documentation"
-```
-
----
-
-## Interview Presentation
-
-### Suggested Demo (10-15 minutes)
-
-1. **Overview** (2 min)
-
-   - Show folder structure
-   - Explain DDD + Hexagonal architecture
-   - Highlight separation of concerns
-
-2. **Challenge 1 - Installments** (3 min)
-
-   - Show calculation in `/docs`
-   - Explain Price formula
-   - Highlight CET and amortization schedule
-
-3. **Challenge 2 - PIX** (3 min)
-
-   - Demonstrate idempotency (same key = same result)
-   - Show status control
-   - Display statement
-
-4. **Challenge 3 - Anti-Fraud** (3 min)
-
-   - Test with different values
-   - Show activated rules
-   - Explain scoring system
-
-5. **Technical Differentiators** (3 min)
-
-   - Structured logs and correlation IDs
-   - Unit tests
-   - Docker and docker-compose
-   - Security (input validation, masking)
-
-6. **Q&A** (3 min)
-
----
-
 ## License
 
 This project was developed for educational and technical demonstration purposes.
 
 ---
 
-## Next Steps (Roadmap)
+## Completed Milestones
 
-- [ ] PostgreSQL Integration
-- [ ] Full JWT Authentication
-- [ ] Rate Limiting
-- [ ] Redis Caching
-- [ ] Messaging (RabbitMQ/Kafka)
-- [ ] Prometheus Metrics
+- [x] PostgreSQL Integration (Neon)
+- [x] JWT Authentication with httpOnly cookies
+- [x] Rate Limiting (IP-based sliding window)
+- [x] Anti-fraud engine integrated into transaction flows
+- [x] Decimal precision on all financial columns
+- [x] Webhook signature validation (timing-safe)
+- [x] Boleto barcode validation (mod-10/mod-11)
+- [x] Asaas BaaS integration (PIX + boleto)
+- [x] Cloud Deployment (Render)
+- [x] 211 automated tests
+
+## Roadmap
+
+- [ ] Redis caching for rate limiter and session store
+- [ ] Event-driven architecture (Kafka/RabbitMQ)
+- [ ] Prometheus + Grafana observability stack
 - [ ] CI/CD with GitHub Actions
-- [ ] Cloud Deployment (AWS/GCP/Azure)
+- [ ] Alembic database migrations
+- [ ] OpenTelemetry distributed tracing
+- [ ] Contract testing with Pact
 
 ---
+
 BioCodeTechPay inc.
 Cezi Cola Senior Software Engineer
