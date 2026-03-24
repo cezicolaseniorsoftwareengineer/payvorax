@@ -76,6 +76,7 @@ def _webhook_db(tx, user=None):
         q = MagicMock()
         if model is PixTransaction:
             q.filter.return_value.first.return_value = tx
+            q.filter.return_value.with_for_update.return_value.first.return_value = tx
         elif model is User:
             q.filter.return_value.with_for_update.return_value.first.return_value = user
             q.filter.return_value.first.return_value = user
@@ -149,7 +150,7 @@ class TestWebhookTransferEvents:
         """TRANSFER_DONE must update transaction to CONFIRMED and debit sender."""
         monkeypatch.setattr(_app_settings, "ASAAS_WEBHOOK_TOKEN", _TEST_WEBHOOK_TOKEN)
 
-        tx = _make_tx(status=PixStatus.CREATED, tx_type=TransactionType.SENT)
+        tx = _make_tx(status=PixStatus.PROCESSING, tx_type=TransactionType.SENT)
         mock_db = _webhook_db(tx)
 
         app.dependency_overrides[get_db] = lambda: mock_db
@@ -172,7 +173,7 @@ class TestWebhookTransferEvents:
         """TRANSFER_DONE must enrich recipient_name from gateway when missing."""
         monkeypatch.setattr(_app_settings, "ASAAS_WEBHOOK_TOKEN", _TEST_WEBHOOK_TOKEN)
 
-        tx = _make_tx(status=PixStatus.CREATED, tx_type=TransactionType.SENT)
+        tx = _make_tx(status=PixStatus.PROCESSING, tx_type=TransactionType.SENT)
         tx.recipient_name = None  # simulate missing name
         mock_db = _webhook_db(tx)
 
@@ -204,7 +205,7 @@ class TestWebhookTransferEvents:
         """TRANSFER_DONE must NOT overwrite an already-resolved recipient_name."""
         monkeypatch.setattr(_app_settings, "ASAAS_WEBHOOK_TOKEN", _TEST_WEBHOOK_TOKEN)
 
-        tx = _make_tx(status=PixStatus.CREATED, tx_type=TransactionType.SENT)
+        tx = _make_tx(status=PixStatus.PROCESSING, tx_type=TransactionType.SENT)
         tx.recipient_name = "Joao Souza"  # already resolved
         mock_db = _webhook_db(tx)
 
@@ -350,3 +351,106 @@ class TestWithdrawalValidation:
 
         assert response.status_code == 200
         assert response.json()["status"] == "REFUSED"
+
+
+class TestWebhookStateMachineGuards:
+    """Validates idempotency and state machine enforcement in transfer webhooks."""
+
+    def test_transfer_done_idempotent_skip_if_already_confirmed(self, monkeypatch):
+        """TRANSFER_DONE on an already-CONFIRMED tx must be a no-op (no double-debit)."""
+        monkeypatch.setattr(_app_settings, "ASAAS_WEBHOOK_TOKEN", _TEST_WEBHOOK_TOKEN)
+
+        tx = _make_tx(status=PixStatus.CONFIRMED, tx_type=TransactionType.SENT)
+        user = _make_user(balance=100.0)
+        mock_db = _webhook_db(tx, user)
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        payload = {
+            "event": "TRANSFER_DONE",
+            "payment": {"id": "tx-wh-001", "value": 25.0},
+        }
+
+        response = client.post(
+            "/pix/webhook/asaas",
+            json=payload,
+            headers={"asaas-access-token": _TEST_WEBHOOK_TOKEN},
+        )
+
+        assert response.status_code == 200
+        assert response.json().get("action") == "already_confirmed"
+        # Balance must NOT have changed
+        assert user.balance == 100.0
+
+    def test_transfer_failed_idempotent_skip_if_already_failed(self, monkeypatch):
+        """TRANSFER_FAILED on an already-FAILED tx must be a no-op."""
+        monkeypatch.setattr(_app_settings, "ASAAS_WEBHOOK_TOKEN", _TEST_WEBHOOK_TOKEN)
+
+        tx = _make_tx(status=PixStatus.FAILED, tx_type=TransactionType.SENT)
+        mock_db = _webhook_db(tx)
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        payload = {
+            "event": "TRANSFER_FAILED",
+            "payment": {"id": "tx-wh-001", "value": 25.0},
+        }
+
+        response = client.post(
+            "/pix/webhook/asaas",
+            json=payload,
+            headers={"asaas-access-token": _TEST_WEBHOOK_TOKEN},
+        )
+
+        assert response.status_code == 200
+        assert response.json().get("action") == "already_failed"
+
+    def test_transfer_done_rejected_if_not_processing(self, monkeypatch):
+        """TRANSFER_DONE must reject transition from CREATED (only PROCESSING allowed)."""
+        monkeypatch.setattr(_app_settings, "ASAAS_WEBHOOK_TOKEN", _TEST_WEBHOOK_TOKEN)
+
+        tx = _make_tx(status=PixStatus.CREATED, tx_type=TransactionType.SENT)
+        mock_db = _webhook_db(tx)
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        payload = {
+            "event": "TRANSFER_DONE",
+            "payment": {"id": "tx-wh-001", "value": 25.0},
+        }
+
+        response = client.post(
+            "/pix/webhook/asaas",
+            json=payload,
+            headers={"asaas-access-token": _TEST_WEBHOOK_TOKEN},
+        )
+
+        assert response.status_code == 200
+        assert response.json().get("action") == "invalid_transition"
+        # Status must remain CREATED
+        assert tx.status == PixStatus.CREATED
+
+    def test_transfer_failed_rejected_if_not_processing(self, monkeypatch):
+        """TRANSFER_FAILED must reject transition from CONFIRMED."""
+        monkeypatch.setattr(_app_settings, "ASAAS_WEBHOOK_TOKEN", _TEST_WEBHOOK_TOKEN)
+
+        tx = _make_tx(status=PixStatus.CONFIRMED, tx_type=TransactionType.SENT)
+        mock_db = _webhook_db(tx)
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        payload = {
+            "event": "TRANSFER_FAILED",
+            "payment": {"id": "tx-wh-001", "value": 25.0},
+        }
+
+        response = client.post(
+            "/pix/webhook/asaas",
+            json=payload,
+            headers={"asaas-access-token": _TEST_WEBHOOK_TOKEN},
+        )
+
+        assert response.status_code == 200
+        assert response.json().get("action") == "invalid_transition"
+        # Status must remain CONFIRMED
+        assert tx.status == PixStatus.CONFIRMED

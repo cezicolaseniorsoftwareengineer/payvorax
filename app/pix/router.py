@@ -1827,6 +1827,46 @@ def pay_pix_qrcode(
             )
         )
 
+    # ── Persist-before-dispatch: create transaction BEFORE calling Asaas ──
+    # This prevents orphaned PSP transactions if the app crashes between
+    # dispatch and persist. The transaction starts as CREATED, moves to
+    # PROCESSING after successful dispatch, or FAILED on error.
+    _provisional_id = str(uuid4())
+    from app.pix.service import create_ledger_entry as _qr_ledger
+    from app.pix.models import LedgerEntryType as _QR_LET
+
+    # Pre-resolve EMV value for fee calculation before dispatch
+    _pre_dispatch_emv_val = _parse_emv_value(data.payload)
+    _pre_dispatch_fee = float(calculate_pix_fee(
+        sender.cpf_cnpj,
+        _pre_dispatch_emv_val if _pre_dispatch_emv_val > 0 else (data.value or 0.01),
+        is_external=True,
+        is_received=False,
+    )) if _pre_dispatch_emv_val > 0 or data.value else 0.0
+    _pre_dispatch_pix_key_ref = data.payload[:197] + "..." if len(data.payload) > 200 else data.payload
+
+    pix = PixTransaction(
+        id=_provisional_id,
+        value=_pre_dispatch_emv_val if _pre_dispatch_emv_val > 0 else (data.value or 0.01),
+        fee_amount=_pre_dispatch_fee,
+        pix_key=_pre_dispatch_pix_key_ref,
+        key_type=PixKeyType.RANDOM.value,
+        type=TransactionType.SENT,
+        status=PixStatus.CREATED,
+        idempotency_key=idempotency_key,
+        description=data.description or "PIX QR Code Payment",
+        correlation_id=correlation_id,
+        user_id=current_user.id,
+        payload_hash=_payload_hash,
+    )
+    db.add(pix)
+    db.flush()  # persist row but don't commit — allows rollback if dispatch fails catastrophically
+
+    logger.info(
+        f"QR Code payment persisted (pre-dispatch): id={_provisional_id}, "
+        f"user={sender.id}, status=CREATED, emv_value={_pre_dispatch_emv_val}, payload_hash={_payload_hash}"
+    )
+
     try:
         result = gateway.pay_qr_code(
             payload=data.payload,
@@ -1835,6 +1875,10 @@ def pay_pix_qrcode(
             value=data.value,
         )
     except Exception as e:
+        # Dispatch failed: mark transaction as FAILED and persist
+        pix.status = PixStatus.FAILED
+        db.commit()
+
         error_msg = str(e)
         logger.error(f"Asaas QR Code payment failed: {error_msg}", exc_info=True)
         try:
@@ -1924,14 +1968,16 @@ def pay_pix_qrcode(
     from app.core.fees import calculate_pix_fee as _qr_fee_calc, PLATFORM_PIX_OUTBOUND_NETWORK_FEE as _QR_NET_FEE
     from app.core.matrix import credit_fee as _qr_credit_fee
     from decimal import Decimal as _QRDec, ROUND_HALF_UP as _QR_ROUND
-    from app.pix.service import get_available_balance as _qr_avail_bal, create_ledger_entry as _qr_ledger
-    from app.pix.models import LedgerEntryType as _QR_LET
+    from app.pix.service import get_available_balance as _qr_avail_bal
     _qr_fee_amount = float(_qr_fee_calc(sender.cpf_cnpj, payment_value, is_external=True, is_received=False))
     _qr_total_required = Decimal(str(payment_value)) + Decimal(str(_qr_fee_amount))
 
     # Available balance considers pending outbound (PROCESSING) transactions
     _qr_available = _qr_avail_bal(db, current_user.id)
     if _qr_available < _qr_total_required:
+        # Insufficient balance after dispatch — mark as FAILED
+        pix.status = PixStatus.FAILED
+        db.commit()
         raise HTTPException(
             status_code=400,
             detail=(
@@ -1941,28 +1987,19 @@ def pay_pix_qrcode(
             )
         )
 
-    payment_id = result.get("payment_id") or str(uuid4())
+    # ── Update the pre-persisted transaction with Asaas response data ──
+    payment_id = result.get("payment_id") or _provisional_id
     asaas_status = result.get("status", "BANK_PROCESSING")
-    # Deferred debit: always PROCESSING until webhook confirms
-    pix_status = PixStatus.PROCESSING
-    pix_key_ref = data.payload[:197] + "..." if len(data.payload) > 200 else data.payload
 
-    pix = PixTransaction(
-        id=payment_id,
-        value=payment_value if payment_value > 0 else 0.01,
-        fee_amount=_qr_fee_amount,
-        pix_key=pix_key_ref,
-        key_type=PixKeyType.RANDOM.value,
-        type=TransactionType.SENT,
-        status=pix_status,
-        idempotency_key=idempotency_key,
-        description=data.description or "PIX QR Code Payment",
-        correlation_id=result.get("end_to_end_id") or correlation_id,
-        user_id=current_user.id,
-        recipient_name=result.get("receiver_name"),
-        payload_hash=_payload_hash
-    )
-    db.add(pix)
+    # If Asaas returned a different payment_id, update the transaction PK
+    if payment_id != _provisional_id:
+        pix.id = payment_id
+
+    pix.value = payment_value if payment_value > 0 else 0.01
+    pix.fee_amount = _qr_fee_amount
+    pix.status = PixStatus.PROCESSING
+    pix.correlation_id = result.get("end_to_end_id") or correlation_id
+    pix.recipient_name = result.get("receiver_name")
 
     # Deferred debit: balance is NOT debited here. Debit happens at webhook
     # TRANSFER_DONE confirmation. A PENDING ledger entry is created for
@@ -1973,11 +2010,11 @@ def pay_pix_qrcode(
             account_id=str(current_user.id),
             entry_type=_QR_LET.DEBIT,
             amount=_qr_total_required,
-            tx_id=payment_id,
-            description=f"PIX QR outbound pending: {payment_id}",
+            tx_id=pix.id,
+            description=f"PIX QR outbound pending: {pix.id}",
         )
         logger.info(
-            f"QR Code payment dispatched (deferred debit): id={payment_id}, user={sender.id}, "
+            f"QR Code payment dispatched (deferred debit): id={pix.id}, user={sender.id}, "
             f"amount=R${payment_value:.2f}, fee=R${_qr_fee_amount:.2f}, total=R${_qr_total_required:.2f}, "
             f"available_balance=R${_qr_available:.2f}"
         )
@@ -2089,14 +2126,51 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
     if event in ("TRANSFER_DONE", "TRANSFER_FAILED"):
         transfer_id = payment.get("id") or payment.get("transferId")
         if transfer_id:
-            pix_tx = db.query(PixTransaction).filter(PixTransaction.id == transfer_id).first()
+            # SELECT FOR UPDATE on the transaction row itself to prevent
+            # concurrent webhook reprocessing (Asaas retries).
+            pix_tx = db.query(PixTransaction).filter(
+                PixTransaction.id == transfer_id
+            ).with_for_update().first()
             if pix_tx:
                 from app.pix.service import settle_ledger_entries, reverse_ledger_entries
                 from app.core.fees import PLATFORM_PIX_OUTBOUND_NETWORK_FEE as _WH_NET_FEE
                 from app.core.matrix import credit_fee as _wh_credit_fee
                 from decimal import ROUND_HALF_UP as _WH_ROUND
 
+                _wh_previous_status = pix_tx.status
+
                 if event == "TRANSFER_DONE":
+                    # Idempotency: if already CONFIRMED, this is a duplicate webhook.
+                    # STOP immediately — never debit twice.
+                    if pix_tx.status == PixStatus.CONFIRMED:
+                        logger.info(
+                            f"TRANSFER_DONE idempotent skip: tx={pix_tx.id} already CONFIRMED. "
+                            f"Duplicate webhook ignored. transfer_id={transfer_id}"
+                        )
+                        db.commit()
+                        return {"received": True, "action": "already_confirmed", "event": event}
+
+                    # State machine: only PROCESSING -> CONFIRMED is valid
+                    if pix_tx.status != PixStatus.PROCESSING:
+                        logger.warning(
+                            f"TRANSFER_DONE invalid transition: tx={pix_tx.id} "
+                            f"status={pix_tx.status.value} is not PROCESSING. "
+                            f"Event ignored. transfer_id={transfer_id}"
+                        )
+                        audit_log(
+                            action="webhook_invalid_transition",
+                            user=str(pix_tx.user_id),
+                            resource=f"pix_id={pix_tx.id}",
+                            details={
+                                "event": event,
+                                "current_status": pix_tx.status.value,
+                                "expected_status": "PROCESSANDO",
+                                "transfer_id": transfer_id,
+                            }
+                        )
+                        db.commit()
+                        return {"received": True, "action": "invalid_transition", "event": event}
+
                     pix_tx.status = PixStatus.CONFIRMED
 
                     # Deferred debit: balance is debited NOW at confirmation time.
@@ -2172,13 +2246,44 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                             )
                 else:
                     # TRANSFER_FAILED: Asaas rejected/refunded the transfer.
+
+                    # Idempotency: if already FAILED, this is a duplicate webhook.
+                    if pix_tx.status == PixStatus.FAILED:
+                        logger.info(
+                            f"TRANSFER_FAILED idempotent skip: tx={pix_tx.id} already FAILED. "
+                            f"Duplicate webhook ignored. transfer_id={transfer_id}"
+                        )
+                        db.commit()
+                        return {"received": True, "action": "already_failed", "event": event}
+
+                    # State machine: only PROCESSING -> FAILED is valid
+                    if pix_tx.status != PixStatus.PROCESSING:
+                        logger.warning(
+                            f"TRANSFER_FAILED invalid transition: tx={pix_tx.id} "
+                            f"status={pix_tx.status.value} is not PROCESSING. "
+                            f"Event ignored. transfer_id={transfer_id}"
+                        )
+                        audit_log(
+                            action="webhook_invalid_transition",
+                            user=str(pix_tx.user_id),
+                            resource=f"pix_id={pix_tx.id}",
+                            details={
+                                "event": event,
+                                "current_status": pix_tx.status.value,
+                                "expected_status": "PROCESSANDO",
+                                "transfer_id": transfer_id,
+                            }
+                        )
+                        db.commit()
+                        return {"received": True, "action": "invalid_transition", "event": event}
+
                     # Deferred debit model: balance was NOT debited at dispatch time.
                     # Only reverse PENDING ledger entries — no balance mutation needed.
                     pix_tx.status = PixStatus.FAILED
                     reversed_count = reverse_ledger_entries(db, pix_tx.id)
                     logger.info(
                         f"TRANSFER_FAILED: reversed {reversed_count} ledger entries for tx={pix_tx.id}, "
-                        f"transfer_id={transfer_id}"
+                        f"previous_status={_wh_previous_status.value}, transfer_id={transfer_id}"
                     )
                     audit_log(
                         action="transfer_failed_compensation",
@@ -2189,11 +2294,15 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                             "fee_amount": float(pix_tx.fee_amount or 0),
                             "ledger_entries_reversed": reversed_count,
                             "transfer_id": transfer_id,
+                            "previous_status": _wh_previous_status.value,
                         }
                     )
                 db.add(pix_tx)
                 db.commit()
-                logger.info(f"Asaas webhook: transfer {transfer_id} updated to {event}")
+                logger.info(
+                    f"Asaas webhook: transfer {transfer_id} "
+                    f"status {_wh_previous_status.value} -> {pix_tx.status.value} ({event})"
+                )
         return {"received": True, "action": "transfer_updated", "event": event}
 
     # Refund / overdue / deleted / restored: log only, no balance mutation

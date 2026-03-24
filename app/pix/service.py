@@ -275,58 +275,13 @@ def create_pix(
                     )
 
                 gateway = get_payment_gateway()
-                if gateway:
-                    try:
-                        payment_result = gateway.create_pix_payment(
-                            value=Decimal(str(data.value)),
-                            pix_key=data.pix_key,
-                            pix_key_type=data.key_type.value,
-                            description=data.description or "BioCodeTechPay PIX Transfer",
-                            idempotency_key=idempotency_key
-                        )
-                        end_to_end_id = payment_result.get("end_to_end_id") or payment_result.get("payment_id")
-                        logger.info(
-                            f"Asaas PIX transfer dispatched: payment_id={payment_result.get('payment_id')}, "
-                            f"end_to_end={end_to_end_id}, key={mask_sensitive_data(data.pix_key)}"
-                        )
-                        # Persist end-to-end ID in correlation_id for auditability
-                        if end_to_end_id:
-                            correlation_id = end_to_end_id
-                    except Exception as e:
-                        logger.error(
-                            f"Asaas PIX transfer failed: key={mask_sensitive_data(data.pix_key)}, "
-                            f"error={str(e)}"
-                        )
-                        # Extract human-readable rejection reason from Asaas API response
-                        asaas_reason = ""
-                        if hasattr(e, 'response') and e.response is not None:
-                            try:
-                                err_data = e.response.json()
-                                descriptions = [
-                                    err.get("description", "")
-                                    for err in err_data.get("errors", [])
-                                    if err.get("description")
-                                ]
-                                if descriptions:
-                                    asaas_reason = " | ".join(descriptions)
-                            except Exception:
-                                pass
-                        raise ValueError(
-                            f"Seu pix foi recusado: {asaas_reason}" if asaas_reason
-                            else f"Falha ao processar transferencia PIX: {str(e)}"
-                        )
-                else:
-                    # Gateway not configured (dev/local) — process locally without real dispatch
-                    logger.warning(
-                        f"Payment gateway not configured. Transfer processed locally without real dispatch. "
-                        f"key={mask_sensitive_data(data.pix_key)}"
-                    )
 
-                # Deferred debit: balance is NOT debited here.
-                # The actual debit happens at webhook TRANSFER_DONE confirmation.
-                # A PENDING ledger entry is created for auditability and
-                # get_available_balance() considers PROCESSING txs to prevent overdraw.
-                initial_status = PixStatus.PROCESSING
+                # ── Persist-before-dispatch: create transaction BEFORE calling Asaas ──
+                # This prevents orphaned PSP transactions if the app crashes between
+                # dispatch and persist. Transaction starts as CREATED, moves to
+                # PROCESSING after dispatch, or FAILED on error.
+                initial_status = PixStatus.CREATED
+
     else:
         # Incoming transaction (Deposit/Charge)
         initial_status = PixStatus.CREATED
@@ -351,11 +306,65 @@ def create_pix(
     )
 
     db.add(pix)
+    db.flush()  # persist row but keep transaction open for gateway dispatch
+
+    # ── Gateway dispatch for external transfers (after persist) ──
+    if type == TransactionType.SENT and initial_status == PixStatus.CREATED and pix_fee > Decimal("0.00"):
+        if gateway:
+            try:
+                payment_result = gateway.create_pix_payment(
+                    value=Decimal(str(data.value)),
+                    pix_key=data.pix_key,
+                    pix_key_type=data.key_type.value,
+                    description=data.description or "BioCodeTechPay PIX Transfer",
+                    idempotency_key=idempotency_key
+                )
+                end_to_end_id = payment_result.get("end_to_end_id") or payment_result.get("payment_id")
+                logger.info(
+                    f"Asaas PIX transfer dispatched: payment_id={payment_result.get('payment_id')}, "
+                    f"end_to_end={end_to_end_id}, key={mask_sensitive_data(data.pix_key)}"
+                )
+                # Update transaction with Asaas response data
+                if end_to_end_id:
+                    pix.correlation_id = end_to_end_id
+                pix.status = PixStatus.PROCESSING
+            except Exception as e:
+                pix.status = PixStatus.FAILED
+                db.commit()
+                logger.error(
+                    f"Asaas PIX transfer failed: key={mask_sensitive_data(data.pix_key)}, "
+                    f"error={str(e)}"
+                )
+                # Extract human-readable rejection reason from Asaas API response
+                asaas_reason = ""
+                if hasattr(e, 'response') and e.response is not None:
+                    try:
+                        err_data = e.response.json()
+                        descriptions = [
+                            err.get("description", "")
+                            for err in err_data.get("errors", [])
+                            if err.get("description")
+                        ]
+                        if descriptions:
+                            asaas_reason = " | ".join(descriptions)
+                    except Exception:
+                        pass
+                raise ValueError(
+                    f"Seu pix foi recusado: {asaas_reason}" if asaas_reason
+                    else f"Falha ao processar transferencia PIX: {str(e)}"
+                )
+        else:
+            # Gateway not configured (dev/local) — process locally without real dispatch
+            pix.status = PixStatus.PROCESSING
+            logger.warning(
+                f"Payment gateway not configured. Transfer processed locally without real dispatch. "
+                f"key={mask_sensitive_data(data.pix_key)}"
+            )
 
     # Create PENDING ledger entry for external outbound transfers (deferred debit model).
     # Internal transfers and incoming transactions are settled immediately and don't need
     # pending ledger tracking.
-    if initial_status == PixStatus.PROCESSING and type == TransactionType.SENT:
+    if pix.status == PixStatus.PROCESSING and type == TransactionType.SENT:
         create_ledger_entry(
             db=db,
             account_id=user_id,
@@ -378,11 +387,11 @@ def create_pix(
             "masked_key": masked_key,
             "key_type": data.key_type.value,
             "transaction_type": type.value,
-            "status": initial_status.value
+            "status": pix.status.value
         }
     )
 
-    logger.info(f"PIX created (pending commit): id={pix.id}, value={data.value}, type={type.value}, status={initial_status.value}")
+    logger.info(f"PIX created (pending commit): id={pix.id}, value={data.value}, type={type.value}, status={pix.status.value}")
 
     try:
         db.commit()
