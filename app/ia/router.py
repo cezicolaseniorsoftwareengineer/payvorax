@@ -309,16 +309,23 @@ async def ia_chat(
         )
 
     # Build financial context (deterministic — no LLM involved)
-    snapshot = build_snapshot(db, current_user)
-    wealth = compute_wealth_score(
-        snapshot,
-        email_verified=current_user.email_verified,
-        doc_verified=current_user.document_verified,
-    )
-    cashflow = analyze_cashflow(snapshot)
-    strategy = generate_strategy(snapshot, wealth)
-    simulation = simulate_wealth_growth(wealth.savings_capacity) if wealth.savings_capacity > 0 else None
-    context_block = build_llm_context(snapshot, wealth, cashflow, strategy, simulation)
+    try:
+        snapshot = build_snapshot(db, current_user)
+        wealth = compute_wealth_score(
+            snapshot,
+            email_verified=current_user.email_verified,
+            doc_verified=current_user.document_verified,
+        )
+        cashflow = analyze_cashflow(snapshot)
+        strategy = generate_strategy(snapshot, wealth)
+        simulation = simulate_wealth_growth(wealth.savings_capacity) if wealth.savings_capacity > 0 else None
+        context_block = build_llm_context(snapshot, wealth, cashflow, strategy, simulation)
+    except Exception as ctx_err:
+        logger.error("IA context build failed user=%s err=%s", current_user.id, ctx_err, exc_info=True)
+        raise HTTPException(
+            status_code=503,
+            detail="Não foi possível carregar seus dados financeiros. Tente novamente em instantes.",
+        )
 
     # Compose message list: system + context + last 20 turns
     messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
@@ -456,16 +463,23 @@ async def ia_chat_stream(
             detail="Servico de IA temporariamente indisponivel. Configure OPENROUTER_API_KEY.",
         )
 
-    snapshot = build_snapshot(db, current_user)
-    wealth = compute_wealth_score(
-        snapshot,
-        email_verified=current_user.email_verified,
-        doc_verified=current_user.document_verified,
-    )
-    cashflow = analyze_cashflow(snapshot)
-    strategy = generate_strategy(snapshot, wealth)
-    simulation = simulate_wealth_growth(wealth.savings_capacity) if wealth.savings_capacity > 0 else None
-    context_block = build_llm_context(snapshot, wealth, cashflow, strategy, simulation)
+    try:
+        snapshot = build_snapshot(db, current_user)
+        wealth = compute_wealth_score(
+            snapshot,
+            email_verified=current_user.email_verified,
+            doc_verified=current_user.document_verified,
+        )
+        cashflow = analyze_cashflow(snapshot)
+        strategy = generate_strategy(snapshot, wealth)
+        simulation = simulate_wealth_growth(wealth.savings_capacity) if wealth.savings_capacity > 0 else None
+        context_block = build_llm_context(snapshot, wealth, cashflow, strategy, simulation)
+    except Exception as ctx_err:
+        logger.error("IA stream context build failed user=%s err=%s", current_user.id, ctx_err, exc_info=True)
+        raise HTTPException(
+            status_code=503,
+            detail="Não foi possível carregar seus dados financeiros. Tente novamente em instantes.",
+        )
 
     messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
     messages.append({"role": "system", "content": context_block})

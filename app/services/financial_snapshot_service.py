@@ -18,8 +18,10 @@ def build_snapshot(db: Session, user: User, window_days: int = 30) -> FinancialS
     """
     Builds a financial snapshot for the given user.
     All DB access is read-only. No PII (CPF/CNPJ, names, keys) leaves this function.
+    Uses timezone-naive UTC datetime for cutoff to avoid PostgreSQL TIMESTAMP WITHOUT TIME ZONE
+    comparison errors (SQLite is permissive; PostgreSQL raises ProgrammingError on mismatch).
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+    cutoff = datetime.utcnow() - timedelta(days=window_days)
 
     received_30d: float = (
         db.query(func.sum(PixTransaction.value))
