@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.responses import StreamingResponse
 from typing import List
 import logging
+import asyncio
 import time
 import re
 import json
@@ -260,33 +261,242 @@ Always respond in the same language the user writes in. Default to Brazilian Por
 Keep responses concise, direct, and practical. Every answer must be useful and actionable."""
 
 
+# ---------------------------------------------------------------------------
+# Model roster — ordered by expected latency on the OpenRouter free tier.
+# The parallel race strategy means ALL _RACE_POOL_SIZE top entries start at
+# the same time; whichever yields the first real token wins and the rest are
+# cancelled. The tail entries act as a sequential fallback if the entire first
+# wave fails (network partition, mass rate-limit, maintenance window).
+# ---------------------------------------------------------------------------
 _LLM_MODELS = [
-    # Priority 1 — Finance #6, most tokens delivered, Jan 2026
-    "stepfun/step-3.5-flash:free",
-    # Priority 2 — 120B MoE, high throughput, Mar 2026
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    # Priority 3 — 400B MoE sparse, Finance #16, Jan 2026
-    "arcee-ai/trinity-large-preview:free",
-    # Priority 4 — compact 26B MoE, fast, Dec 2025
-    "arcee-ai/trinity-mini:free",
-    # Priority 5 — GLM 4.5 Air, agent-centric, Jul 2025
-    "z-ai/glm-4.5-air:free",
-    # Priority 6 — Nemotron nano 9B v2, reasoning+non-reasoning, Sep 2025
-    "nvidia/nemotron-nano-9b-v2:free",
-    # Priority 7 — Nemotron 3 Nano 30B A3B, Dec 2025
-    "nvidia/nemotron-3-nano-30b-a3b:free",
+    # Wave 1 — raced in parallel (fastest free models available Mar 2026)
+    "deepseek/deepseek-chat-v3-0324:free",        # DeepSeek V3-0324, Mar 2026, very fast
+    "google/gemini-2.0-flash-exp:free",           # Gemini 2.0 Flash, low latency, high quality
+    "meta-llama/llama-3.3-70b-instruct:free",     # LLaMA 3.3 70B, reliable throughput
+    "mistralai/mistral-small-3.1-24b-instruct:free",  # Mistral Small 3.1 24B, compact+fast
+    # Wave 2 — sequential fallback if wave 1 entirely fails
+    "qwen/qwen3-235b-a22b:free",                  # Qwen3 235B MoE, Mar 2026
+    "nvidia/nemotron-3-super-120b-a12b:free",     # Nemotron 120B MoE
+    "stepfun/step-3.5-flash:free",                # Step-3.5 Flash
+    "arcee-ai/trinity-large-preview:free",        # Trinity Large
+    "z-ai/glm-4.5-air:free",                      # GLM 4.5 Air
+    "nvidia/nemotron-nano-9b-v2:free",            # Nemotron Nano 9B v2
 ]
 
 _THINKING_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
-_TOTAL_BUDGET_SECONDS = 70
-_PER_MODEL_SECONDS = 18
+_RACE_POOL_SIZE = 4     # models started in parallel per wave
+_PER_MODEL_SECONDS = 10  # timeout per model before declaring it dead
+_TOTAL_BUDGET_SECONDS = 55  # hard cap (client-side is 90s; 55 gives 35s margin)
 
 
 class ChatMessage:
     def __init__(self, role: str, content: str):
         self.role = role
         self.content = content
+
+
+# ---------------------------------------------------------------------------
+# Parallel Model Race
+# ---------------------------------------------------------------------------
+# Launches _RACE_POOL_SIZE models simultaneously via asyncio tasks.
+# Each task pushes (model, token_or_None, is_done, is_error) to a shared
+# asyncio.Queue. The generator is consumed by the SSE generator: the first
+# model to put a real token commits (others are cancelled via task.cancel()).
+# Fallback: if the entire wave fails, the next `_RACE_POOL_SIZE` models are
+# tried sequentially to preserve long-tail reliability.
+# ---------------------------------------------------------------------------
+
+async def _race_stream(
+    messages: list,
+    t_budget_start: float,
+    openrouter_api_key: str,
+    app_base_url: str,
+):
+    """
+    Async generator that races _RACE_POOL_SIZE models in parallel.
+    Yields (model_name: str, token: str | None, is_done: bool, is_error: bool).
+    Commits to the first model that delivers a real content token.
+    Then falls back sequentially for any remaining budget if the wave fails.
+    """
+    _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+    _HEADERS = {
+        "Authorization": f"Bearer {openrouter_api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": app_base_url,
+        "X-Title": "BioCodeTechPay",
+    }
+
+    async def _probe(model: str, result_q: asyncio.Queue) -> None:
+        """
+        Connects to one model, parses SSE (strips thinking tokens),
+        and pushes real content tokens to result_q.
+        Gracefully exits on CancelledError (committed to another model).
+        """
+        try:
+            async with httpx.AsyncClient() as c:
+                async with c.stream(
+                    "POST",
+                    _OPENROUTER_URL,
+                    headers=_HEADERS,
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "max_tokens": 1400,
+                        "temperature": 0.7,
+                        "stream": True,
+                    },
+                    timeout=_PER_MODEL_SECONDS,
+                ) as resp:
+                    if resp.status_code == 401:
+                        await result_q.put((model, None, False, True))
+                        return
+                    if resp.status_code in (429, 402):
+                        logger.warning("IA race model=%s status=%d", model, resp.status_code)
+                        await result_q.put((model, None, False, True))
+                        return
+                    if resp.status_code != 200:
+                        body = ""
+                        async for _c in resp.aiter_text():
+                            body += _c
+                            if len(body) > 200:
+                                break
+                        logger.warning("IA race model=%s non-200 status=%d body=%s", model, resp.status_code, body[:200])
+                        await result_q.put((model, None, False, True))
+                        return
+
+                    phase = "buffering"  # buffering | thinking | streaming
+                    pre = ""
+                    sse_buf = ""
+
+                    async for chunk in resp.aiter_text():
+                        sse_buf += chunk
+                        while "\n" in sse_buf:
+                            line, sse_buf = sse_buf.split("\n", 1)
+                            line = line.strip()
+                            if not line or not line.startswith("data: "):
+                                continue
+                            raw = line[6:]
+                            if raw == "[DONE]":
+                                # Flush residual buffer on DONE
+                                if phase in ("buffering", "thinking") and pre.strip():
+                                    cleaned = _THINKING_RE.sub("", pre).strip()
+                                    if cleaned:
+                                        await result_q.put((model, cleaned, False, False))
+                                await result_q.put((model, None, True, False))
+                                return
+                            try:
+                                d = json.loads(raw)
+                                token = d["choices"][0]["delta"].get("content", "")
+                            except Exception:
+                                continue
+                            if not token:
+                                continue
+
+                            # Thinking-token state machine
+                            if phase == "buffering":
+                                pre += token
+                                stripped = pre.lstrip()
+                                if "<think>" in stripped:
+                                    phase = "thinking"
+                                elif stripped and stripped[0] != "<":
+                                    phase = "streaming"
+                                    await result_q.put((model, pre, False, False))
+                                    pre = ""
+                                elif len(stripped) >= 7 and not stripped.startswith("<think"):
+                                    phase = "streaming"
+                                    await result_q.put((model, pre, False, False))
+                                    pre = ""
+                            elif phase == "thinking":
+                                pre += token
+                                if "</think>" in pre:
+                                    idx = pre.index("</think>") + 8
+                                    remainder = pre[idx:].lstrip()
+                                    phase = "streaming"
+                                    pre = ""
+                                    if remainder:
+                                        await result_q.put((model, remainder, False, False))
+                            elif phase == "streaming":
+                                await result_q.put((model, token, False, False))
+
+        except asyncio.CancelledError:
+            return  # losing model cancelled cleanly
+        except httpx.TimeoutException:
+            logger.warning("IA race timeout model=%s", model)
+            await result_q.put((model, None, False, True))
+        except Exception as exc:
+            logger.warning("IA race error model=%s err=%s", model, exc)
+            await result_q.put((model, None, False, True))
+
+    # --- Race loop: process models in waves of _RACE_POOL_SIZE ---
+    all_models = list(_LLM_MODELS)
+    committed = None
+
+    i = 0
+    while i < len(all_models):
+        elapsed = time.monotonic() - t_budget_start
+        if elapsed >= _TOTAL_BUDGET_SECONDS:
+            logger.warning("IA race budget exhausted after %.1fs", elapsed)
+            return
+
+        batch = all_models[i : i + _RACE_POOL_SIZE]
+        i += _RACE_POOL_SIZE
+
+        result_q: asyncio.Queue = asyncio.Queue()
+        tasks = {m: asyncio.create_task(_probe(m, result_q)) for m in batch}
+        wave_errors = 0
+
+        try:
+            while True:
+                remaining_budget = _TOTAL_BUDGET_SECONDS - (time.monotonic() - t_budget_start)
+                if remaining_budget <= 0:
+                    return
+
+                try:
+                    model, token, is_done, is_error = await asyncio.wait_for(
+                        result_q.get(),
+                        timeout=min(remaining_budget, _PER_MODEL_SECONDS + 2),
+                    )
+                except asyncio.TimeoutError:
+                    break  # wave timed out completely
+
+                if is_error:
+                    wave_errors += 1
+                    if wave_errors >= len(tasks) and committed is None:
+                        break  # entire wave failed — try next batch
+                    continue
+
+                # Ignore tokens from non-committed models once committed
+                if committed and model != committed:
+                    continue
+
+                # First real token: commit to winner, cancel losers
+                if not committed and token:
+                    committed = model
+                    for m, t in tasks.items():
+                        if m != committed:
+                            t.cancel()
+                    logger.info(
+                        "IA race committed model=%s after %.2fs",
+                        model, time.monotonic() - t_budget_start,
+                    )
+
+                yield (model, token, is_done, is_error)
+
+                if is_done:
+                    return  # stream complete
+
+        finally:
+            for t in tasks.values():
+                if not t.done():
+                    t.cancel()
+
+        # Wave failed without committing — next wave starts sequentially
+        if committed:
+            return
+
+    # All models exhausted without a committed winner
+    yield (None, None, False, True)
 
 
 @router.post("/chat")
@@ -339,25 +549,15 @@ async def ia_chat(
         (m.content for m in reversed(request.messages) if m.role == "user"), ""
     )
 
-    reply = None
-    used_model = _LLM_MODELS[0]
     t0 = time.monotonic()
+    reply = None
+    used_model = None
 
-    async with httpx.AsyncClient() as client:
-        for model in _LLM_MODELS:
-            elapsed = time.monotonic() - t0
-            if elapsed >= _TOTAL_BUDGET_SECONDS:
-                logger.warning("IA budget exhausted after %.1fs", elapsed)
-                break
-
-            remaining = _TOTAL_BUDGET_SECONDS - elapsed
-            timeout = min(_PER_MODEL_SECONDS, remaining)
-            if timeout < 3:
-                break
-
-            used_model = model
-            try:
-                resp = await client.post(
+    # --- Parallel race for non-streaming /chat ---
+    async def _try_one(model: str):
+        try:
+            async with httpx.AsyncClient() as c:
+                resp = await c.post(
                     "https://openrouter.ai/api/v1/chat/completions",
                     headers={
                         "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
@@ -368,58 +568,44 @@ async def ia_chat(
                     json={
                         "model": model,
                         "messages": messages,
-                        "max_tokens": 2048,
+                        "max_tokens": 1400,
                         "temperature": 0.7,
                     },
-                    timeout=timeout,
+                    timeout=_PER_MODEL_SECONDS,
                 )
-            except httpx.TimeoutException:
-                logger.warning("IA timeout model=%s (%.0fs)", model, timeout)
-                continue
-            except httpx.RequestError as exc:
-                logger.warning("IA conn error model=%s err=%s", model, exc)
-                continue
-
             if resp.status_code == 401:
-                raise HTTPException(status_code=502, detail="Credencial de IA inválida. Contate o suporte.")
-
-            if resp.status_code == 429:
-                logger.warning("IA rate-limited model=%s", model)
-                continue
-
-            if resp.status_code == 402:
-                logger.warning("IA model no longer free model=%s (payment required)", model)
-                continue
-
-            if resp.status_code != 200:
-                body_preview = resp.text[:300] if resp.text else "empty"
-                logger.warning("IA non-200 model=%s status=%d body=%s", model, resp.status_code, body_preview)
-                continue
-
+                return HTTPException(status_code=502, detail="Credencial de IA invalida. Contate o suporte.")
+            if resp.status_code not in (200,):
+                return None
             data = resp.json()
-
-            if "error" in data:
-                logger.warning("IA error body model=%s err=%s", model, str(data["error"])[:200])
-                continue
-
-            try:
-                content = data["choices"][0]["message"]["content"]
-            except (KeyError, IndexError, TypeError):
-                logger.warning("IA malformed payload model=%s", model)
-                continue
-
-            if not content or not content.strip():
-                logger.warning("IA empty reply model=%s", model)
-                continue
-
-            # Strip reasoning traces from thinking models (e.g. step-3.5-flash)
+            content = data["choices"][0]["message"]["content"]
             content = _THINKING_RE.sub("", content).strip()
-            if not content:
-                logger.warning("IA only thinking tokens model=%s", model)
-                continue
+            return (model, content) if content else None
+        except Exception:
+            return None
 
-            reply = content
+    wave_results = await asyncio.gather(
+        *[_try_one(m) for m in _LLM_MODELS[:_RACE_POOL_SIZE]],
+        return_exceptions=True,
+    )
+    for r in wave_results:
+        if isinstance(r, HTTPException):
+            raise r
+        if isinstance(r, tuple) and r[1]:
+            used_model, reply = r
             break
+
+    # Sequential fallback if the entire first wave failed
+    if not reply:
+        for model in _LLM_MODELS[_RACE_POOL_SIZE:]:
+            if time.monotonic() - t0 >= _TOTAL_BUDGET_SECONDS:
+                break
+            fallback = await _try_one(model)
+            if isinstance(fallback, HTTPException):
+                raise fallback
+            if isinstance(fallback, tuple) and fallback[1]:
+                used_model, reply = fallback
+                break
 
     if not reply:
         raise HTTPException(
@@ -492,161 +678,43 @@ async def ia_chat_stream(
     )
 
     async def _sse_generator():
-        full_reply = ""
-        used_model = _LLM_MODELS[0]
         t0 = time.monotonic()
+        full_reply = ""
+        used_model = None
 
-        for model in _LLM_MODELS:
-            elapsed = time.monotonic() - t0
-            if elapsed >= _TOTAL_BUDGET_SECONDS:
-                logger.warning("IA stream budget exhausted after %.1fs", elapsed)
-                break
+        async for model, token, is_done, is_error in _race_stream(
+            messages=messages,
+            t_budget_start=t0,
+            openrouter_api_key=settings.OPENROUTER_API_KEY,
+            app_base_url=settings.APP_BASE_URL,
+        ):
+            if is_error:
+                yield "data: " + json.dumps({"error": "Servico de IA temporariamente indisponivel. Tente novamente em instantes."}) + "\n\n"
+                return
 
-            remaining = _TOTAL_BUDGET_SECONDS - elapsed
-            timeout = min(_PER_MODEL_SECONDS, remaining)
-            if timeout < 3:
-                break
+            if token:
+                if used_model is None:
+                    used_model = model
+                full_reply += token
+                yield "data: " + json.dumps({"t": token}) + "\n\n"
 
-            used_model = model
-            full_reply = ""
+            if is_done:
+                yield "data: " + json.dumps({"done": True}) + "\n\n"
+                try:
+                    log_interaction(
+                        db=db,
+                        user_id=current_user.id,
+                        question=last_question,
+                        snapshot_dict=snapshot.model_dump(),
+                        response=full_reply,
+                        model=used_model or "unknown",
+                    )
+                except Exception:
+                    logger.warning("Failed to log streaming interaction", exc_info=True)
+                return
 
-            try:
-                async with httpx.AsyncClient() as client:
-                    async with client.stream(
-                        "POST",
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
-                            "Content-Type": "application/json",
-                            "HTTP-Referer": settings.APP_BASE_URL,
-                            "X-Title": "BioCodeTechPay",
-                        },
-                        json={
-                            "model": model,
-                            "messages": messages,
-                            "max_tokens": 2048,
-                            "temperature": 0.7,
-                            "stream": True,
-                        },
-                        timeout=timeout,
-                    ) as resp:
-                        if resp.status_code == 401:
-                            yield f"data: {json.dumps({'error': 'Credencial de IA invalida. Contate o suporte.'})}\n\n"
-                            return
-
-                        if resp.status_code == 429:
-                            logger.warning("IA stream rate-limited model=%s", model)
-                            continue
-
-                        if resp.status_code == 402:
-                            logger.warning("IA stream model no longer free model=%s (payment required)", model)
-                            continue
-
-                        if resp.status_code != 200:
-                            body_preview = ""
-                            async for _c in resp.aiter_text():
-                                body_preview += _c
-                                if len(body_preview) > 300:
-                                    break
-                            logger.warning(
-                                "IA stream non-200 model=%s status=%d body=%s",
-                                model, resp.status_code, body_preview[:300],
-                            )
-                            continue
-
-                        # -- Parse SSE from OpenRouter --
-                        phase = "buffering"   # buffering | thinking | streaming
-                        pre_buffer = ""
-                        sse_buf = ""
-                        done_signal = False
-
-                        async for chunk in resp.aiter_text():
-                            sse_buf += chunk
-                            while "\n" in sse_buf:
-                                line, sse_buf = sse_buf.split("\n", 1)
-                                line = line.strip()
-                                if not line or not line.startswith("data: "):
-                                    continue
-                                payload = line[6:]
-                                if payload == "[DONE]":
-                                    done_signal = True
-                                    break
-
-                                try:
-                                    data = json.loads(payload)
-                                    delta = data["choices"][0]["delta"]
-                                    token = delta.get("content", "")
-                                except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-                                    continue
-                                if not token:
-                                    continue
-
-                                # -- Thinking-token state machine --
-                                if phase == "buffering":
-                                    pre_buffer += token
-                                    stripped = pre_buffer.lstrip()
-                                    if "<think>" in stripped:
-                                        phase = "thinking"
-                                    elif stripped and stripped[0] != "<":
-                                        phase = "streaming"
-                                        full_reply = pre_buffer
-                                        yield f"data: {json.dumps({'t': pre_buffer})}\n\n"
-                                    elif len(stripped) >= 7 and not stripped.startswith("<think"):
-                                        phase = "streaming"
-                                        full_reply = pre_buffer
-                                        yield f"data: {json.dumps({'t': pre_buffer})}\n\n"
-                                elif phase == "thinking":
-                                    pre_buffer += token
-                                    if "</think>" in pre_buffer:
-                                        idx = pre_buffer.index("</think>") + 8
-                                        remainder = pre_buffer[idx:].lstrip()
-                                        phase = "streaming"
-                                        full_reply = remainder
-                                        if remainder:
-                                            yield f"data: {json.dumps({'t': remainder})}\n\n"
-                                elif phase == "streaming":
-                                    full_reply += token
-                                    yield f"data: {json.dumps({'t': token})}\n\n"
-
-                            if done_signal:
-                                break
-
-                        # Flush buffer for very short responses that never left buffering
-                        if phase == "buffering" and pre_buffer.strip():
-                            cleaned = _THINKING_RE.sub("", pre_buffer).strip()
-                            if cleaned:
-                                full_reply = cleaned
-                                yield f"data: {json.dumps({'t': cleaned})}\n\n"
-                        elif phase == "thinking":
-                            cleaned = _THINKING_RE.sub("", pre_buffer).strip()
-                            if cleaned:
-                                full_reply = cleaned
-                                yield f"data: {json.dumps({'t': cleaned})}\n\n"
-
-                if full_reply.strip():
-                    yield f"data: {json.dumps({'done': True})}\n\n"
-                    try:
-                        log_interaction(
-                            db=db,
-                            user_id=current_user.id,
-                            question=last_question,
-                            snapshot_dict=snapshot.model_dump(),
-                            response=full_reply,
-                            model=used_model,
-                        )
-                    except Exception:
-                        logger.warning("Failed to log streaming interaction", exc_info=True)
-                    return
-
-            except httpx.TimeoutException:
-                logger.warning("IA stream timeout model=%s (%.0fs)", model, timeout)
-                continue
-            except httpx.RequestError as exc:
-                logger.warning("IA stream conn error model=%s err=%s", model, exc)
-                continue
-
-        # All models exhausted
-        yield f"data: {json.dumps({'error': 'Servico de IA temporariamente indisponivel. Tente novamente.'})}\n\n"
+        # Budget exhausted without a committed model
+        yield "data: " + json.dumps({"error": "Servico de IA temporariamente indisponivel. Tente novamente."}) + "\n\n"
 
     return StreamingResponse(
         _sse_generator(),

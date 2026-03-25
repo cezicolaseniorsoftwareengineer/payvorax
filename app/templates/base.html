@@ -1038,7 +1038,7 @@
             try {
                 var controller = new AbortController();
                 _btpai.controller = controller;
-                var timeoutId = setTimeout(function () { controller.abort(); }, 60000);
+                var timeoutId = setTimeout(function () { controller.abort(); }, 90000);
                 var resp = await fetch('/ia/chat/stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
