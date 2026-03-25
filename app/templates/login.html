@@ -168,7 +168,7 @@
 
                 if (response.ok) {
                     const data = await response.json();
-                    localStorage.setItem('user_name', data.nome);
+                    localStorage.setItem('user_name', data.name);
                     localStorage.setItem('access_token', data.access_token);
                     btn.innerHTML = '<div class="flex items-center justify-center gap-2"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span>Bem-vindo!</span></div>';
                     btn.classList.remove('nu-purple');

@@ -111,22 +111,22 @@ router = APIRouter()
 # Login Page
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html")
 
 
 @router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
+    return templates.TemplateResponse(request, "register.html")
 
 
 @router.get("/esqueci-senha", response_class=HTMLResponse)
 async def forgot_password_page(request: Request):
-    return templates.TemplateResponse("esqueci_senha.html", {"request": request})
+    return templates.TemplateResponse(request, "esqueci_senha.html")
 
 
 @router.get("/redefinir-senha", response_class=HTMLResponse)
 async def reset_password_page(request: Request, token: str = ""):
-    return templates.TemplateResponse("redefinir_senha.html", {"request": request, "token": token})
+    return templates.TemplateResponse(request, "redefinir_senha.html", {"token": token})
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -135,8 +135,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
     # Always use user.balance: single authoritative source, never derived from transaction sums
     balance = current_user.balance
 
-    return templates.TemplateResponse("index.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "index.html", {
         "page": "home",
         "balance": balance,
         "user_name": current_user.name,
@@ -170,48 +169,44 @@ async def pix_ui(request: Request, current_user: User = Depends(get_current_user
         finally:
             _db_gen.close()
 
-    return templates.TemplateResponse(
-        "pix.html",
-        {
-            "request": request,
-            "page": "pix",
-            "user_name": current_user.name,
-            "user_is_pj": user_pj,
-            "user_balance": float(current_user.balance),
-            "user_email":          current_user.email,
-            "deposit_wallet_key":  _DEPOSIT_WALLET_KEY,
-            "deposit_qr_url":     _DEPOSIT_QR_URL,
-            "user_cpf_masked":     _mask_cpf(current_user.cpf_cnpj or ""),
-            # Labels derived from the real fee engine — no hardcoded strings.
-            "pix_fee_outbound_label": "Gratuito",
-            "pix_fee_outbound_rate_label": "Gratuito",
-            "pix_fee_receive_label": "Gratuito",
-        }
-    )
+    return templates.TemplateResponse(request, "pix.html", {
+        "page": "pix",
+        "user_name": current_user.name,
+        "user_is_pj": user_pj,
+        "user_balance": float(current_user.balance),
+        "user_email":          current_user.email,
+        "deposit_wallet_key":  _DEPOSIT_WALLET_KEY,
+        "deposit_qr_url":     _DEPOSIT_QR_URL,
+        "user_cpf_masked":     _mask_cpf(current_user.cpf_cnpj or ""),
+        # Labels derived from the real fee engine — no hardcoded strings.
+        "pix_fee_outbound_label": "Gratuito",
+        "pix_fee_outbound_rate_label": "Gratuito",
+        "pix_fee_receive_label": "Gratuito",
+    })
 
 
 @router.get("/ui/cards", response_class=HTMLResponse)
 async def cards_ui(request: Request, current_user: User = Depends(get_current_user)):
     """My Cards Interface"""
     return templates.TemplateResponse(
-        "cards/my_cards.html",
-        {"request": request, "page": "cards", "user_name": current_user.name}
+        request, "cards/my_cards.html",
+        {"page": "cards", "user_name": current_user.name}
     )
 
 @router.get("/ui/cards/create", response_class=HTMLResponse)
 async def create_card_ui(request: Request, current_user: User = Depends(get_current_user)):
     """Create Card Interface"""
     return templates.TemplateResponse(
-        "cards/create_card.html",
-        {"request": request, "page": "cards", "user_name": current_user.name}
+        request, "cards/create_card.html",
+        {"page": "cards", "user_name": current_user.name}
     )
 
 @router.get("/pix/pagar-qrcode", response_class=HTMLResponse)
 async def pix_payment_simulation(request: Request, current_user: User = Depends(get_current_user)):
     """QR Code Payment Simulation Page"""
     return templates.TemplateResponse(
-        "pix_payment.html",
-        {"request": request, "page": "pix_payment", "user_name": current_user.name}
+        request, "pix_payment.html",
+        {"page": "pix_payment", "user_name": current_user.name}
     )
 
 
@@ -263,8 +258,7 @@ async def pix_payment_link(charge_id: str, request: Request, db: Session = Depen
     qr_url = build_qr_url(copy_paste)
     already_paid = charge.status == PixStatus.CONFIRMED
 
-    response = templates.TemplateResponse("pix_link.html", {
-        "request": request,
+    response = templates.TemplateResponse(request, "pix_link.html", {
         "charge": charge,
         "copy_paste": copy_paste,
         "qr_url": qr_url,
@@ -277,7 +271,7 @@ async def pix_payment_link(charge_id: str, request: Request, db: Session = Depen
 @router.get("/ui/extrato", response_class=HTMLResponse)
 async def extrato_ui(request: Request, current_user: User = Depends(get_current_user)):
     """Statement Interface"""
-    return templates.TemplateResponse("extrato.html", {"request": request, "page": "extrato", "user_name": current_user.name})
+    return templates.TemplateResponse(request, "extrato.html", {"page": "extrato", "user_name": current_user.name})
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -309,8 +303,7 @@ async def admin_panel(
             if exp and exp > now:
                 ia_active.add(s.user_id)
 
-    return templates.TemplateResponse("admin.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "admin.html", {
         "page": "admin",
         "user_name": current_user.name,
         "users": users,
@@ -1018,8 +1011,7 @@ async def matrix_dashboard(
             .all()
         )
 
-    return templates.TemplateResponse("matrix_dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "matrix_dashboard.html", {
         "user_name": current_user.name,
         "matrix_balance": matrix_balance,
         "transactions": transactions,

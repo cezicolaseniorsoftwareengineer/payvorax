@@ -25,8 +25,7 @@ async def view_boleto(
     balance = get_balance(db, current_user.id)
     user_pj = is_pj(current_user.cpf_cnpj)
     fee = calculate_boleto_fee(current_user.cpf_cnpj)
-    return templates.TemplateResponse("boleto.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "boleto.html", {
         "user_name": current_user.name,
         "balance": balance,
         "page": "boleto",
