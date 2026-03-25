@@ -35,7 +35,7 @@ from app.main import app
 from app.core.database import Base, get_db
 from app.auth.models import User
 from app.pix.models import PixTransaction
-from app.core.security import get_password_hash
+from app.auth.service import get_password_hash
 
 # ---------------------------------------------------------------------------
 # Helpers EMV (copia dos helpers do router para construir payloads realistas)
