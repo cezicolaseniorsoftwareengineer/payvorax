@@ -20,6 +20,18 @@ from app.cards.models import CreditCard
 TEST_DATABASE_URL = "sqlite:///:memory:"
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiters():
+    """
+    Clears in-memory rate limiter stores before each test to prevent
+    cross-test state leakage. The stores are module-level dicts keyed by IP.
+    """
+    import app.auth.router as _auth_router
+    _auth_router._login_store.clear()
+    _auth_router._reg_store.clear()
+    yield
+
+
 @pytest.fixture(scope="function")
 def db():
     """
