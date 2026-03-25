@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from uuid import uuid4
 from typing import Optional
+import time as _time
+import collections as _collections
 from app.core.database import get_db
 from app.auth.models import User
 from app.auth.schemas import UserCreate, UserLogin, DepositRequest, DepositResponse, BalanceResponse, PasswordResetRequest, PasswordResetConfirm, PasswordResetConfirmWithTemp, RecoveryCodeValidate
@@ -10,6 +12,7 @@ from app.auth.service import (
     get_password_hash,
     verify_password,
     create_access_token,
+    create_refresh_token,
     deposit_funds,
     get_user_balance
 )
@@ -20,22 +23,51 @@ from app.adapters.gateway_factory import get_payment_gateway
 from datetime import timedelta, datetime, timezone
 from app.core.config import settings
 from app.core.logger import logger
+from app.core.security import mask_sensitive_data
 import traceback
 import secrets
 import re
 
 router = APIRouter()
 
+# ---------------------------------------------------------------------------
+# In-memory rate limiters for unauthenticated auth endpoints (IP-based).
+# Prevents brute-force CPF/CNPJ + password attacks and registration spam.
+# ---------------------------------------------------------------------------
+_LOGIN_MAX = 5        # max login attempts
+_LOGIN_WINDOW = 60    # per 60-second sliding window
+_REG_MAX = 3          # max registration attempts
+_REG_WINDOW = 300     # per 5-minute sliding window
+_login_store: dict[str, _collections.deque] = {}
+_reg_store: dict[str, _collections.deque] = {}
+
+
+def _rate_limit(store: dict, client_ip: str, max_req: int, window: int) -> None:
+    """Raises HTTP 429 if client_ip exceeds max_req within window seconds."""
+    now = _time.monotonic()
+    if client_ip not in store:
+        store[client_ip] = _collections.deque()
+    ts = store[client_ip]
+    while ts and ts[0] < now - window:
+        ts.popleft()
+    if len(ts) >= max_req:
+        raise HTTPException(
+            status_code=429,
+            detail="Muitas tentativas. Aguarde alguns instantes antes de tentar novamente."
+        )
+    ts.append(now)
+
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def register(response: Response, user: UserCreate, db: Session = Depends(get_db)):
+def register(request: Request, response: Response, user: UserCreate, db: Session = Depends(get_db)):
     """
     Registers a new user.
     Validates CPF/CNPJ mathematically, then sends email verification link.
     Account is active but email_verified=False until link is confirmed.
     """
     try:
-        logger.info(f"Starting registration for CPF/CNPJ: {user.cpf_cnpj}")
+        _rate_limit(_reg_store, request.client.host or "unknown", _REG_MAX, _REG_WINDOW)
+        logger.info(f"Starting registration for document: {mask_sensitive_data(user.cpf_cnpj)}")
 
         # --- Document validation (anti-fraud KYC gate) ---
         is_valid_doc, doc_result = validate_document(user.cpf_cnpj)
@@ -51,7 +83,7 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
         ).first()
 
         if db_user:
-            logger.warning(f"Duplicate registration attempt: {user.cpf_cnpj} or {user.email}")
+            logger.warning(f"Duplicate registration attempt: doc={mask_sensitive_data(user.cpf_cnpj)}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email ou CPF/CNPJ ja cadastrado no sistema."
@@ -132,17 +164,18 @@ def register(response: Response, user: UserCreate, db: Session = Depends(get_db)
 
 
 @router.post("/login")
-def login(response: Response, user_in: UserLogin, db: Session = Depends(get_db)):
+def login(request: Request, response: Response, user_in: UserLogin, db: Session = Depends(get_db)):
     """
     Authenticates user and sets session cookie.
     """
     try:
-        logger.info(f"Login attempt for CPF/CNPJ: {user_in.cpf_cnpj}")
+        _rate_limit(_login_store, request.client.host or "unknown", _LOGIN_MAX, _LOGIN_WINDOW)
+        logger.info(f"Login attempt: doc={mask_sensitive_data(user_in.cpf_cnpj)}")
 
         user = db.query(User).filter(User.cpf_cnpj == user_in.cpf_cnpj).first()
 
         if not user or not verify_password(user_in.password, user.hashed_password):
-            logger.warning(f"Login failure for {user_in.cpf_cnpj}: Invalid credentials")
+            logger.warning(f"Login failure: doc={mask_sensitive_data(user_in.cpf_cnpj)} - Invalid credentials")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect CPF/CNPJ or password."
@@ -151,7 +184,7 @@ def login(response: Response, user_in: UserLogin, db: Session = Depends(get_db))
         # Block login until email is verified — prevents unverified accounts from
         # accessing the system regardless of how the account was created.
         if not user.email_verified:
-            logger.warning(f"Login blocked for {user_in.cpf_cnpj}: email not verified")
+            logger.warning(f"Login blocked: doc={mask_sensitive_data(user_in.cpf_cnpj)} - email not verified")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="E-mail nao verificado. Acesse seu e-mail e clique no link de confirmacao antes de entrar."
@@ -162,18 +195,30 @@ def login(response: Response, user_in: UserLogin, db: Session = Depends(get_db))
             data={"sub": user.cpf_cnpj, "name": user.name},
             expires_delta=access_token_expires
         )
+        refresh_token = create_refresh_token(
+            data={"sub": user.cpf_cnpj, "name": user.name}
+        )
 
         response.set_cookie(
             key="access_token",
             value=f"Bearer {access_token}",
             httponly=True,
             secure=True,
-            samesite="lax",
+            samesite="strict",
             max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             expires=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+            expires=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+        )
 
-        logger.info(f"Login successful for {user.cpf_cnpj}")
+        logger.info(f"Login successful: user_id={user.id}")
 
         return {
             "access_token": access_token,
@@ -195,7 +240,56 @@ def login(response: Response, user_in: UserLogin, db: Session = Depends(get_db))
 @router.post("/logout")
 def logout(response: Response):
     response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
     return {"message": "Logout successful"}
+
+
+@router.post("/refresh")
+def refresh_token(request: Request, response: Response, db: Session = Depends(get_db)):
+    """
+    Issues a new access token using the refresh token cookie.
+    Rotates both tokens (refresh token rotation prevents replay attacks).
+    """
+    from jose import jwt as _jwt, JWTError as _JWTError
+    refresh = request.cookies.get("refresh_token")
+    if not refresh:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token ausente.")
+    try:
+        payload = _jwt.decode(refresh, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido.")
+        cpf_cnpj = payload.get("sub")
+        if not cpf_cnpj:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido.")
+    except _JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expirado ou invalido.")
+
+    user = db.query(User).filter(User.cpf_cnpj == cpf_cnpj).first()
+    if not user or not user.email_verified or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sessao invalida.")
+
+    access_token = create_access_token(
+        data={"sub": user.cpf_cnpj, "name": user.name},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    new_refresh = create_refresh_token(data={"sub": user.cpf_cnpj, "name": user.name})
+
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {access_token}",
+        httponly=True, secure=True, samesite="strict",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        expires=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh,
+        httponly=True, secure=True, samesite="strict",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+        expires=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    logger.info(f"Token refreshed: user_id={user.id}")
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.get("/verificar-email")
@@ -230,13 +324,16 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 
     logger.info(f"Email verified for user {user.id}")
 
-    # Issue session cookie so the user lands on the dashboard without going
+    # Issue session cookies so the user lands on the dashboard without going
     # through the login page after clicking the verification link.
+    # Both access_token (short-lived) and refresh_token (long-lived) are issued
+    # to enable transparent auto-refresh in get_current_user.
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.cpf_cnpj, "name": user.name},
         expires_delta=access_token_expires
     )
+    refresh_token_value = create_refresh_token(data={"sub": user.cpf_cnpj, "name": user.name})
     from fastapi.responses import RedirectResponse
     redirect = RedirectResponse(url="/?email_verificado=1", status_code=302)
     redirect.set_cookie(
@@ -244,9 +341,18 @@ def verify_email(token: str, db: Session = Depends(get_db)):
         value=f"Bearer {access_token}",
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="strict",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         expires=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    redirect.set_cookie(
+        key="refresh_token",
+        value=refresh_token_value,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+        expires=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
     )
     return redirect
 

@@ -250,6 +250,50 @@ class TestVerifyEmailEndpoint:
         # Missing required query param
         assert response.status_code == 422
 
+    @patch("app.auth.router.send_verification_email", return_value=True)
+    def test_valid_token_redirects_and_issues_both_cookies(self, mock_email, client, valid_user_payload):
+        """
+        Successful email verification must:
+        1. Redirect to /?email_verificado=1 (302)
+        2. Set access_token cookie (samesite=strict, httponly)
+        3. Set refresh_token cookie (samesite=strict, httponly)
+        Without the refresh_token cookie, the session cannot survive the 15-minute
+        access token TTL, forcing the user to log in again immediately after verification.
+        """
+        from app.core.database import Base, get_db as _get_db
+        import secrets
+
+        # Register the user first (uses the in-memory SQLite DB from conftest)
+        valid_user_payload["email"] = "cookie_verify_test@example.com"
+        valid_user_payload["cpf_cnpj"] = "52998224725"
+
+        reg_resp = client.post("/auth/register", json=valid_user_payload)
+        assert reg_resp.status_code == 201, f"Registration failed: {reg_resp.text}"
+
+        # Fetch the token from the DB directly via the overridden dependency
+        from app.core.database import get_db as original_get_db
+        db = next(client.app.dependency_overrides.get(original_get_db, original_get_db)())
+        try:
+            from app.auth.models import User
+            user = db.query(User).filter(User.email == "cookie_verify_test@example.com").first()
+            assert user is not None
+            token = user.email_verification_token
+            assert token is not None
+        finally:
+            db.close()
+
+        # Verify email — should redirect and set both cookies
+        response = client.get(
+            f"/auth/verificar-email?token={token}",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302, f"Expected redirect, got {response.status_code}: {response.text}"
+        assert "/?email_verificado=1" in response.headers.get("location", "")
+
+        cookie_header = response.headers.get("set-cookie", "")
+        assert "access_token=" in cookie_header, "access_token cookie missing from verify-email response"
+        assert "refresh_token=" in cookie_header, "refresh_token cookie missing from verify-email response — user will be kicked out after 15 min"
+
 
 # ---------------------------------------------------------------------------
 # Integration tests: /auth/validar-documento endpoint
