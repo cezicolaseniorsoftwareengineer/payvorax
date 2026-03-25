@@ -844,7 +844,9 @@ async def asaas_transfer(
             raise HTTPException(status_code=404, detail="Correntista não encontrado.")
         if target.email == settings.MATRIX_ACCOUNT_EMAIL:
             raise HTTPException(status_code=400, detail="Destino inválido.")
-        target.balance = round(target.balance + payload.amount, 2)
+        _prev = Decimal(str(target.balance)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        _amt = Decimal(str(payload.amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        target.balance = _prev + _amt
         db.add(target)
         db.commit()
         db.refresh(target)
@@ -852,7 +854,7 @@ async def asaas_transfer(
             "ok": True,
             "type": "internal_credit",
             "recipient": target.name,
-            "new_recipient_balance": round(float(target.balance), 2),
+            "new_recipient_balance": float(target.balance),
         }
 
     if payload.destination == "matrix":

@@ -229,3 +229,34 @@ class TestDepositVerification:
 
         assert response.status_code == 200
         assert response.json()["credited_count"] == 0
+
+    def test_webhook_correlation_id_prevents_double_credit(self):
+        """If webhook stored tx_id as correlation_id, verify skips (Check 3).
+
+        Covers the edge case where tx.get('payment') is None (absent from
+        Asaas /pix/transactions response) but the webhook already credited
+        and stored the pix tx id as PixTransaction.correlation_id.
+        """
+        mock_db = MagicMock()
+        # Check 1 (idempotency_key): not found
+        # Check 2 (payment_id): None — block is skipped
+        # Check 3 (correlation_id): found — triggers skip
+        existing_corr = MagicMock()
+        existing_corr.id = "pay_webhook_corr"
+        # side_effect: first call (idemp_key) → None, second call (correlation_id) → found
+        mock_db.query.return_value.filter.return_value.first.side_effect = [None, existing_corr]
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: _mock_user
+
+        # No payment_id in transaction (None) — simulates missing field from Asaas
+        credits = [_asaas_pix_credit("pix-tx-007", 100.0, "12360268840")]
+        mock_gateway = MagicMock()
+        mock_gateway.list_pix_credits.return_value = credits
+
+        with patch("app.pix.router.get_payment_gateway", return_value=mock_gateway):
+            response = client.post("/pix/deposito/verificar")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["credited_count"] == 0

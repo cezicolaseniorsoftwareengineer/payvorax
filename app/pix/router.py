@@ -1350,7 +1350,7 @@ def verify_static_deposit(
         if already:
             continue
 
-        # Also skip if the webhook already credited via payment_id
+        # Check 2: skip if the webhook already credited via payment_id
         payment_id = tx.get("payment")
         if payment_id:
             webhook_tx = db.query(PixTransaction.id).filter(
@@ -1358,6 +1358,20 @@ def verify_static_deposit(
             ).first()
             if webhook_tx:
                 continue
+            # Also check by idempotency_key stored by the webhook handler
+            webhook_idem = db.query(PixTransaction.id).filter(
+                PixTransaction.idempotency_key == f"inbound-{payment_id}"
+            ).first()
+            if webhook_idem:
+                continue
+
+        # Check 3: skip if webhook stored tx_id as correlation_id
+        # (covers the case where tx.get("payment") is absent/None)
+        spi_check = db.query(PixTransaction.id).filter(
+            PixTransaction.correlation_id == tx_id
+        ).first()
+        if spi_check:
+            continue
 
         # -- Credit balance ------------------------------------------------
         payer_name = (ext.get("name") or "Deposito PIX").strip()
@@ -2519,6 +2533,18 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                     else "CNPJ" if len(_eff_key_digits) == 14
                     else "EMAIL"
                 )
+                # Store the Asaas pix-transaction UUID as correlation_id so that
+                # /deposito/verificar can cross-reference it via tx_id (Check 3).
+                # pixTransaction is either a string (SPI e2e UUID) or a dict;
+                # both map to the same ID returned by GET /pix/transactions.
+                _pix_spi_ref = (
+                    pix_transaction_raw
+                    if isinstance(pix_transaction_raw, str) and pix_transaction_raw
+                    else (
+                        pix_transaction_data.get("endToEndIdentifier")
+                        or pix_transaction_data.get("id")
+                    )
+                )
                 new_tx = PixTransaction(
                     id=payment_id,
                     value=net_credit,
@@ -2531,6 +2557,7 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                     description=f"PIX recebido de {payer_name}",
                     recipient_name=payer_name,
                     fee_amount=fee_float,
+                    correlation_id=_pix_spi_ref or payment_id,
                 )
                 db.add(new_tx)
                 db.commit()
