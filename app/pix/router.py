@@ -93,43 +93,10 @@ def _emv(tag: str, value: str) -> str:
 
 
 def _build_pix_static_emv(charge_id: str, value: float) -> str:
-    """
-    Builds a valid BR Code PIX static EMV payload per BACEN specification.
-    Uses the charge UUID as the EVP random key (field 26.01).
-
-    The generated code is format-valid and CRC-valid — any PSP app will parse it without error.
-    In production (gateway configured), Asaas charges replace this entirely with a real
-    dynamic QR code registered at DICT/SPI. This fallback only applies when:
-      - Asaas gateway is not configured (local/dev), OR
-      - Asaas API fails for this specific request.
-    """
-    # Field 26: Merchant Account Information
-    gui = _emv("00", "BR.GOV.BCB.PIX")
-    key = _emv("01", charge_id)           # EVP key = charge UUID (unique per charge)
-    merchant_account = _emv("26", gui + key)
-
-    # Field 62: Additional Data — txid max 25 chars (hyphens stripped per spec)
-    txid = charge_id.replace("-", "")[:25]
-    additional = _emv("62", _emv("05", txid))
-
-    # Field 54: Transaction Amount — must be "10.00" decimal form, NOT "1000"
-    amount_str = f"{value:.2f}"
-
-    payload = (
-        _emv("00", "01") +               # Payload Format Indicator
-        _emv("01", "11") +               # Point of Initiation = 11 (single-use static)
-        merchant_account +
-        _emv("52", "0000") +             # Merchant Category Code
-        _emv("53", "986") +              # Transaction Currency: BRL = 986
-        _emv("54", amount_str) +         # Transaction Amount
-        _emv("58", "BR") +               # Country Code
-        _emv("59", "BioCodeTechPay") +   # Merchant Name (max 25 chars)
-        _emv("60", "BRASILIA") +         # Merchant City (max 15 chars)
-        additional +
-        "6304"                           # CRC tag — checksum appended immediately below
-    )
-
-    return payload + _crc16_ccitt(payload)
+    # Delegates to canonical implementation in app.core.pix_emv (imported above).
+    # This wrapper is kept for call-site compatibility within this module.
+    from app.core.pix_emv import build_pix_static_emv as _canonical
+    return _canonical(charge_id, value)
 
 
 def _parse_emv_top_level(emv: str) -> dict:
@@ -281,10 +248,6 @@ def _extract_txid_field62(emv: str) -> Optional[str]:
 
 class _PixChargeExpired(Exception):
     """Raised by _fetch_pix_charge_url when the PSP confirms the charge is expired/removed."""
-
-
-class _PixTxidMismatch(Exception):
-    """Raised when txid in QR field 62 does not match txid returned by PSP."""
 
 
 def _extract_pix_url(emv: str) -> Optional[str]:
@@ -569,8 +532,6 @@ def create_pix_transaction(
     x_correlation_id: str = Header(default=None)
 ) -> PixResponse:
     """
-    **Challenge 2: PIX Transaction API**
-
     Creates a new transaction with idempotency support.
     **Requires active account (at least one deposit made) for outgoing transfers, except for self-deposits.**
 
@@ -612,7 +573,7 @@ def create_pix_transaction(
             )
 
     try:
-        logger.info(f"Starting PIX creation: {data.model_dump()} for user {current_user.id}")
+        logger.info(f"Starting PIX creation: value={data.value} key_type={data.key_type} user={current_user.id}")
 
         _screen_antifraud(data.value, current_user.id, db, logger, tx_type="PIX_SEND")
 
@@ -660,9 +621,6 @@ def confirm_pix_transaction(
     try:
         logger.info(f"Confirming PIX: {data.pix_id}")
 
-        # Note: In a real scenario, confirmation might come from a webhook without user context,
-        # but for this simulation, we assume the user triggers it or we validate ownership.
-        # For now, we just confirm.
         pix = confirm_pix(db, data.pix_id, correlation_id)
 
         if not pix:

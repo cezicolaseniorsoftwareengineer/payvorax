@@ -28,8 +28,6 @@ def simulate_installments(
     x_correlation_id: str = Header(default=None)
 ) -> SimulationResponse:
     """
-    **Challenge 1: Installment Simulation Engine**
-
     Calculates compound interest (Price Table) and CET.
     **Requires active account (at least one deposit made).**
 
@@ -48,7 +46,7 @@ def simulate_installments(
     logger = get_logger_with_correlation(correlation_id)
 
     try:
-        logger.info(f"Starting simulation: {data.model_dump()}")
+        logger.info(f"Starting simulation: value={data.value} installments={data.installments} correlation={correlation_id}")
 
         # Installment calculation
         result: Dict[str, Any] = calculate_installments(data)

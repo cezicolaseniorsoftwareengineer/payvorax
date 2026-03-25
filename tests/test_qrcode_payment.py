@@ -23,7 +23,7 @@ from app.core.database import Base, get_db
 from app.auth.models import User
 from app.pix.models import PixTransaction, PixStatus, TransactionType
 from app.pix.schemas import PixKeyType
-from app.core.security import get_password_hash
+from app.auth.service import get_password_hash
 
 # ---------------------------------------------------------------------------
 # In-memory SQLite DB — isolated from production Neon PostgreSQL

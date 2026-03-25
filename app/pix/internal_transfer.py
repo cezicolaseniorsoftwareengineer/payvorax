@@ -12,6 +12,7 @@ from app.auth.models import User
 from app.pix.models import PixTransaction, PixStatus, TransactionType
 from app.pix.schemas import PixKeyType
 from app.core.logger import logger, audit_log
+from app.core.security import mask_sensitive_data
 
 from uuid import uuid4
 
@@ -37,12 +38,12 @@ def find_recipient_user(
     try:
         if key_type in [PixKeyType.CPF, PixKeyType.CNPJ]:
             clean_key = re.sub(r'\D', '', pix_key)
-            logger.info(f"Searching internal user by CPF/CNPJ: {clean_key}")
+            logger.info(f"Searching internal user by CPF/CNPJ: {mask_sensitive_data(clean_key)}")
             return db.query(User).filter(User.cpf_cnpj == clean_key).first()
 
         elif key_type == PixKeyType.EMAIL:
             email_key = pix_key.strip().lower()
-            logger.info(f"Searching internal user by Email: {email_key}")
+            logger.info(f"Searching internal user by EMAIL: {mask_sensitive_data(email_key, visible_chars=3)}")
             # Check login email first, then pix_email_key (may differ)
             user = db.query(User).filter(func.lower(User.email) == email_key).first()
             if not user:

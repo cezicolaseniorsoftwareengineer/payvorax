@@ -140,7 +140,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
         "page": "home",
         "balance": balance,
         "user_name": current_user.name,
-        "is_admin": current_user.email == settings.ADMIN_EMAIL,
+        "is_admin": current_user.is_admin,
     })
 
 
@@ -423,7 +423,7 @@ async def toggle_user_active(
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Usuário não encontrado.")
-    if target.email == settings.ADMIN_EMAIL:
+    if target.is_admin:
         raise HTTPException(status_code=400, detail="Conta admin não pode ser suspensa.")
 
     target.is_active = payload.active
@@ -569,7 +569,7 @@ async def delete_user(
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Usuário não encontrado.")
-    if target.email == settings.ADMIN_EMAIL:
+    if target.is_admin:
         raise HTTPException(status_code=400, detail="Conta admin não pode ser excluída.")
     if target.email == settings.MATRIX_ACCOUNT_EMAIL:
         raise HTTPException(status_code=400, detail="Conta matriz não pode ser excluída.")

@@ -32,8 +32,10 @@ class Settings(BaseSettings):
             )
         return self
     ALGORITHM: str = "HS256"
-    # Increased to 7 days (10080 minutes) to keep users logged in ("Remember Me")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
+    # Access token: short-lived (15 min). Session continuity handled by refresh token.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    # Refresh token: long-lived (7 days). Rotated on every use. httpOnly cookie.
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080
 
     LOG_LEVEL: str = "INFO"
 

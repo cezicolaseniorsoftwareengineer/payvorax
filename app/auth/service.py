@@ -31,6 +31,14 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     return encoded_jwt
 
 
+def create_refresh_token(data: Dict[str, Any]) -> str:
+    """Issues a long-lived refresh token (type=refresh). Never grants resource access directly."""
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire, "type": "refresh"})
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
 def get_user_balance(db: Session, user_id: str) -> float:
     """
     Returns the current balance from the user account.

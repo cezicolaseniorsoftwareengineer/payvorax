@@ -2,9 +2,10 @@
 Data models for PIX transactions.
 Supports idempotency, state tracking, and audit trails.
 """
-from sqlalchemy import Float, String, DateTime, Enum, UniqueConstraint, Numeric
+from sqlalchemy import String, DateTime, Enum, UniqueConstraint, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime, timezone
+from decimal import Decimal
 import enum
 from typing import Any, List, Optional
 from app.core.database import Base
@@ -56,7 +57,7 @@ class LedgerEntry(Base):
         Enum(LedgerEntryType, values_callable=get_enum_values),
         nullable=False,
     )
-    amount: Mapped[float] = mapped_column("valor", Numeric(15, 2, asdecimal=True), nullable=False)
+    amount: Mapped[Decimal] = mapped_column("valor", Numeric(15, 2, asdecimal=True), nullable=False)
     status: Mapped[LedgerEntryStatus] = mapped_column(
         "status",
         Enum(LedgerEntryStatus, values_callable=get_enum_values),
@@ -83,7 +84,7 @@ class PixTransaction(Base):
     __tablename__ = "transacoes_pix"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, index=True)  # UUID
-    value: Mapped[float] = mapped_column("valor", Numeric(15, 2, asdecimal=True), nullable=False)
+    value: Mapped[Decimal] = mapped_column("valor", Numeric(15, 2, asdecimal=True), nullable=False)
     pix_key: Mapped[str] = mapped_column("chave_pix", String(200), nullable=False, index=True)
     key_type: Mapped[str] = mapped_column("tipo_chave", String(20), nullable=False)  # CPF, EMAIL, PHONE, RANDOM
     type: Mapped[TransactionType] = mapped_column(
@@ -112,7 +113,7 @@ class PixTransaction(Base):
     correlation_id: Mapped[str] = mapped_column(String(100), index=True, nullable=True)
     scheduled_date: Mapped[datetime] = mapped_column("data_agendamento", DateTime, nullable=True)
     recipient_name: Mapped[str] = mapped_column("nome_destinatario", String(200), nullable=True)
-    fee_amount: Mapped[float] = mapped_column("taxa_valor", Numeric(15, 2, asdecimal=True), nullable=True)
+    fee_amount: Mapped[Decimal] = mapped_column("taxa_valor", Numeric(15, 2, asdecimal=True), nullable=True)
     copy_paste_code: Mapped[str] = mapped_column("copy_paste_code", String(2000), nullable=True)
     expires_at: Mapped[datetime] = mapped_column("link_expires_at", DateTime, nullable=True)
     # SHA-256 (hex, 64 chars) of the normalized EMV payload used for server-side deduplication.
