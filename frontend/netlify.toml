@@ -1,0 +1,13 @@
+[build]
+  # Use a Node-based extractor to avoid Python runtime installation issues in Netlify build image.
+  command = "node scripts/extract_frontend.js"
+  publish = "frontend/public"
+
+[context.production.environment]
+# FRONTEND_URL will be used by the backend (Render) to configure CORS.
+# Set this in Render as: https://your-site.netlify.app
+# FRONTEND_URL = "https://your-site.netlify.app"
+
+[context.deploy-preview]
+  command = "python scripts/extract_frontend.py"
+  publish = "frontend/public"
