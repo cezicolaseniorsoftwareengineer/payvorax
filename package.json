@@ -1,0 +1,28 @@
+{
+  "name": "biocodetechpay",
+  "version": "1.0.0",
+  "description": "Complete project demonstrating **3 real-world fintech challenges** integrated, developed with professional architecture and software engineering best practices.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "build:css": "npx tailwindcss -i ./app/static/css/input.css -o ./app/static/css/tailwind.min.css --minify",
+    "watch:css": "npx tailwindcss -i ./app/static/css/input.css -o ./app/static/css/tailwind.min.css --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cezicolaseniorsoftwareengineer/biocodetechpay.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/cezicolaseniorsoftwareengineer/biocodetechpay/issues"
+  },
+  "homepage": "https://github.com/cezicolaseniorsoftwareengineer/biocodetechpay#readme",
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
+  }
+}

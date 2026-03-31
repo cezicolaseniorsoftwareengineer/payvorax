@@ -5,9 +5,10 @@
  * Navigation fallback: redirects to /login when offline or on network error.
  */
 
-const CACHE_NAME = "biocodetechpay-v2";
+const CACHE_NAME = "biocodetechpay-v3";
 
 const STATIC_ASSETS = [
+  "/static/css/tailwind.min.css",
   "/static/img/logo.png",
   "/static/manifest.json",
   "/login",

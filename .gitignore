@@ -11,12 +11,16 @@ venv/
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Node
+node_modules/
+
 # IDE
 .vscode/
 .idea/
 
 *.json
 !package.json
+!package-lock.json
 !tasks.json
 !launch.json
 !app/static/manifest.json
