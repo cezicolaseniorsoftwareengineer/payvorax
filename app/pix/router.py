@@ -2103,6 +2103,22 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
             pix_tx = db.query(PixTransaction).filter(
                 PixTransaction.id == transfer_id
             ).with_for_update().first()
+
+            if not pix_tx:
+                # Fallback: SENT transactions store the Asaas transfer ID in
+                # correlation_id (set at dispatch time from payment_result["payment_id"]).
+                # The primary PixTransaction.id is always our internal UUID.
+                pix_tx = db.query(PixTransaction).filter(
+                    PixTransaction.correlation_id == transfer_id,
+                    PixTransaction.type == TransactionType.SENT,
+                    PixTransaction.status == PixStatus.PROCESSING,
+                ).with_for_update().first()
+                if pix_tx:
+                    logger.info(
+                        f"Webhook lookup: found tx={pix_tx.id} by correlation_id={transfer_id} "
+                        f"(primary id lookup missed — expected for internal-UUID transactions)"
+                    )
+
             if pix_tx:
                 from app.pix.service import settle_ledger_entries, reverse_ledger_entries
                 from app.core.fees import PLATFORM_PIX_OUTBOUND_NETWORK_FEE as _WH_NET_FEE
