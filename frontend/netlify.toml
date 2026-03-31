@@ -9,5 +9,6 @@
 # FRONTEND_URL = "https://your-site.netlify.app"
 
 [context.deploy-preview]
-  command = "python scripts/extract_frontend.py"
+  # Use Node extractor for deploy previews as well to avoid Python runtime installation.
+  command = "node scripts/extract_frontend.js"
   publish = "frontend/public"
