@@ -1,6 +1,4 @@
-{% extends "base.html" %}
-
-{% block content %}
+<!-- Static extracted from templates: Jinja tags removed -->
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
     <!-- Left Column -->
     <div class="space-y-6">
@@ -15,8 +13,7 @@
             </div>
             <p class="text-sm text-gray-500 mb-1">Saldo disponível</p>
             <h1 class="text-3xl font-bold text-gray-900">
-                <span class="sensitive-data">{{ "R$ {:,.2f}".format(balance).replace(",", "X").replace(".",
-                    ",").replace("X", ".") }}</span>
+                <span class="sensitive-data">R$ 0,00</span>
             </h1>
         </div>
 
@@ -108,7 +105,8 @@
                 </div>
             </div>
 
-            {% if is_admin %}
+            <!-- admin-only links removed in static build -->
+            <!-- {% if is_admin %} -->
             <a href="/admin"
                 class="mt-4 flex items-center gap-3 bg-gray-900 hover:bg-gray-800 p-3 rounded-lg border border-gray-700 transition-colors group">
                 <div class="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -121,8 +119,8 @@
                 <i data-lucide="chevron-right"
                     class="w-4 h-4 text-gray-500 group-hover:text-blue-400 transition-colors"></i>
             </a>
-            {% endif %}
+            <!-- {% endif %} -->
         </div>
     </div>
 </div>
-{% endblock %}
+<!-- end of static content -->
