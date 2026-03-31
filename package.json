@@ -8,7 +8,7 @@
     "test": "tests"
   },
   "scripts": {
-    "build": "node scripts/extract_frontend.js",
+    "build": "node scripts/extract_frontend.js && node scripts/strip_jinja_public.js",
     "build:css": "npx tailwindcss -i ./app/static/css/input.css -o ./app/static/css/tailwind.min.css --minify",
     "watch:css": "npx tailwindcss -i ./app/static/css/input.css -o ./app/static/css/tailwind.min.css --watch"
   },
