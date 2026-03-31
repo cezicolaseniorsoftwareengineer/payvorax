@@ -1,0 +1,8 @@
+[build]
+  # Source of truth for Netlify build. Overrides any UI-saved build command.
+  command = "npm run build"
+  publish = "frontend/public"
+
+[context.production.environment]
+# FRONTEND_URL can be set here or in Netlify UI; keep commented to avoid leaking.
+# FRONTEND_URL = "https://your-site.netlify.app"
