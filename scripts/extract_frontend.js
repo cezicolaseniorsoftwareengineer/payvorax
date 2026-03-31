@@ -80,3 +80,35 @@ function main() {
 }
 
 main();
+
+// Post-process copied HTML to remove server-side Jinja tags so static site doesn't
+// display raw template syntax when served from Netlify. This is a pragmatic
+// fallback: dynamic values will be empty and should be populated client-side
+// by calling the API (recommended future work).
+function postProcessHtml(dir) {
+  const walk = (d) => {
+    const entries = fs.readdirSync(d, { withFileTypes: true });
+    for (const entry of entries) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        walk(p);
+      } else if (entry.isFile() && p.endsWith('.html')) {
+        let content = fs.readFileSync(p, 'utf8');
+        // Remove Jinja control blocks like {% ... %}
+        content = content.replace(/\{%[\s\S]*?%\}/g, '');
+        // Remove Jinja variable expressions like {{ ... }}
+        content = content.replace(/\{\{[\s\S]*?\}\}/g, '');
+        // Write back cleaned file
+        fs.writeFileSync(p, content, 'utf8');
+      }
+    }
+  };
+  if (fs.existsSync(dir)) walk(dir);
+}
+
+try {
+  postProcessHtml(DEST);
+  console.log('Post-processing HTML: removed Jinja tags from static files.');
+} catch (err) {
+  console.warn('Post-processing step failed:', err.message);
+}
