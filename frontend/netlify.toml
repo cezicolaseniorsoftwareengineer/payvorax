@@ -1,6 +1,6 @@
 [build]
-  # Use a Node-based extractor to avoid Python runtime installation issues in Netlify build image.
-  command = "node scripts/extract_frontend.js"
+  # Use npm build script which runs the Node extractor. This ensures Netlify runs "npm install" then "npm run build".
+  command = "npm run build"
   publish = "frontend/public"
   [build.environment]
   PYTHON_VERSION = "3.11"
@@ -11,6 +11,6 @@
 # FRONTEND_URL = "https://your-site.netlify.app"
 
 [context.deploy-preview]
-  # Use Node extractor for deploy previews as well to avoid Python runtime installation.
-  command = "node scripts/extract_frontend.js"
+  # Use npm build script for deploy-preview as well to ensure consistent build steps.
+  command = "npm run build"
   publish = "frontend/public"
