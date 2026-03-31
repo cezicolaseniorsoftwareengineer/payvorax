@@ -91,14 +91,24 @@ _TRUSTED_PROXIES = ["127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=_TRUSTED_PROXIES)
 
 # CORS Configuration — restrict origins; wildcard with credentials is a critical misconfiguration.
+# Build allowed origins from environment; allow explicit FRONTEND_URL for Netlify deployments.
 _ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
     if origin.strip()
-] or [
-    "https://new-credit-fintech.onrender.com",
-    "https://biocodetechpay.onrender.com",
 ]
+
+# If a dedicated frontend URL is provided (e.g. Netlify site), include it explicitly.
+_FRONTEND_URL = os.environ.get("FRONTEND_URL")
+if _FRONTEND_URL:
+    _ALLOWED_ORIGINS.append(_FRONTEND_URL)
+
+# Default known origins when none provided via env.
+if not _ALLOWED_ORIGINS:
+    _ALLOWED_ORIGINS = [
+        "https://new-credit-fintech.onrender.com",
+        "https://biocodetechpay.onrender.com",
+    ]
 # Development fallback: allow localhost when DEBUG is set
 if settings.DEBUG:
     _ALLOWED_ORIGINS += ["http://localhost:8000", "http://127.0.0.1:8000"]
@@ -138,8 +148,8 @@ async def add_security_headers(request: Request, call_next: Callable[[Request], 
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://html2canvas.hertzen.com; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "font-src 'self' https://cdn.jsdelivr.net; "
         "img-src 'self' data: https:; "
         "connect-src 'self' https://openrouter.ai; "
         "frame-ancestors 'none'"

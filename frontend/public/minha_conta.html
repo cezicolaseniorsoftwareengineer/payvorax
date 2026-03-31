@@ -1,0 +1,931 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* ---- User Area custom styles ---- */
+    .ua-glass {
+        background: linear-gradient(135deg, rgba(17, 24, 39, 0.92) 0%, rgba(30, 41, 59, 0.88) 100%);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(59, 130, 246, 0.18);
+        border-radius: 16px;
+    }
+
+    .ua-card {
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        padding: 1.5rem;
+    }
+
+    .ua-badge-active {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: linear-gradient(90deg, #065f46, #047857);
+        color: #ecfdf5;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .05em;
+        border-radius: 999px;
+        padding: 3px 12px;
+        box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+    }
+
+    .ua-badge-inactive {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #f3f4f6;
+        color: #6b7280;
+        font-size: 11px;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 3px 12px;
+    }
+
+    .ua-score-ring {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .ua-score-ring svg {
+        transform: rotate(-90deg);
+    }
+
+    .ua-score-ring-label {
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .ua-plan-card {
+        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%);
+        border: 1px solid rgba(139, 92, 246, 0.35);
+        border-radius: 20px;
+        padding: 2rem;
+        color: white;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .ua-plan-card::before {
+        content: '';
+        position: absolute;
+        top: -60px;
+        right: -60px;
+        width: 200px;
+        height: 200px;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 70%);
+        pointer-events: none;
+    }
+
+    .ua-plan-card::after {
+        content: '';
+        position: absolute;
+        bottom: -40px;
+        left: -40px;
+        width: 160px;
+        height: 160px;
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, transparent 70%);
+        pointer-events: none;
+    }
+
+    .ua-chat-window {
+        height: 340px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 1rem;
+        background: #f8fafc;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        scroll-behavior: smooth;
+    }
+
+    .ua-bubble-user {
+        align-self: flex-end;
+        background: #1d4ed8;
+        color: white;
+        padding: 8px 14px;
+        border-radius: 16px 16px 4px 16px;
+        max-width: 80%;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .ua-bubble-ia {
+        align-self: flex-start;
+        background: white;
+        color: #1f2937;
+        padding: 8px 14px;
+        border-radius: 16px 16px 16px 4px;
+        max-width: 82%;
+        font-size: 14px;
+        line-height: 1.6;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e5e7eb;
+    }
+
+    .ua-bubble-ia p {
+        margin: 0 0 6px 0;
+    }
+
+    .ua-bubble-ia p:last-child {
+        margin-bottom: 0;
+    }
+
+    .ua-bubble-ia ul {
+        margin: 4px 0 4px 16px;
+    }
+
+    .ua-typing {
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+        padding: 8px 14px;
+        background: white;
+        border-radius: 16px 16px 16px 4px;
+        border: 1px solid #e5e7eb;
+        align-self: flex-start;
+    }
+
+    .ua-typing span {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #9ca3af;
+        animation: ua-bounce 1.2s infinite ease-in-out;
+    }
+
+    .ua-typing span:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .ua-typing span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+    @keyframes ua-bounce {
+
+        0%,
+        80%,
+        100% {
+            transform: translateY(0);
+        }
+
+        40% {
+            transform: translateY(-6px);
+        }
+    }
+
+    .ua-locked-overlay {
+        position: relative;
+    }
+
+    .ua-locked-overlay::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: rgba(248, 250, 252, 0.75);
+        backdrop-filter: blur(3px);
+        border-radius: 12px;
+        pointer-events: none;
+    }
+
+    .ua-field-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #6b7280;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        margin-bottom: 2px;
+    }
+
+    .ua-field-value {
+        font-size: 15px;
+        font-weight: 500;
+        color: #111827;
+    }
+
+    .ua-divider {
+        height: 1px;
+        background: #f1f5f9;
+        margin: 1rem 0;
+    }
+
+    .ua-tab-btn {
+        padding: 8px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: none;
+        background: transparent;
+        color: #6b7280;
+    }
+
+    .ua-tab-btn.active {
+        background: #1d4ed8;
+        color: white;
+    }
+
+    .ua-pulse-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #10b981;
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+        animation: ua-pulse-ring 1.8s infinite;
+        display: inline-block;
+    }
+
+    @keyframes ua-pulse-ring {
+        0% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+        }
+
+        70% {
+            box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+        }
+
+        100% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+        }
+    }
+
+    .ua-btn-primary {
+        background: linear-gradient(90deg, #1d4ed8, #3b82f6);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 11px 24px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        width: 100%;
+    }
+
+    .ua-btn-primary:hover {
+        filter: brightness(1.1);
+        transform: translateY(-1px);
+    }
+
+    .ua-btn-primary:active {
+        transform: translateY(0);
+    }
+
+    .ua-btn-outline {
+        background: transparent;
+        color: #1d4ed8;
+        border: 2px solid #1d4ed8;
+        border-radius: 10px;
+        padding: 9px 24px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        width: 100%;
+    }
+
+    .ua-btn-outline:hover {
+        background: #eff6ff;
+    }
+
+    .ua-metric {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 12px 14px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .ua-stat-chip {
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .04em;
+        border-radius: 6px;
+        padding: 2px 8px;
+    }
+
+    /* Modal */
+    .ua-modal-bg {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 9998;
+        display: none;
+        align-items: flex-end;
+        justify-content: center;
+    }
+
+    .ua-modal-bg.open {
+        display: flex;
+    }
+
+    .ua-modal {
+        background: white;
+        border-radius: 20px 20px 0 0;
+        padding: 1.5rem;
+        width: 100%;
+        max-width: 520px;
+        max-height: 85vh;
+        overflow-y: auto;
+        animation: ua-slide-up 0.28s ease;
+    }
+
+    @keyframes ua-slide-up {
+        from {
+            transform: translateY(60px);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    @media (min-width: 640px) {
+        .ua-modal-bg {
+            align-items: center;
+        }
+
+        .ua-modal {
+            border-radius: 20px;
+        }
+    }
+
+    /* ---- Responsive: mobile (< 640px) ---- */
+    @media (max-width: 639px) {
+        .ua-card {
+            padding: 1rem;
+            border-radius: 14px;
+        }
+
+        .ua-plan-card {
+            padding: 1.25rem;
+        }
+
+        .ua-plan-card::before {
+            width: 140px;
+            height: 140px;
+            top: -40px;
+            right: -40px;
+        }
+
+        .ua-chat-window {
+            height: 240px;
+        }
+
+        .ua-tab-btn {
+            font-size: 12px;
+            padding: 8px 6px;
+            letter-spacing: -0.01em;
+        }
+
+        .ua-btn-primary,
+        .ua-btn-outline {
+            font-size: 14px;
+            padding: 12px 16px;
+        }
+
+        .ua-modal {
+            padding: 1.25rem;
+        }
+
+        .ua-metric {
+            padding: 10px 12px;
+        }
+
+        .ua-field-label {
+            font-size: 10px;
+        }
+    }
+
+    /* ---- Responsive: tablet narrow (640px–767px) ---- */
+    @media (min-width: 640px) and (max-width: 767px) {
+        .ua-chat-window {
+            height: 280px;
+        }
+    }
+</style>
+
+<!-- Page header -->
+<div class="flex items-start justify-between gap-3 mb-5 flex-wrap">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Minha Conta</h1>
+        <p class="text-gray-500 text-sm">Perfil, saude financeira e Gerente I.A</p>
+    </div>
+    {% if is_subscribed %}
+    <span class="ua-badge-active">
+        <span class="ua-pulse-dot"></span>
+        Gerente Ativo
+    </span>
+    {% else %}
+    <span class="ua-badge-inactive">
+        <i data-lucide="lock" style="width:12px;height:12px;"></i>
+        Plano Inativo
+    </span>
+    {% endif %}
+</div>
+
+<div class="max-w-2xl mx-auto">
+
+    <!-- ---- MAIN COLUMN ---- -->
+    <div class="space-y-6">
+
+        <!-- Perfil card -->
+        <div class="ua-card">
+            <div class="flex items-center gap-3 mb-5">
+                <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="user" class="w-6 h-6 text-blue-700"></i>
+                </div>
+                <div>
+                    <h2 class="text-base font-bold text-gray-900">{{ user.name }}</h2>
+                    <p class="text-xs text-gray-400">
+                        Membro desde {{ user.created_at.strftime('%b %Y') }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Verification badges -->
+            <div class="flex gap-2 flex-wrap mb-4">
+                {% if user.email_verified %}
+                <span
+                    class="inline-flex items-center gap-1 bg-green-50 text-green-700 text-xs font-semibold px-2 py-1 rounded-lg">
+                    <i data-lucide="check-circle" style="width:12px;height:12px;"></i>
+                    E-mail verificado
+                </span>
+                {% else %}
+                <span
+                    class="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 text-xs font-semibold px-2 py-1 rounded-lg">
+                    <i data-lucide="alert-circle" style="width:12px;height:12px;"></i>
+                    E-mail pendente
+                </span>
+                {% endif %}
+                {% if user.document_verified %}
+                <span
+                    class="inline-flex items-center gap-1 bg-green-50 text-green-700 text-xs font-semibold px-2 py-1 rounded-lg">
+                    <i data-lucide="shield-check" style="width:12px;height:12px;"></i>
+                    Documento verificado
+                </span>
+                {% else %}
+                <span
+                    class="inline-flex items-center gap-1 bg-gray-100 text-gray-500 text-xs font-semibold px-2 py-1 rounded-lg">
+                    <i data-lucide="shield" style="width:12px;height:12px;"></i>
+                    Doc. pendente
+                </span>
+                {% endif %}
+            </div>
+
+            <div class="ua-divider"></div>
+
+            <!-- Fields -->
+            <div class="space-y-4">
+                <div>
+                    <div class="ua-field-label">CPF / CNPJ</div>
+                    <div class="ua-field-value sensitive-data">{{ user.cpf_cnpj }}</div>
+                </div>
+                <div>
+                    <div class="ua-field-label">E-mail</div>
+                    <div class="ua-field-value text-sm break-all">{{ user.email }}</div>
+                </div>
+                {% if user.phone %}
+                <div>
+                    <div class="ua-field-label">Telefone</div>
+                    <div class="ua-field-value">{{ user.phone }}</div>
+                </div>
+                {% endif %}
+                {% if user.address_street %}
+                <div>
+                    <div class="ua-field-label">Endereco</div>
+                    <div class="ua-field-value text-sm leading-relaxed">
+                        {{ user.address_street }}, {{ user.address_number }}
+                        {% if user.address_complement %} - {{ user.address_complement }}{% endif %}
+                        <br>{{ user.address_city }} - {{ user.address_state }}, {{ user.address_zip }}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Saude financeira card -->
+        <div class="ua-card">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-bold text-gray-900">Saude Financeira</h2>
+                <span id="health-label-chip" class="ua-stat-chip
+                    {% if health.health_color == 'green' %}!bg-green-50 !text-green-700
+                    {% elif health.health_color == 'blue' %}!bg-blue-50 !text-blue-700
+                    {% elif health.health_color == 'yellow' %}!bg-yellow-50 !text-yellow-700
+                    {% else %}!bg-red-50 !text-red-600{% endif %}">
+                    {{ health.health_label }}
+                </span>
+            </div>
+
+            <!-- Score ring + metrics: stacked on mobile, side-by-side on sm+ -->
+            <div class="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 mb-4">
+                <!-- Circular progress -->
+                <div class="ua-score-ring flex-shrink-0">
+                    <svg width="88" height="88" viewBox="0 0 88 88">
+                        <circle cx="44" cy="44" r="36" fill="none" stroke="#e5e7eb" stroke-width="8" />
+                        <circle cx="44" cy="44" r="36" fill="none"
+                            stroke="{% if health.health_color == 'green' %}#10b981{% elif health.health_color == 'blue' %}#3b82f6{% elif health.health_color == 'yellow' %}#f59e0b{% else %}#ef4444{% endif %}"
+                            stroke-width="8"
+                            stroke-dasharray="{{ (health.health_score / 100 * 226.2) | round(1) }} 226.2"
+                            stroke-linecap="round" />
+                    </svg>
+                    <div class="ua-score-ring-label">
+                        <span class="text-xl font-black text-gray-900">{{ health.health_score }}</span>
+                        <span class="text-xs text-gray-400 font-medium">/ 100</span>
+                    </div>
+                </div>
+                <!-- Quick metrics -->
+                <div class="grid grid-cols-2 gap-2 w-full sm:flex-1">
+                    <div class="ua-metric">
+                        <div class="ua-field-label">Entradas</div>
+                        <div class="text-sm font-bold text-green-600">
+                            R$ {{
+                            "{:,.2f}".format(health.total_received).replace(",","X").replace(".",",").replace("X",".")
+                            }}
+                        </div>
+                    </div>
+                    <div class="ua-metric">
+                        <div class="ua-field-label">Saidas</div>
+                        <div class="text-sm font-bold text-red-500">
+                            R$ {{ "{:,.2f}".format(health.total_sent +
+                            health.boleto_paid).replace(",","X").replace(".",",").replace("X",".") }}
+                        </div>
+                    </div>
+                    <div class="ua-metric">
+                        <div class="ua-field-label">Cartoes</div>
+                        <div class="text-sm font-bold text-gray-800">{{ health.card_count }}</div>
+                    </div>
+                    <div class="ua-metric">
+                        <div class="ua-field-label">Transacoes</div>
+                        <div class="text-sm font-bold text-gray-800">{{ health.total_transactions }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Balance highlight -->
+            <div class="bg-gray-50 rounded-xl p-4 flex items-center justify-between">
+                <div>
+                    <div class="ua-field-label">Saldo disponivel</div>
+                    <div class="text-xl font-black text-gray-900 sensitive-data">
+                        R$ {{ "{:,.2f}".format(health.balance).replace(",","X").replace(".",",").replace("X",".") }}
+                    </div>
+                </div>
+                <i data-lucide="wallet" class="w-8 h-8 text-blue-300"></i>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- ---- SUBSCRIPTION PLAN CARD ---- -->
+<div class="max-w-2xl mx-auto mt-6">
+    <div class="ua-plan-card">
+        <div class="flex items-start justify-between gap-4 mb-4 relative z-10">
+            <div class="flex-1 min-w-0">
+                <div class="text-xs font-bold tracking-widest text-purple-300 uppercase mb-1">Bio Tech Pay Intelligence
+                </div>
+                <h2 class="text-xl font-black text-white leading-tight">
+                    Gerente Financeiro<br>
+                    <span class="text-purple-300">24 horas por dia</span>
+                </h2>
+            </div>
+            <div class="text-right flex-shrink-0">
+                <div class="text-2xl font-black text-white">R$ 9,90</div>
+                <div class="text-xs text-purple-300 font-medium">por mes</div>
+            </div>
+        </div>
+
+        <ul class="space-y-2 mb-5 relative z-10">
+            <li class="flex items-center gap-2 text-sm text-gray-300">
+                <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+                Conselheiro bancario, administrativo e financeiro
+            </li>
+            <li class="flex items-center gap-2 text-sm text-gray-300">
+                <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+                Analise de investimentos e patrimonio
+            </li>
+            <li class="flex items-center gap-2 text-sm text-gray-300">
+                <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+                Estrategia personalizada de crescimento
+            </li>
+            <li class="flex items-center gap-2 text-sm text-gray-300">
+                <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+                Disponivel 24h, 7 dias por semana
+            </li>
+            <li class="flex items-center gap-2 text-sm text-gray-300">
+                <i data-lucide="check" style="width:14px;height:14px;color:#10b981;flex-shrink:0;"></i>
+                Renovacao automatica mensal
+            </li>
+        </ul>
+
+        {% if is_subscribed %}
+        <div class="relative z-10 space-y-3">
+            <div class="flex items-center gap-2 bg-green-900 bg-opacity-60 rounded-xl px-4 py-3">
+                <span class="ua-pulse-dot"></span>
+                <span class="text-sm text-green-300 font-semibold">
+                    Gerente ativo ate
+                    {% if subscription.expires_at %}
+                    {{ subscription.expires_at.strftime('%d/%m/%Y') }}
+                    {% endif %}
+                </span>
+            </div>
+            <div class="flex items-center justify-between gap-3 bg-white bg-opacity-10 rounded-xl px-4 py-3">
+                <div class="text-sm text-gray-300">
+                    <span class="font-semibold text-white">Pagamento:</span>
+                    {% if subscription.payment_method == 'SALDO' %}
+                    Saldo em conta
+                    {% elif subscription.payment_method == 'CARTAO' %}
+                    Cartao de credito
+                    {% else %}
+                    {{ subscription.payment_method or 'N/A' }}
+                    {% endif %}
+                </div>
+                <div class="text-sm">
+                    {% if subscription.auto_renew %}
+                    <span class="text-green-400 font-semibold">Renovacao ativa</span>
+                    {% else %}
+                    <span class="text-yellow-400 font-semibold">Cancela no vencimento</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% if subscription.auto_renew %}
+            <button onclick="handleCancelSubscription()"
+                class="relative z-10 w-full border border-red-400 border-opacity-40 text-red-300 font-semibold py-2.5 rounded-xl transition-all text-sm hover:bg-red-900 hover:bg-opacity-30">
+                Cancelar renovacao automatica
+            </button>
+            {% else %}
+            <button onclick="openSubscribeModal()"
+                class="relative z-10 w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition-all text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+                Renovar plano por R$ 9,90/mes
+            </button>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="relative z-10 space-y-3">
+            <button onclick="openSubscribeModal()"
+                class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl transition-all text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+                Ativar Gerente por R$ 9,90/mes
+            </button>
+            {% if not trial_used %}
+            <button onclick="handleActivateTrial()" id="btn-trial"
+                class="w-full border border-purple-400 border-opacity-40 text-purple-200 font-semibold py-2.5 rounded-xl transition-all text-sm hover:bg-purple-900 hover:bg-opacity-30">
+                Testar gratis por 24 horas
+            </button>
+            <p class="text-xs text-purple-300 text-opacity-60 text-center">Teste unico e intransferivel. Apos 24h,
+                somente assinatura paga.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ---- SUBSCRIBE MODAL ---- -->
+<div id="ua-modal-bg" class="ua-modal-bg" onclick="if(event.target===this)closeSubscribeModal()">
+    <div class="ua-modal">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-900">Ativar Gerente Bio Tech Pay Intelligence</h3>
+            <button onclick="closeSubscribeModal()" class="text-gray-400 hover:text-gray-600">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <div class="bg-purple-50 rounded-xl p-4 mb-4 flex items-center justify-between">
+            <div>
+                <div class="font-bold text-purple-900">Plano Mensal Recorrente</div>
+                <div class="text-sm text-purple-600">Renovacao automatica a cada 30 dias</div>
+            </div>
+            <div class="text-2xl font-black text-purple-700">R$ 9,90</div>
+        </div>
+
+        <div class="bg-gray-50 rounded-xl p-3 mb-5 text-xs text-gray-600 leading-relaxed">
+            <p class="font-semibold text-gray-800 mb-1">Como funciona a recorrencia:</p>
+            <p>O valor de R$ 9,90 sera cobrado automaticamente a cada 30 dias usando o metodo de pagamento selecionado.
+                Para pagamento via saldo, o valor sera debitado automaticamente na data de renovacao. Voce pode cancelar
+                a qualquer momento — o plano continua ativo ate o vencimento.</p>
+        </div>
+
+        <!-- Tab selector -->
+        <div class="flex gap-2 p-1 bg-gray-100 rounded-xl mb-4">
+            <button class="ua-tab-btn active flex-1" id="tab-saldo" onclick="switchTab('saldo')">Saldo em Conta</button>
+            <button class="ua-tab-btn flex-1" id="tab-cartao" onclick="switchTab('cartao')">Cartao de Credito</button>
+        </div>
+
+        <!-- Saldo tab -->
+        <div id="panel-saldo">
+            <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                <div class="text-sm text-gray-500 mb-1">Saldo disponivel</div>
+                <div class="text-xl font-black text-gray-900 sensitive-data">
+                    R$ {{ "{:,.2f}".format(health.balance).replace(",","X").replace(".",",").replace("X",".") }}
+                </div>
+                {% if health.balance >= 9.90 %}
+                <div class="text-xs text-green-600 font-medium mt-1 flex items-center gap-1">
+                    <i data-lucide="check-circle" style="width:12px;height:12px;"></i>
+                    Saldo suficiente para ativacao e renovacoes futuras
+                </div>
+                {% else %}
+                <div class="text-xs text-red-500 font-medium mt-1 flex items-center gap-1">
+                    <i data-lucide="alert-circle" style="width:12px;height:12px;"></i>
+                    Saldo insuficiente — adicione fundos via PIX
+                </div>
+                {% endif %}
+            </div>
+            <button onclick="handleSubscribeBalance()" id="btn-saldo" {% if health.balance < 9.90 %}disabled{% endif %}
+                class="ua-btn-primary disabled:opacity-40 disabled:cursor-not-allowed">
+                Assinar R$ 9,90/mes com saldo
+            </button>
+        </div>
+
+        <!-- Cartao tab -->
+        <div id="panel-cartao" class="hidden">
+            {% if cards %}
+            <div class="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                {% for card in cards %}
+                <label
+                    class="flex items-center gap-3 p-3 border border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 transition-colors has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                    <input type="radio" name="selected-card" value="{{ card.id }}"
+                        class="accent-blue-600 flex-shrink-0">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-semibold text-gray-900 text-sm">
+                            **** **** **** {{ card.card_number[-4:] if card.card_number|length >= 4 else '****' }}
+                        </div>
+                        <div class="text-xs text-gray-400">{{ card.card_holder_name }} &bull; {{ card.expiration_date }}
+                        </div>
+                    </div>
+                    <i data-lucide="credit-card" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
+                </label>
+                {% endfor %}
+            </div>
+            <button onclick="handleSubscribeCard()" class="ua-btn-primary">
+                Assinar R$ 9,90/mes com cartao
+            </button>
+            {% else %}
+            <div class="text-center py-8 text-gray-400">
+                <i data-lucide="credit-card" class="w-10 h-10 mx-auto mb-3 opacity-40"></i>
+                <p class="text-sm font-medium">Nenhum cartao cadastrado</p>
+                <a href="/ui/cards/create"
+                    class="mt-3 inline-block bg-blue-700 text-white text-sm font-bold px-5 py-2 rounded-xl hover:bg-blue-600 transition-colors">
+                    Cadastrar Cartao
+                </a>
+            </div>
+            {% endif %}
+        </div>
+
+        <p id="modal-error" class="text-red-500 text-xs mt-3 hidden"></p>
+    </div>
+</div>
+
+<script>
+    lucide.createIcons();
+
+    function openSubscribeModal() {
+        document.getElementById('ua-modal-bg').classList.add('open');
+        lucide.createIcons();
+    }
+
+    function closeSubscribeModal() {
+        document.getElementById('ua-modal-bg').classList.remove('open');
+        document.getElementById('modal-error').classList.add('hidden');
+    }
+
+    function switchTab(tab) {
+        var saldoBtn = document.getElementById('tab-saldo');
+        var cartaoBtn = document.getElementById('tab-cartao');
+        var saldoPanel = document.getElementById('panel-saldo');
+        var cartaoPanel = document.getElementById('panel-cartao');
+        if (tab === 'saldo') {
+            saldoBtn.classList.add('active');
+            cartaoBtn.classList.remove('active');
+            saldoPanel.classList.remove('hidden');
+            cartaoPanel.classList.add('hidden');
+        } else {
+            cartaoBtn.classList.add('active');
+            saldoBtn.classList.remove('active');
+            cartaoPanel.classList.remove('hidden');
+            saldoPanel.classList.add('hidden');
+        }
+    }
+
+    async function handleSubscribeBalance() {
+        var btn = document.getElementById('btn-saldo');
+        var errEl = document.getElementById('modal-error');
+        btn.disabled = true;
+        btn.textContent = 'Processando...';
+        errEl.classList.add('hidden');
+        try {
+            var resp = await fetch('/minha-conta/assinar/saldo', {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                errEl.textContent = data.detail || 'Erro ao processar pagamento.';
+                errEl.classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = 'Assinar R$ 9,90/mes com saldo';
+                return;
+            }
+            showToast('Plano ativado com sucesso! Renovacao automatica habilitada.', 'success');
+            setTimeout(function () { location.reload(); }, 1200);
+        } catch (e) {
+            errEl.textContent = 'Falha de conexao. Tente novamente.';
+            errEl.classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = 'Assinar R$ 9,90/mes com saldo';
+        }
+    }
+
+    async function handleSubscribeCard() {
+        var selected = document.querySelector('input[name="selected-card"]:checked');
+        var errEl = document.getElementById('modal-error');
+        if (!selected) {
+            errEl.textContent = 'Selecione um cartao.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+        errEl.classList.add('hidden');
+        try {
+            var resp = await fetch('/minha-conta/assinar/cartao', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ card_id: selected.value })
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                errEl.textContent = data.detail || 'Erro ao processar pagamento.';
+                errEl.classList.remove('hidden');
+                return;
+            }
+            showToast('Plano ativado com sucesso! Renovacao automatica habilitada.', 'success');
+            setTimeout(function () { location.reload(); }, 1200);
+        } catch (e) {
+            errEl.textContent = 'Falha de conexao. Tente novamente.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    async function handleCancelSubscription() {
+        if (!confirm('Tem certeza que deseja cancelar a renovacao automatica? Seu plano continua ativo ate o vencimento.')) return;
+        try {
+            var resp = await fetch('/minha-conta/cancelar', {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                showToast(data.detail || 'Erro ao cancelar.', 'error');
+                return;
+            }
+            showToast('Renovacao automatica cancelada.', 'success');
+            setTimeout(function () { location.reload(); }, 1200);
+        } catch (e) {
+            showToast('Falha de conexao. Tente novamente.', 'error');
+        }
+    }
+
+    async function handleActivateTrial() {
+        if (!confirm('Ativar teste gratuito de 24 horas do Gerente I.A?\n\nEste teste e unico — apos expirar, somente assinatura paga estara disponivel.')) return;
+        var btn = document.getElementById('btn-trial');
+        if (btn) { btn.disabled = true; btn.textContent = 'Ativando...'; }
+        try {
+            var resp = await fetch('/minha-conta/trial', {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                showToast(data.detail || 'Erro ao ativar teste.', 'error');
+                if (btn) { btn.disabled = false; btn.textContent = 'Testar gratis por 24 horas'; }
+                return;
+            }
+            showToast('Teste de 24h ativado com sucesso!', 'success');
+            setTimeout(function () { location.reload(); }, 1200);
+        } catch (e) {
+            showToast('Falha de conexao. Tente novamente.', 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Testar gratis por 24 horas'; }
+        }
+    }
+
+    function showToast(msg, type) {
+        var el = document.getElementById('pvx-toast');
+        if (!el) return;
+        el.textContent = msg;
+        el.className = 'pvx-toast show ' + (type || 'success');
+        setTimeout(function () { el.classList.remove('show'); }, 3000);
+    }
+</script>
+{% endblock %}

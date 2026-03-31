@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Link de Pagamento PIX - BioCodeTechPay</title>
+    <link rel="stylesheet" href="/static/css/tailwind.min.css">
+    <style>
+        body {
+            background: #0a0d11;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .accent-blue {
+            color: #3b82f6;
+        }
+
+        .accent-green {
+            color: #10b981;
+        }
+
+        .accent-red {
+            color: #ef4444;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            transition: background 0.2s ease, transform 0.1s ease;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        .btn-whatsapp {
+            background: #25d366;
+            transition: background 0.2s ease, transform 0.1s ease;
+        }
+
+        .btn-whatsapp:hover {
+            background: #1fba57;
+        }
+
+        .btn-whatsapp:active {
+            transform: scale(0.98);
+        }
+
+        .mono {
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        @keyframes pulse-ring {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        .animate-pulse-ring {
+            animation: pulse-ring 2s ease-in-out infinite;
+        }
+    </style>
+</head>
+
+<body class="flex items-start justify-center px-4 py-10">
+
+    <div class="w-full max-w-sm space-y-5">
+
+        <!-- Header: logo + brand -->
+        <div class="text-center">
+            <div class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-600 mb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 5v14M5 12h14" />
+                </svg>
+            </div>
+            <p class="text-xs font-bold tracking-widest uppercase text-blue-400 mb-0.5">BioCodeTechPay</p>
+            <h1 class="text-lg font-bold text-white">Cobran&ccedil;a PIX</h1>
+        </div>
+
+        {% if already_paid %}
+        <!-- Paid state -->
+        <div class="glass-card rounded-2xl p-6 text-center">
+            <div class="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-9 h-9 text-green-400" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                </svg>
+            </div>
+            <p class="text-base font-bold text-white mb-1">Cobran&ccedil;a paga</p>
+            <p class="text-sm text-gray-400">Este link de pagamento j&aacute; foi utilizado.</p>
+        </div>
+
+        {% else %}
+        <!-- Charge details card -->
+        <div class="glass-card rounded-2xl p-5 space-y-1">
+            <p class="text-xs text-gray-500 uppercase tracking-widest font-semibold">Valor a pagar</p>
+            <p class="text-3xl font-bold text-white">
+                R$ <span id="valor-display">{{ "%.2f"|format(charge.value) | replace('.', ',') }}</span>
+            </p>
+            {% if charge.description %}
+            <p class="text-sm text-gray-400 pt-1">{{ charge.description }}</p>
+            {% endif %}
+        </div>
+
+        <!-- QR Code card -->
+        <div class="glass-card rounded-2xl p-5 text-center space-y-4">
+            <div id="status-badge"
+                class="inline-flex items-center gap-2 text-xs font-semibold text-yellow-400 bg-yellow-400/10 px-3 py-1 rounded-full animate-pulse-ring">
+                <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block"></span>
+                Aguardando pagamento
+            </div>
+
+            <div class="bg-white rounded-xl inline-block p-3 shadow-lg">
+                <img id="qr-img" src="{{ qr_url }}" alt="QR Code PIX" class="w-56 h-56 sm:w-64 sm:h-64"
+                    onerror="this.parentElement.innerHTML='<p class=\'text-xs text-red-500 w-52 p-4\'>QR Code indisponivel. Use o codigo abaixo.</p>'">
+            </div>
+
+            <p class="text-xs text-gray-500">Abra o aplicativo do seu banco e escaneie o QR code, ou copie o
+                c&oacute;digo PIX abaixo.</p>
+        </div>
+
+        <!-- Copy-paste code card -->
+        <div class="glass-card rounded-2xl p-4 space-y-3">
+            <p class="text-xs text-gray-500 uppercase tracking-widest font-semibold">PIX Copia e Cola</p>
+            <div class="flex gap-2 items-stretch">
+                <input id="emv-code" type="text" readonly value="{{ copy_paste }}"
+                    class="mono flex-1 bg-black/30 border border-white/10 text-gray-300 text-xs rounded-lg px-3 py-2.5 outline-none focus:border-blue-500 truncate"
+                    onclick="this.select()">
+                <button id="btn-copy" onclick="copyCode()" class="btn-primary flex-shrink-0 px-3 rounded-lg text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                </button>
+            </div>
+            <p id="copy-feedback" class="text-xs text-green-400 hidden">C&oacute;digo copiado.</p>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="space-y-2.5">
+            <button onclick="copyCode()"
+                class="btn-primary w-full text-white font-semibold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                Copiar c&oacute;digo PIX
+            </button>
+
+            <button id="btn-whatsapp" onclick="shareWhatsapp()"
+                class="btn-whatsapp w-full text-white font-semibold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                </svg>
+                Enviar pelo WhatsApp
+            </button>
+        </div>
+
+        {% endif %}
+
+        <!-- Footer -->
+        <p class="text-center text-xs text-gray-600 pb-2">
+            BioCodeTechPay &mdash; Institui&ccedil;&atilde;o de Pagamento &mdash; CNPJ 61.425.124/0001-03
+        </p>
+
+    </div>
+
+    <script>
+        function copyCode() {
+            const code = document.getElementById('emv-code');
+            if (!code) return;
+            navigator.clipboard.writeText(code.value).then(() => {
+                const fb = document.getElementById('copy-feedback');
+                if (fb) {
+                    fb.classList.remove('hidden');
+                    setTimeout(() => fb.classList.add('hidden'), 3000);
+                }
+            }).catch(() => {
+                code.select();
+                document.execCommand('copy');
+            });
+        }
+
+        function shareWhatsapp() {
+            const url = encodeURIComponent(window.location.href);
+            const valor = document.getElementById('valor-display')
+                ? document.getElementById('valor-display').textContent
+                : '';
+            const msg = encodeURIComponent(
+                `Oi! Segue o link para me pagar R$ ${valor} via PIX pela BioCodeTechPay:\n${decodeURIComponent(url)}`
+            );
+            window.open(`https://wa.me/?text=${msg}`, '_blank', 'noopener,noreferrer');
+        }
+    </script>
+
+</body>
+
+</html>

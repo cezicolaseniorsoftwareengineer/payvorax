@@ -1,0 +1,483 @@
+﻿{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Extrato</h1>
+    <p class="text-gray-500">Histórico completo de suas transações.</p>
+</div>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <p class="text-sm text-gray-500 mb-1">Saldo Atual</p>
+        <h3 class="text-2xl font-bold text-gray-900" id="saldo-atual">R$ ...</h3>
+    </div>
+    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <p class="text-sm text-gray-500 mb-1">Total Entradas</p>
+        <h3 class="text-2xl font-bold text-green-600" id="total-entradas">R$ ...</h3>
+    </div>
+    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <p class="text-sm text-gray-500 mb-1">Total Saídas</p>
+        <h3 class="text-2xl font-bold text-red-600" id="total-saidas">R$ ...</h3>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="flex gap-2 mb-4 overflow-x-auto pb-2">
+    <button onclick="filterExtrato('todos')"
+        class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium whitespace-nowrap">Todos</button>
+    <button onclick="filterExtrato('CRIADO')"
+        class="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-gray-50">Pendentes</button>
+    <button onclick="filterExtrato('CONFIRMADO')"
+        class="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-gray-50">Confirmados</button>
+    <button onclick="filterExtrato('AGENDADO')"
+        class="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-gray-50">Agendados</button>
+</div>
+
+<!-- Transactions List (Desktop) -->
+<div class="hidden md:block bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+            <thead>
+                <tr class="bg-gray-50 border-b border-gray-100">
+                    <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Data</th>
+                    <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Descrição</th>
+                    <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Valor</th>
+                </tr>
+            </thead>
+            <tbody id="extrato-body" class="divide-y divide-gray-100">
+                <!-- Rows will be populated by JS -->
+                <tr>
+                    <td colspan="4" class="p-8 text-center text-gray-500">Carregando transações...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Transactions List (Mobile) -->
+<div id="extrato-mobile" class="md:hidden space-y-3">
+    <!-- Cards will be populated by JS -->
+    <div class="text-center text-gray-500 py-8">Carregando transações...</div>
+</div>
+
+<!-- Receipt Modal -->
+<div id="receipt-modal" class="fixed inset-0 z-[100] hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog"
+    aria-modal="true">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onclick="closeReceipt()"></div>
+
+    <!-- Scrollable Container -->
+    <div class="flex min-h-full items-center justify-center p-4 text-center">
+        <!-- Modal Panel -->
+        <div
+            class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-xl transition-all w-full max-w-md flex flex-col my-8 mx-auto">
+            <!-- Receipt Content (To be captured) -->
+            <div id="receipt-content" class="bg-white p-8 rounded-t-2xl relative overflow-hidden">
+                <!-- Decorative Background -->
+                <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-700 to-blue-400"></div>
+                <div class="absolute -top-24 -right-24 w-48 h-48 bg-blue-50 rounded-full blur-3xl opacity-50"></div>
+
+                <!-- Header -->
+                <div class="text-center border-b border-gray-100 pb-6 mb-6 relative z-10">
+                    <div
+                        class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-gray-100">
+                        <img src="/static/img/logo.png?v=logo3" alt="BioCodeTechPay" class="w-10 h-10 object-contain">
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900">Comprovante</h3>
+                    <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest font-medium">Bio Tech Pay</p>
+                </div>
+
+                <!-- Value -->
+                <div class="text-center mb-8 relative z-10">
+                    <p class="text-xs text-gray-500 mb-2 uppercase tracking-wide">Valor da Transação</p>
+                    <h2 class="text-4xl font-bold text-gray-900 tracking-tight" id="receipt-value">R$ 0,00</h2>
+                    <div id="receipt-status" class="mt-4 inline-flex shadow-sm"></div>
+                </div>
+
+                <!-- Details -->
+                <div class="space-y-5 text-sm relative z-10">
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-gray-500">Data</span>
+                        <span class="font-semibold text-gray-900" id="receipt-date">--/--/----</span>
+                    </div>
+
+                    <div class="py-3 border-t border-gray-50 border-dashed">
+                        <div class="flex justify-between mb-1">
+                            <span class="text-gray-500">Origem</span>
+                            <span class="font-bold text-gray-900 text-right" id="receipt-sender-name">Nome</span>
+                        </div>
+                        <p class="text-xs text-gray-400 text-right font-mono" id="receipt-sender-doc">***</p>
+                    </div>
+
+                    <div class="py-3 border-t border-gray-50 border-dashed">
+                        <div class="flex justify-between mb-1">
+                            <span class="text-gray-500">Destino</span>
+                            <span class="font-bold text-gray-900 text-right" id="receipt-receiver-name">Nome</span>
+                        </div>
+                        <p class="text-xs text-gray-400 text-right font-mono" id="receipt-receiver-doc">***</p>
+                    </div>
+
+                    <div class="flex justify-between py-3 border-t border-gray-50 border-dashed">
+                        <span class="text-gray-500">Descrição</span>
+                        <span class="font-medium text-gray-900 text-right max-w-[60%] truncate"
+                            id="receipt-desc">-</span>
+                    </div>
+
+                    <div class="flex justify-between py-3 border-t border-gray-50 border-dashed">
+                        <span class="text-gray-500">Instituição</span>
+                        <span class="font-medium text-gray-900 text-right">Bio Tech Pay</span>
+                    </div>
+
+                    <div class="pt-6 mt-2 border-t border-gray-100">
+                        <p class="text-[10px] text-gray-400 mb-1 uppercase tracking-wider text-center">ID da
+                            Autenticação
+                        </p>
+                        <p class="font-mono text-[10px] text-gray-400 break-all text-center leading-relaxed"
+                            id="receipt-id">UUID</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions Footer -->
+            <div class="bg-gray-50 p-4 rounded-b-2xl border-t border-gray-100">
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <button onclick="downloadReceipt()"
+                        class="flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95 text-sm">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        Salvar Imagem
+                    </button>
+                    <button onclick="shareWhatsApp()"
+                        class="flex items-center justify-center gap-2 bg-[#25D366] text-white py-3 rounded-xl font-semibold hover:bg-[#128C7E] transition-all shadow-sm active:scale-95 text-sm">
+                        <i data-lucide="message-circle" class="w-4 h-4"></i>
+                        WhatsApp
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="shareEmail()"
+                        class="flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95 text-sm">
+                        <i data-lucide="mail" class="w-4 h-4"></i>
+                        Email
+                    </button>
+                    <button onclick="closeReceipt()"
+                        class="flex items-center justify-center gap-2 bg-gray-900 text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition-all shadow-sm active:scale-95 text-sm">
+                        Fechar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+<script>
+    let allTransactions = [];
+
+    function downloadReceipt() {
+        const element = document.getElementById('receipt-content');
+        // Use html2canvas to capture the element
+        html2canvas(element, {
+            scale: 2, // Higher resolution
+            backgroundColor: '#ffffff',
+            logging: false,
+            useCORS: true // If we have external images like logo
+        }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = `comprovante-BioCodeTechPay-${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }).catch(err => {
+            console.error('Erro ao gerar imagem:', err);
+            alert('Não foi possível gerar a imagem do comprovante.');
+        });
+    }
+
+    function shareWhatsApp() {
+        const value = document.getElementById('receipt-value').innerText;
+        const date = document.getElementById('receipt-date').innerText;
+        const receiver = document.getElementById('receipt-receiver-name').innerText;
+        const id = document.getElementById('receipt-id').innerText;
+
+        const text = `*Comprovante BioCodeTechPay*\n\nValor: ${value}\nData: ${date}\nPara: ${receiver}\nID: ${id}\n\nVerifique seu extrato para mais detalhes.`;
+
+        // Check if mobile to use api.whatsapp.com or web.whatsapp.com logic, but wa.me is universal
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    }
+
+    function shareEmail() {
+        const value = document.getElementById('receipt-value').innerText;
+        const date = document.getElementById('receipt-date').innerText;
+        const receiver = document.getElementById('receipt-receiver-name').innerText;
+        const id = document.getElementById('receipt-id').innerText;
+
+        const subject = "Comprovante de Transação - BioCodeTechPay";
+        const body = `Comprovante de Transação\n\nValor: ${value}\nData: ${date}\nPara: ${receiver}\nID: ${id}\n\nEste é um comprovante automático gerado pelo BioCodeTechPay.`;
+
+        window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+    }
+
+    async function loadExtrato() {
+        try {
+            const response = await fetch('/pix/extrato?limit=100');
+            const data = await response.json();
+
+            // Update Summary
+            document.getElementById('saldo-atual').innerText = formatCurrency(data.balance);
+
+            // Calculate totals locally for simplicity (or backend could provide)
+            let entradas = 0;
+            let saidas = 0;
+
+            allTransactions = data.transactions;
+
+            allTransactions.forEach(t => {
+                if (t.type === 'RECEBIDO' && t.status === 'CONFIRMADO') entradas += t.value;
+                if (t.type === 'ENVIADO' && t.status === 'CONFIRMADO') saidas += t.value;
+            });
+
+            document.getElementById('total-entradas').innerText = formatCurrency(entradas);
+            document.getElementById('total-saidas').innerText = formatCurrency(saidas);
+
+            renderTable(allTransactions);
+
+        } catch (error) {
+            console.error('Erro ao carregar extrato:', error);
+            document.getElementById('extrato-body').innerHTML = `
+                <tr><td colspan="4" class="p-8 text-center text-red-500">Erro ao carregar dados.</td></tr>
+            `;
+        }
+    }
+
+    function renderTable(transactions) {
+        const tbody = document.getElementById('extrato-body');
+        const mobileContainer = document.getElementById('extrato-mobile');
+
+        tbody.innerHTML = '';
+        mobileContainer.innerHTML = '';
+
+        if (transactions.length === 0) {
+            const emptyMsg = `<div class="p-8 text-center text-gray-500">Nenhuma transação encontrada.</div>`;
+            tbody.innerHTML = `<tr><td colspan="4">${emptyMsg}</td></tr>`;
+            mobileContainer.innerHTML = emptyMsg;
+            return;
+        }
+
+        transactions.forEach(t => {
+            // 1. Determine Counterparty Name (The "Title")
+            let counterpartyName = 'Desconhecido';
+            if (t.type === 'ENVIADO') {
+                counterpartyName = t.receiver_name || 'Destinatário Desconhecido';
+            } else {
+                counterpartyName = t.sender_name || 'Remetente Desconhecido';
+            }
+
+            // 2. Determine Transaction Type (The "Type")
+            let transactionType = 'Transferência Pix';
+            if (t.description && t.description.toLowerCase().includes('boleto')) {
+                transactionType = 'Pagamento de Boleto';
+            } else if (t.description && t.description.toLowerCase().includes('depósito')) {
+                transactionType = 'Depósito';
+            } else if (t.type === 'RECEBIDO' && t.pix_key === 'SIMULACAO_QR_CODE') {
+                transactionType = 'Depósito via QR Code';
+            }
+
+            // 3. Format Time (Brasília Time)
+            let timeDisplay = '';
+            let fullDateDisplay = '';
+
+            if (t.formatted_time) {
+                // Backend sends "DD/MM/YYYY às HH:mm:ss"
+                const parts = t.formatted_time.split(' às ');
+                if (parts.length === 2) {
+                    const timeShort = parts[1].substring(0, 5); // HH:mm
+                    const dateShort = parts[0].substring(0, 5); // DD/MM
+                    timeDisplay = `${timeShort}`;
+                    fullDateDisplay = `${parts[0]} ${timeShort}`;
+                } else {
+                    timeDisplay = t.formatted_time;
+                    fullDateDisplay = t.formatted_time;
+                }
+            } else {
+                const d = new Date(t.created_at || t.created_at);
+                timeDisplay = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                fullDateDisplay = d.toLocaleDateString('pt-BR') + ' ' + timeDisplay;
+            }
+
+            // Nubank Style Subtitle: "HH:mm - Tipo"
+            const subtitleText = `${timeDisplay} - ${transactionType}`;
+
+            const isNegative = t.type === 'ENVIADO';
+            const colorClass = isNegative ? 'text-gray-900' : 'text-green-600'; // Nubank uses black for sent, green for received usually, or just black/gray. Let's stick to user request or standard. User asked for "ícone de enviado".
+            // Actually Nubank uses black for value usually, but let's keep green/red for clarity or adapt.
+            // User didn't specify value color, but "ícone de enviado".
+
+            const sign = isNegative ? '-' : ''; // Nubank often doesn't show + for incoming, just value.
+
+            // Icons
+            const icon = isNegative ? 'arrow-up-right' : 'arrow-down-left';
+            const iconBg = isNegative ? 'bg-gray-100 text-gray-900' : 'bg-green-100 text-green-700'; // Nubank style is subtle
+
+            let statusBadge = '';
+            let actions = '';
+
+            if (t.status === 'CONFIRMADO') {
+                // Nubank doesn't show "Confirmado" badge in the list usually, just the item.
+                // But we'll keep a small indicator or just hide it for confirmed to be cleaner.
+                // Let's keep it minimal.
+                statusBadge = '';
+            }
+            else if (t.status === 'AGENDADO') {
+                statusBadge = '<span class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs font-medium">Agendado</span>';
+                actions = `
+                    <button onclick="cancelarAgendamento('${t.id}')" class="p-1 text-red-500 hover:bg-red-50 rounded transition-colors" title="Cancelar">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                `;
+            }
+            else if (t.status === 'FALHOU') statusBadge = '<span class="px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs font-medium">Falha</span>';
+            else if (t.status === 'CANCELADO') statusBadge = '<span class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-medium line-through">Cancelado</span>';
+            else statusBadge = `<span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">${t.status}</span>`;
+
+            // Add Receipt Button (Subtle)
+            const receiptBtn = `
+                <button onclick="openReceipt('${t.id}')" class="p-1 text-gray-400 hover:text-blue-700 transition-colors" title="Ver Comprovante">
+                    <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                </button>
+            `;
+            // In Nubank list, clicking the item usually opens details. We'll use the button for now.
+
+            // Desktop Row
+            const row = `
+                <tr class="hover:bg-gray-50 transition-colors group cursor-pointer" onclick="openReceipt('${t.id}')">
+                    <td class="p-4 text-sm text-gray-500">
+                        ${fullDateDisplay}
+                    </td>
+                    <td class="p-4">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 rounded-full ${iconBg}">
+                                <i data-lucide="${icon}" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-bold text-gray-900">${counterpartyName}</p>
+                                <p class="text-xs text-gray-500">${transactionType}</p>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="p-4">
+                        ${statusBadge}
+                    </td>
+                    <td class="p-4 text-sm font-bold text-right ${t.type === 'ENVIADO' ? 'text-gray-900' : 'text-green-600'}">
+                        ${sign} ${formatCurrency(t.value)}
+                    </td>
+                </tr>
+            `;
+            tbody.innerHTML += row;
+
+            // Mobile Card (Nubank Style)
+            const card = `
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-start cursor-pointer hover:bg-gray-50 transition-colors" onclick="openReceipt('${t.id}')">
+                    <div class="flex items-start gap-4">
+                        <div class="p-3 rounded-full ${iconBg} mt-1">
+                            <i data-lucide="${icon}" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-base font-bold text-gray-900 leading-tight mb-1">
+                                ${counterpartyName}
+                            </h4>
+                            <p class="text-sm text-gray-500 font-medium">
+                                ${subtitleText}
+                            </p>
+                            ${statusBadge ? `<div class="mt-1">${statusBadge}</div>` : ''}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-base font-bold ${t.type === 'ENVIADO' ? 'text-gray-900' : 'text-green-600'}">
+                            ${sign} ${formatCurrency(t.value)}
+                        </p>
+                        ${actions ? `<div class="mt-2 flex justify-end" onclick="event.stopPropagation()">${actions}</div>` : ''}
+                    </div>
+                </div>
+            `;
+            mobileContainer.innerHTML += card;
+        });        // Re-initialize icons for new elements
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    }
+
+    async function cancelarAgendamento(id) {
+        if (!confirm('Tem certeza que deseja cancelar este agendamento?')) return;
+
+        try {
+            const response = await fetch(`/pix/transacoes/${id}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                alert('Agendamento cancelado com sucesso!');
+                loadExtrato(); // Reload list
+            } else {
+                const err = await response.json();
+                alert('Erro ao cancelar: ' + (err.detail || 'Erro desconhecido'));
+            }
+        } catch (error) {
+            alert('Erro de conexão ao tentar cancelar.');
+        }
+    }
+
+    function formatCurrency(value) {
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+    }
+
+    function filterExtrato(status) {
+        if (status === 'todos') {
+            renderTable(allTransactions);
+        } else {
+            const filtered = allTransactions.filter(t => t.status === status);
+            renderTable(filtered);
+        }
+    }
+
+    function openReceipt(id) {
+        const t = allTransactions.find(tx => tx.id === id);
+        if (!t) return;
+
+        document.getElementById('receipt-value').innerText = formatCurrency(t.value);
+        document.getElementById('receipt-date').innerText = t.formatted_time || new Date(t.created_at).toLocaleString('pt-BR');
+        document.getElementById('receipt-desc').innerText = t.description || '-';
+        document.getElementById('receipt-id').innerText = t.id;
+
+        // Sender
+        document.getElementById('receipt-sender-name').innerText = t.sender_name || 'Desconhecido';
+        document.getElementById('receipt-sender-doc').innerText = t.sender_doc || '***';
+
+        // Receiver
+        document.getElementById('receipt-receiver-name').innerText = t.receiver_name || 'Desconhecido';
+        document.getElementById('receipt-receiver-doc').innerText = t.receiver_doc || '***';
+
+        // Status Badge in Modal
+        const statusEl = document.getElementById('receipt-status');
+        if (t.status === 'CONFIRMADO') statusEl.innerHTML = '<span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">Confirmado</span>';
+        else if (t.status === 'AGENDADO') statusEl.innerHTML = '<span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">Agendado</span>';
+        else statusEl.innerHTML = `<span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">${t.status}</span>`;
+
+        // Show Modal
+        const modal = document.getElementById('receipt-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function closeReceipt() {
+        const modal = document.getElementById('receipt-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    // Load on start
+    loadExtrato();
+</script>
+{% endblock %}

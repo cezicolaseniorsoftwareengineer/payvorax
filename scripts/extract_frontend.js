@@ -3,14 +3,14 @@
  * Copies app/static to frontend/public/static and copies app/templates/*.html
  * Places sw.js at frontend/public/sw.js
  */
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
-const ROOT = path.resolve(__dirname, '..');
-const APP_DIR = path.join(ROOT, 'app');
-const STATIC_SRC = path.join(APP_DIR, 'static');
-const TEMPLATES_SRC = path.join(APP_DIR, 'templates');
-const DEST = path.join(ROOT, 'frontend', 'public');
+const ROOT = path.resolve(__dirname, "..");
+const APP_DIR = path.join(ROOT, "app");
+const STATIC_SRC = path.join(APP_DIR, "static");
+const TEMPLATES_SRC = path.join(APP_DIR, "templates");
+const DEST = path.join(ROOT, "frontend", "public");
 
 function rmdirRecursive(dir) {
   if (fs.existsSync(dir)) {
@@ -40,15 +40,15 @@ function main() {
 
   // Copy static
   if (fs.existsSync(STATIC_SRC)) {
-    console.log('Copying static assets...');
-    copyRecursive(STATIC_SRC, path.join(DEST, 'static'));
+    console.log("Copying static assets...");
+    copyRecursive(STATIC_SRC, path.join(DEST, "static"));
   } else {
-    console.log('No static assets found to copy.');
+    console.log("No static assets found to copy.");
   }
 
   // Copy templates
   if (fs.existsSync(TEMPLATES_SRC)) {
-    console.log('Copying templates (as static placeholders)...');
+    console.log("Copying templates (as static placeholders)...");
     const walk = (dir) => {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
@@ -58,7 +58,7 @@ function main() {
         if (entry.isDirectory()) {
           fs.mkdirSync(outPath, { recursive: true });
           walk(srcPath);
-        } else if (entry.isFile() && srcPath.endsWith('.html')) {
+        } else if (entry.isFile() && srcPath.endsWith(".html")) {
           fs.mkdirSync(path.dirname(outPath), { recursive: true });
           fs.copyFileSync(srcPath, outPath);
         }
@@ -68,13 +68,15 @@ function main() {
   }
 
   // Ensure service worker at root
-  const swSrc = path.join(STATIC_SRC, 'sw.js');
+  const swSrc = path.join(STATIC_SRC, "sw.js");
   if (fs.existsSync(swSrc)) {
-    console.log('Copying service worker to root...');
-    fs.copyFileSync(swSrc, path.join(DEST, 'sw.js'));
+    console.log("Copying service worker to root...");
+    fs.copyFileSync(swSrc, path.join(DEST, "sw.js"));
   }
 
-  console.log('Frontend extraction complete. Publish the contents of frontend/public on Netlify.');
+  console.log(
+    "Frontend extraction complete. Publish the contents of frontend/public on Netlify.",
+  );
 }
 
 main();

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>BioCodeTechPay — Frontend (Static)</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="stylesheet" href="/static/css/tailwind.min.css">
+</head>
+
+<body>
+    <main class="p-6">
+        <h1>BioCodeTechPay — Frontend separado</h1>
+        <p>Este build estático contém os assets atuais. A aplicação frontend deverá consumir a API no domínio
+            configurado.</p>
+        <p>API info: <a id="api-info" href="#">carregar</a></p>
+        <pre id="api-output"></pre>
+    </main>
+
+    <script src="/config.js"></script>
+    <script>
+        // The frontend is static on Netlify and does not receive runtime secrets.
+        // Configure `API_BASE` in `frontend/config.js` before deploying (example: https://biocodetechpay.onrender.com).
+        const API_BASE = (typeof window.API_BASE === 'string' && window.API_BASE) || 'https://biocodetechpay.onrender.com';
+
+        async function loadApiInfo() {
+            try {
+                const resp = await fetch(new URL('/api-info', API_BASE).toString(), { mode: 'cors' });
+                const data = await resp.json();
+                document.getElementById('api-output').textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                document.getElementById('api-output').textContent = 'Não foi possível acessar a API em ' + API_BASE + '. Verifique se o backend está ativo e se CORS permite o domínio.';
+            }
+        }
+
+        document.getElementById('api-info').addEventListener('click', (e) => { e.preventDefault(); loadApiInfo(); });
+    </script>
+</body>
+
+</html>

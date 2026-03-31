@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Left Column -->
+    <div class="space-y-6">
+        <!-- Account Balance Card -->
+        <div class="bg-white rounded-xl p-6 shadow-sm">
+            <div class="flex justify-between items-start mb-4">
+                <h2 class="text-lg font-semibold text-gray-800">Conta</h2>
+                <a href="/ui/extrato" title="Ver Extrato">
+                    <i data-lucide="chevron-right"
+                        class="w-5 h-5 text-gray-400 hover:text-blue-700 cursor-pointer transition-colors"></i>
+                </a>
+            </div>
+            <p class="text-sm text-gray-500 mb-1">Saldo disponível</p>
+            <h1 class="text-3xl font-bold text-gray-900">
+                <span class="sensitive-data">{{ "R$ {:,.2f}".format(balance).replace(",", "X").replace(".",
+                    ",").replace("X", ".") }}</span>
+            </h1>
+        </div>
+
+        <!-- Quick Actions Carousel (Desktop: Grid) -->
+        <div class="bg-white rounded-xl p-6 shadow-sm md:hidden">
+            <div class="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
+                <a href="/ui/pix" class="flex flex-col items-center gap-2 min-w-[80px]">
+                    <div class="bg-gray-100 p-4 rounded-full hover:bg-gray-200 transition-colors">
+                        <i data-lucide="zap" class="w-6 h-6 text-gray-800"></i>
+                    </div>
+                    <span class="text-sm font-medium text-gray-700">Área Pix</span>
+                </a>
+                <a href="/ui/boleto" class="flex flex-col items-center gap-2 min-w-[80px]">
+                    <div class="bg-gray-100 p-4 rounded-full hover:bg-gray-200 transition-colors">
+                        <i data-lucide="barcode" class="w-6 h-6 text-gray-800"></i>
+                    </div>
+                    <span class="text-sm font-medium text-gray-700">Pagar</span>
+                </a>
+                <a href="/ui/pix" class="flex flex-col items-center gap-2 min-w-[80px]">
+                    <div class="bg-gray-100 p-4 rounded-full hover:bg-gray-200 transition-colors">
+                        <i data-lucide="arrow-up" class="w-6 h-6 text-gray-800"></i>
+                    </div>
+                    <span class="text-sm font-medium text-gray-700">Transferir</span>
+                </a>
+                <div onclick="alert('Iremos implementar essa funcionalidade em breve')"
+                    class="flex flex-col items-center gap-2 min-w-[80px] cursor-pointer">
+                    <div class="bg-gray-100 p-4 rounded-full hover:bg-gray-200 transition-colors">
+                        <i data-lucide="smartphone" class="w-6 h-6 text-gray-800"></i>
+                    </div>
+                    <span class="text-sm font-medium text-gray-700">Recarga</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions Grid (Desktop) -->
+        <div class="hidden md:grid grid-cols-4 gap-4 bg-white rounded-xl p-6 shadow-sm">
+            <a href="/ui/pix"
+                class="flex flex-col items-center gap-2 hover:bg-gray-50 p-2 rounded-lg transition-colors">
+                <div class="bg-gray-100 p-3 rounded-full">
+                    <i data-lucide="zap" class="w-6 h-6 text-gray-800"></i>
+                </div>
+                <span class="text-sm font-medium text-gray-700">Pix</span>
+            </a>
+            <a href="/ui/boleto"
+                class="flex flex-col items-center gap-2 hover:bg-gray-50 p-2 rounded-lg transition-colors">
+                <div class="bg-gray-100 p-3 rounded-full">
+                    <i data-lucide="barcode" class="w-6 h-6 text-gray-800"></i>
+                </div>
+                <span class="text-sm font-medium text-gray-700">Pagar</span>
+            </a>
+            <a href="/ui/pix"
+                class="flex flex-col items-center gap-2 hover:bg-gray-50 p-2 rounded-lg transition-colors cursor-pointer">
+                <div class="bg-gray-100 p-3 rounded-full">
+                    <i data-lucide="arrow-up" class="w-6 h-6 text-gray-800"></i>
+                </div>
+                <span class="text-sm font-medium text-gray-700">Transferir</span>
+            </a>
+            <div onclick="alert('Iremos implementar essa funcionalidade em breve')"
+                class="flex flex-col items-center gap-2 hover:bg-gray-50 p-2 rounded-lg transition-colors cursor-pointer">
+                <div class="bg-gray-100 p-3 rounded-full">
+                    <i data-lucide="smartphone" class="w-6 h-6 text-gray-800"></i>
+                </div>
+                <span class="text-sm font-medium text-gray-700">Recarga</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="space-y-6">
+        <!-- Credit Card Card (Nubank Style) -->
+        <a href="/ui/cards" class="block bg-white rounded-xl p-6 shadow-sm hover:bg-gray-50 transition-colors group">
+            <div class="flex justify-between items-center mb-4">
+                <i data-lucide="credit-card" class="w-6 h-6 text-gray-700"></i>
+                <i data-lucide="chevron-right"
+                    class="w-5 h-5 text-gray-400 group-hover:text-blue-700 transition-colors"></i>
+            </div>
+            <h2 class="text-lg font-semibold text-gray-800 mb-1">Meus cartões</h2>
+            <p class="text-sm text-gray-500">Gerencie seus cartões virtuais e físicos</p>
+        </a>
+
+        <!-- Anti-Fraud Status -->
+        <div class="bg-white rounded-xl p-6 shadow-sm">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Seguranca</h2>
+            <div class="flex items-center gap-3 bg-green-50 p-3 rounded-lg border border-green-100">
+                <i data-lucide="shield-check" class="w-6 h-6 text-green-600"></i>
+                <div>
+                    <p class="text-sm font-semibold text-green-800">Motor Antifraude Ativo</p>
+                    <p class="text-xs text-green-600">Suas transacoes estao protegidas em tempo real.</p>
+                </div>
+            </div>
+
+            {% if is_admin %}
+            <a href="/admin"
+                class="mt-4 flex items-center gap-3 bg-gray-900 hover:bg-gray-800 p-3 rounded-lg border border-gray-700 transition-colors group">
+                <div class="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="shield" class="w-4 h-4 text-white"></i>
+                </div>
+                <div class="flex-1">
+                    <p class="text-sm font-semibold text-white">Painel Administrativo</p>
+                    <p class="text-xs text-gray-400">Gerenciar correntistas e verificacoes KYC</p>
+                </div>
+                <i data-lucide="chevron-right"
+                    class="w-4 h-4 text-gray-500 group-hover:text-blue-400 transition-colors"></i>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
