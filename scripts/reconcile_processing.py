@@ -1,11 +1,11 @@
-"""
+﻿"""
 Reconcilia transações PROCESSING contra o status real no Asaas.
 
 Para cada PixTransaction com status=PROCESSING e correlation_id preenchido:
   - Consulta GET /transfers/{correlation_id} na API Asaas
-  - Se DONE     → debita saldo do usuário, marca CONFIRMED
-  - Se FAILED   → marca FAILED (saldo já não foi debitado — deferred debit)
-  - Se PENDING  → deixa PROCESSING (aguarda webhook)
+  - Se DONE     -> debita saldo do usuário, marca CONFIRMED
+  - Se FAILED   -> marca FAILED (saldo já não foi debitado — deferred debit)
+  - Se PENDING  -> deixa PROCESSING (aguarda webhook)
 
 Uso:
   python scripts/reconcile_processing.py            # dry-run
@@ -73,7 +73,7 @@ for tx in processing_txs:
         if user:
             prev_balance = Decimal(str(user.balance))
             new_balance = prev_balance - total_debit
-            print(f"  ACAO: CONFIRMED → debitar R${total_debit:.2f} | saldo {prev_balance:.2f} -> {new_balance:.2f}")
+            print(f"  ACAO: CONFIRMED -> debitar R${total_debit:.2f} | saldo {prev_balance:.2f} -> {new_balance:.2f}")
             if not DRY_RUN:
                 user.balance = new_balance
                 tx.status = PixStatus.CONFIRMED
@@ -83,16 +83,16 @@ for tx in processing_txs:
             print(f"  AVISO: usuario nao encontrado para tx={tx.id} — nao e possivel debitar")
 
     elif remote_status in ("FAILED", "CANCELLED"):
-        print(f"  ACAO: FAILED → marcar FAILED (saldo nao precisa ser debitado)")
+        print(f"  ACAO: FAILED -> marcar FAILED (saldo nao precisa ser debitado)")
         if not DRY_RUN:
             tx.status = PixStatus.FAILED
             db.add(tx)
 
     elif remote_status in ("PENDING", "PROCESSING"):
-        print(f"  ACAO: NONE → ainda em transito no Asaas, manter PROCESSING")
+        print(f"  ACAO: NONE -> ainda em transito no Asaas, manter PROCESSING")
 
     else:
-        print(f"  ACAO: NONE → status desconhecido '{remote_status}', nao alterando")
+        print(f"  ACAO: NONE -> status desconhecido '{remote_status}', nao alterando")
 
 if DRY_RUN:
     print("\n=== DRY RUN — nenhuma alteracao aplicada ===")

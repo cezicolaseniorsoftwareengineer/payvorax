@@ -26,6 +26,10 @@ import httpx
 
 from app.core.logger import audit_log, logger
 
+# Ensure all SQLAlchemy models are registered before any query runs,
+# so that lazy relationship references (e.g. User.cards -> CreditCard) resolve.
+import app.cards.models  # noqa: F401 — registers CreditCard mapper
+
 _AUDIT_INTERVAL_SECONDS = 60   # 1 minute — perpetual cycle
 _AUTO_CORRECTION_MAX    = Decimal("20.00")
 _TWO_PLACES             = Decimal("0.01")
