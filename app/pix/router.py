@@ -2534,6 +2534,38 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                                 f"user={recipient_user.id} mask={_masked}"
                             )
 
+            # Layer 5: platform-key deposit — admin account fallback.
+            # When _is_platform_deposit is True and no layer resolved the recipient,
+            # the deposit was sent directly to the platform EVP key (owned by the
+            # platform admin account, settings.ADMIN_EMAIL).
+            # Without this layer, PAYMENT_RECEIVED fires but the webhook emits
+            # PIX_INBOUND_UNCLAIMED; 60s later the audit worker detects Asaas > DB
+            # and sweeps the surplus to the Matrix fee account — which is wrong,
+            # because Matrix is reserved for platform margin, not business receipts.
+            if not recipient_user and _is_platform_deposit:
+                from app.core.config import settings as _cfg_l5
+                recipient_user = db.query(User).filter(
+                    User.email == _cfg_l5.ADMIN_EMAIL
+                ).first()
+                if recipient_user:
+                    logger.info(
+                        f"[webhook/resolver] layer5 platform-key admin fallback: "
+                        f"payment_id={payment_id} payer={payer_name!r} "
+                        f"value=R${inbound_value:.2f} routing to admin user={recipient_user.id}"
+                    )
+                    audit_log(
+                        action="PIX_INBOUND_ADMIN_FALLBACK",
+                        user=str(recipient_user.id),
+                        resource=f"payment_id={payment_id}",
+                        details={
+                            "payer_name": payer_name,
+                            "payer_doc_masked": f"{'*' * len(payer_doc)}" if payer_doc else "unknown",
+                            "inbound_value": inbound_value,
+                            "dest_key": dest_key or _PLATFORM_PIX_KEY,
+                            "reason": "platform_key_deposit_no_virtual_key_match",
+                        },
+                    )
+
             if recipient_user:
                 previous_bal = recipient_user.balance
                 net_credit, fee_float = credit_pix_receipt(
