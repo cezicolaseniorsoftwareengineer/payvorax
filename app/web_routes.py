@@ -132,8 +132,11 @@ async def reset_password_page(request: Request, token: str = ""):
 @router.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Main Dashboard (Home)"""
-    # Always use user.balance: single authoritative source, never derived from transaction sums
-    balance = current_user.balance
+    # Available balance deducts in-flight PROCESSING outbound transactions.
+    # Prevents dashboard from showing committed funds as available before
+    # the Asaas webhook TRANSFER_DONE arrives to settle user.balance.
+    from app.pix.service import get_available_balance
+    balance = float(get_available_balance(db, current_user.id))
 
     return templates.TemplateResponse(request, "index.html", {
         "page": "home",
@@ -144,7 +147,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
 
 
 @router.get("/ui/pix", response_class=HTMLResponse)
-async def pix_ui(request: Request, current_user: User = Depends(get_current_user)):
+async def pix_ui(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """PIX Interface"""
     from app.core.fees import calculate_pix_outbound_fee, calculate_pix_receive_fee
     user_pj = _is_pj(current_user.cpf_cnpj)
@@ -169,11 +172,14 @@ async def pix_ui(request: Request, current_user: User = Depends(get_current_user
         finally:
             _db_gen.close()
 
+    from app.pix.service import get_available_balance as _pix_avail_bal
+    _pix_available = float(_pix_avail_bal(db, current_user.id))
+
     return templates.TemplateResponse(request, "pix.html", {
         "page": "pix",
         "user_name": current_user.name,
         "user_is_pj": user_pj,
-        "user_balance": float(current_user.balance),
+        "user_balance": _pix_available,
         "user_email":          current_user.email,
         "deposit_wallet_key":  _DEPOSIT_WALLET_KEY,
         "deposit_qr_url":     _DEPOSIT_QR_URL,
