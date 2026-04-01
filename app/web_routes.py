@@ -289,6 +289,7 @@ async def admin_panel(
     """Admin panel — restricted to admin account only."""
 
     from app.minha_conta.models import UserSubscription, SubscriptionStatus
+    from app.pix.service import get_available_balance
 
     all_users = db.query(User).order_by(User.created_at.desc()).all()
 
@@ -296,6 +297,11 @@ async def admin_panel(
     matrix_user = next((u for u in all_users if u.email == settings.MATRIX_ACCOUNT_EMAIL), None)
     users = [u for u in all_users if u.email != settings.MATRIX_ACCOUNT_EMAIL]
     matrix_balance = matrix_user.balance if matrix_user else 0.0
+
+    # Compute available balance (settled minus in-flight PROCESSING outbound) for
+    # each customer so the admin panel reflects the same real-time figure that
+    # correntistas see on their own dashboard — not the raw settled balance.
+    user_available = {u.id: float(get_available_balance(db, u.id)) for u in users}
 
     # Build subscription status map for the admin panel
     all_subs = db.query(UserSubscription).all()
@@ -313,6 +319,7 @@ async def admin_panel(
         "page": "admin",
         "user_name": current_user.name,
         "users": users,
+        "user_available": user_available,
         "total": len(users),
         "active": sum(1 for u in users if u.is_active),
         "verified_docs": sum(1 for u in users if u.document_verified),

@@ -386,7 +386,7 @@
                                 {% endif %}
                             </td>
                             <td class="px-4 py-3 text-right font-mono text-xs text-white whitespace-nowrap">
-                                R$&nbsp;{{ "%.2f"|format(u.balance) }}
+                                R$&nbsp;{{ "%.2f"|format(user_available[u.id]) }}
                             </td>
                             <td class="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
                                 {{ u.created_at.strftime('%d/%m/%Y') if u.created_at else 'â€”' }}
@@ -530,7 +530,7 @@
                             </span>
                         </div>
                         <span class="text-sm font-bold text-white font-mono">
-                            R$&nbsp;{{ "%.2f"|format(u.balance) }}
+                            R$&nbsp;{{ "%.2f"|format(user_available[u.id]) }}
                         </span>
                     </div>
 
