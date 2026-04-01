@@ -415,16 +415,20 @@ def get_balance(
     current_user: User = Depends(get_current_user)
 ) -> BalanceResponse:
     """
-    Returns current user balance and credit information.
+    Returns current user available balance and credit information.
+    Available balance = user.balance - sum of PROCESSING outbound transactions.
+    This ensures the dashboard reflects in-flight transfers immediately,
+    before the Asaas webhook TRANSFER_DONE arrives and debits user.balance.
     """
     try:
-        balance = get_user_balance(db, current_user.id)
+        from app.pix.service import get_available_balance
+        available = float(get_available_balance(db, current_user.id))
 
         return BalanceResponse(
             user_id=current_user.id,
-            balance=balance,
+            balance=available,
             credit_limit=current_user.credit_limit,
-            available_credit=current_user.credit_limit + balance
+            available_credit=current_user.credit_limit + available
         )
     except Exception as e:
         logger.error(f"Error getting balance for user {current_user.id}: {str(e)}")
