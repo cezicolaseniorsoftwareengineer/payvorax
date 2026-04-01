@@ -69,7 +69,7 @@ class ExcessiveAttemptsRule(AntifraudRule):
 class ExtremeValueRule(AntifraudRule):
     """Heuristic: Extreme value anomaly detection."""
 
-    def __init__(self, limit: float = 1000.0):
+    def __init__(self, limit: float = 20000.0):
         super().__init__(
             name="EXTREME_VALUE",
             points=60,
@@ -94,9 +94,9 @@ class AntifraudEngine:
             NightTimeRule(),
             HighValueRule(limit=300.0),
             ExcessiveAttemptsRule(limit=3),
-            ExtremeValueRule(limit=1000.0)
+            ExtremeValueRule(limit=20000.0)
         ]
-        self.approval_limit = 60
+        self.approval_limit = 80
 
     def analyze(self, transaction: AntifraudTransaction) -> Dict[str, Any]:
         """

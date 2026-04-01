@@ -168,38 +168,63 @@ def _normalise_payload_url(url: str) -> str:
 
 def parse_emv_pix_key(emv: str):
     """
-    Extracts the Pix key and its type from EMV field 26, sub-tag 01.
+    Extracts the Pix key and its type from a PIX EMV payload.
+
+    Scans Merchant Account Info fields 26-51 (BACEN BR Code v2.1 allows any
+    slot) for the first block whose GUI identifies it as a PIX block
+    (contains 'BR.GOV.BCB.PIX'). Sub-tag 01 holds the static Pix key.
 
     Returns (pix_key, key_type) where key_type is one of:
     EMAIL, CPF, CNPJ, PHONE, EVP.
 
-    Returns (None, None) if the key cannot be extracted OR if sub-tag 01
-    contains a payloadLocation URL (dynamic QR code — use parse_emv_payload_url
-    to resolve the actual Pix key from the PSP endpoint).
+    Returns (None, None) if the key cannot be extracted OR if the block
+    contains a payloadLocation URL in sub-tag 25 or sub-tag 01 (dynamic QR —
+    use parse_emv_payload_url to resolve the actual Pix key from the PSP).
     """
     for tag, value in _walk_tlv(emv):
-        if tag == "26":
-            for sub_tag, sub_val in _walk_tlv(value):
-                if sub_tag == "01":
-                    key = sub_val
-                    # Dynamic QR: field 26/01 holds a payloadLocation URL, not a key.
-                    # Do NOT return the URL as a Pix key — it would corrupt /transfers.
-                    if _is_payload_url(key):
-                        return None, None
-                    if "@" in key:
-                        return key, "EMAIL"
-                    if re.match(r'^\d{14}$', key):
-                        return key, "CNPJ"
-                    if re.match(r'^\d{11}$', key):
-                        return key, "CPF"
-                    if key.startswith("+"):
-                        return key, "PHONE"
-                    # EVP (UUID random key) — verify format before trusting
-                    clean = key.replace("-", "")
-                    if re.match(r'^[0-9a-f]{32}$', clean, re.IGNORECASE):
-                        return key, "EVP"
-                    # Unknown short value — treat as EVP (DICT will reject if invalid)
-                    return key, "EVP"
+        try:
+            tag_id = int(tag)
+        except ValueError:
+            continue
+        if not (26 <= tag_id <= 51):
+            continue
+
+        sub: dict = {}
+        for s_tag, s_val in _walk_tlv(value):
+            sub[s_tag] = s_val
+
+        gui = sub.get("00", "").upper()
+        if "BCB.PIX" not in gui and "BR.GOV.BCB" not in gui:
+            continue  # not a PIX block (VISA, MASTERCARD, etc.)
+
+        # Sub-tag 25: canonical payloadLocation (BACEN spec) — dynamic QR, no static key here.
+        val25 = sub.get("25", "")
+        if val25 and "/" in val25:
+            return None, None
+
+        key = sub.get("01", "")
+        if not key:
+            continue
+
+        # Dynamic QR: sub-tag 01 holds a payloadLocation URL, not a key.
+        # Do NOT return the URL as a Pix key — it would corrupt /transfers.
+        if _is_payload_url(key):
+            return None, None
+
+        if "@" in key:
+            return key, "EMAIL"
+        if re.match(r'^\d{14}$', key):
+            return key, "CNPJ"
+        if re.match(r'^\d{11}$', key):
+            return key, "CPF"
+        if key.startswith("+"):
+            return key, "PHONE"
+        # EVP (UUID random key) — verify format before trusting
+        clean = key.replace("-", "")
+        if re.match(r'^[0-9a-f]{32}$', clean, re.IGNORECASE):
+            return key, "EVP"
+        # Unknown short value — treat as EVP (DICT will reject if invalid)
+        return key, "EVP"
     return None, None
 
 
