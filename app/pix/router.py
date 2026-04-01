@@ -1498,16 +1498,34 @@ def consultar_pix_qrcode(
         logger.info(f"QR consultar: stage-1 payloadLocation found url={pix_url[:80]}")
         try:
             charge_data = _fetch_pix_charge_url(pix_url)
-            # txid anti-fraud validation — runs inside try where charge_data is in scope.
+            # txid anti-fraud validation — only when both sides carry an unambiguous
+            # BACEN txid (alphanumeric, no hyphens, 26-35 chars).
+            # PSPs like PagSeguro, Stone and Cielo embed a proprietary UUID (with
+            # hyphens) in EMV field 62 sub-tag 05, which is structurally different
+            # from the BACEN txid returned in the payloadLocation JSON. Comparing
+            # them always produces a false mismatch and blocks legitimate payments.
+            # Rule: only compare when txid_qr has NO hyphens AND length is in
+            # BACEN-valid range (26-35), ensuring it is a real BACEN txid, not a
+            # PSP-internal identifier.
             txid_qr = _extract_txid_field62(data.payload)
             txid_psp = charge_data.get("txid")
-            if txid_qr and txid_psp and txid_qr.upper() != txid_psp.upper():
+            _txid_qr_is_bacen = (
+                txid_qr
+                and "-" not in txid_qr
+                and 26 <= len(txid_qr) <= 35
+            )
+            if _txid_qr_is_bacen and txid_psp and txid_qr.upper() != txid_psp.upper():
                 logger.warning(
                     f"QR consultar: txid mismatch txid_qr={txid_qr} txid_psp={txid_psp}"
                 )
                 raise HTTPException(
                     status_code=422,
                     detail="QR Code invalido: identificador da cobranca diverge do registrado no PSP."
+                )
+            if txid_qr and not _txid_qr_is_bacen:
+                logger.info(
+                    f"QR consultar: txid validation skipped — field62 value is PSP-internal "
+                    f"(hyphens or non-BACEN length): txid_qr={txid_qr!r}"
                 )
             logger.info(f"QR consultar: stage-1 PSP resolve success value={charge_data['value']}")
             return {
