@@ -49,6 +49,12 @@ def _check_expiry(db: Session, sub: UserSubscription) -> UserSubscription:
                 user = db.query(User).filter(User.id == sub.user_id).first()
                 if user and user.balance >= SUBSCRIPTION_AMOUNT:
                     user.balance = Decimal(str(user.balance)) - SUBSCRIPTION_AMOUNT
+                    if user.balance < Decimal("0.00"):
+                        db.rollback()
+                        sub.status = SubscriptionStatus.EXPIRED
+                        db.commit()
+                        db.refresh(sub)
+                        return sub
                     expires = now + timedelta(days=SUBSCRIPTION_DAYS)
                     sub.expires_at = expires
                     sub.last_renewed_at = now
@@ -94,6 +100,11 @@ def subscribe_with_balance(db: Session, user: User) -> Dict[str, Any]:
     expires = now + timedelta(days=SUBSCRIPTION_DAYS)
 
     user.balance = Decimal(str(user.balance)) - SUBSCRIPTION_AMOUNT
+    if user.balance < Decimal("0.00"):
+        db.rollback()
+        raise ValueError(
+            "Saldo insuficiente. Operacao cancelada por protecao de saldo."
+        )
     sub.status = SubscriptionStatus.ACTIVE
     sub.payment_method = PaymentMethod.BALANCE.value
     sub.card_id = None

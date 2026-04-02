@@ -162,6 +162,12 @@ def process_payment(
 
     # Debit balance including fee
     user.balance = Decimal(str(user.balance)) - total_required
+    if user.balance < Decimal("0.00"):
+        db.rollback()
+        logger.error(
+            f"BALANCE_INVARIANT_VIOLATION [boleto]: user={user_id} post-debit={user.balance:.2f}"
+        )
+        raise ValueError("Saldo insuficiente. Operacao cancelada por protecao de saldo.")
     db.add(user)
 
     # Credit fee to BioCodeTechPay matrix account (same transaction)

@@ -226,7 +226,7 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
                     if live_matrix is not None:
                         matrix_cur_dec = Decimal(str(live_matrix.balance)).quantize(_TWO_PLACES, ROUND_HALF_UP)
                         matrix_debit   = min(abs_diff_dec, max(Decimal("0.00"), matrix_cur_dec))
-                        live_matrix.balance = float(
+                        live_matrix.balance = (
                             (matrix_cur_dec - matrix_debit).quantize(_TWO_PLACES, ROUND_HALF_UP)
                         )
                         db2.commit()
@@ -281,7 +281,7 @@ async def _run_single_audit(db_factory, gateway_factory) -> dict:
                     live_matrix = db2.query(_User).filter(_User.email == settings.MATRIX_ACCOUNT_EMAIL).first()
                     if live_matrix is not None:
                         old_dec = Decimal(str(live_matrix.balance)).quantize(_TWO_PLACES, ROUND_HALF_UP)
-                        live_matrix.balance = float((old_dec + abs_diff_dec).quantize(_TWO_PLACES, ROUND_HALF_UP))
+                        live_matrix.balance = (old_dec + abs_diff_dec).quantize(_TWO_PLACES, ROUND_HALF_UP)
                         db2.commit()
                         result["correction_applied"] = {
                             "action": "matrix_credited",
@@ -373,8 +373,8 @@ async def _run_end_of_day_reconciliation(db_factory, gateway_factory) -> dict:
             users = db.query(_User).all()
             adjusted = 0
             for u in users:
-                rounded = float(Decimal(str(u.balance)).quantize(_TWO_PLACES, ROUND_HALF_UP))
-                if abs(rounded - float(u.balance)) > 1e-9:
+                rounded = Decimal(str(u.balance)).quantize(_TWO_PLACES, ROUND_HALF_UP)
+                if rounded != Decimal(str(u.balance)):
                     u.balance = rounded
                     adjusted += 1
             if adjusted:
