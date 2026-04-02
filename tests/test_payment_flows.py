@@ -143,14 +143,14 @@ class TestFeeCalculation:
         fee = calculate_pix_fee("11111111111", 200.00, is_external=False)
         assert fee == Decimal("0.00")  # Internal transfers are free
 
-    def test_pf_received_pix_fee_is_zero(self):
-        # Inbound deposits are free — platform absorbs Asaas cost.
+    def test_pf_received_pix_fee_is_four(self):
+        # Inbound deposits: R$4.00 flat fee for PF.
         fee = calculate_pix_fee("11111111111", 500.00, is_external=True, is_received=True)
-        assert fee == Decimal("0.00")
+        assert fee == Decimal("4.00")
 
-    def test_pf_boleto_fee_is_249(self):
+    def test_pf_boleto_fee_is_four(self):
         fee = calculate_boleto_fee("11111111111")
-        assert fee == Decimal("2.49")
+        assert fee == Decimal("4.00")
 
     # PJ — external sent: max(R$4.00, 0.80% of value)
     def test_pj_external_pix_fee_minimum(self):
@@ -164,18 +164,18 @@ class TestFeeCalculation:
         assert fee == Decimal("4.00")
 
     def test_pj_external_pix_fee_above_breakeven(self):
-        # R$1000 * 0.80% = R$8.00 > R$4.00 — percentage applies.
+        # Flat R$4.00 regardless of value — no percentage for PJ.
         fee = calculate_pix_fee("61425124000103", 1000.00, is_external=True)
-        assert fee == Decimal("8.00")
+        assert fee == Decimal("4.00")
 
-    def test_pj_external_pix_fee_received_is_zero(self):
-        # Inbound deposits are free — platform absorbs Asaas cost.
+    def test_pj_external_pix_fee_received_is_four(self):
+        # Inbound deposits: R$4.00 flat fee for PJ.
         fee = calculate_pix_fee("61425124000103", 1000.00, is_external=True, is_received=True)
-        assert fee == Decimal("0.00")
+        assert fee == Decimal("4.00")
 
-    def test_pj_boleto_fee_is_299(self):
+    def test_pj_boleto_fee_is_four(self):
         fee = calculate_boleto_fee("61425124000103")
-        assert fee == Decimal("2.99")
+        assert fee == Decimal("4.00")
 
     def test_is_pj_detects_cnpj(self):
         assert is_pj("61425124000103") is True

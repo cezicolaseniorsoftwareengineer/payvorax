@@ -1193,7 +1193,7 @@ def process_pix_receipt(
         db.add(pix)
 
         # Credit the receiver balance (User who created the charge)
-        # Deposits are free (fee=R$0.00). Full gross value credited.
+        # Deposit fee: R$4.00 flat. Net = gross - 4.00.
         receiver_user = db.query(User).filter(User.id == pix.user_id).first()
         if receiver_user:
             credit_pix_receipt(

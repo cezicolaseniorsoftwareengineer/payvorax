@@ -237,8 +237,8 @@ def test_self_deposit_simulation() -> None:
     assert response.status_code == 200
     statement = response.json()
 
-    # Inbound deposits are free -- full gross credited
-    assert statement["balance"] == pytest.approx(1000000000.0, abs=0.01)
+    # Inbound deposit charges R$4.00 flat fee: net = 1000000000.0 - 4.0 = 999999996.0
+    assert statement["balance"] == pytest.approx(999999996.0, abs=0.01)
 
 
 def test_confirm_receipt_flow() -> None:
@@ -282,7 +282,8 @@ def test_confirm_receipt_flow() -> None:
     # 3. Verify Balance
     response = client.get("/pix/extrato", cookies=cookies)
     statement = response.json()
-    assert statement["balance"] == pytest.approx(100.0, abs=0.01)  # R$100 -- free deposit
+    # Inbound deposit charges R$4.00 flat fee: net = 100.0 - 4.0 = 96.0
+    assert statement["balance"] == pytest.approx(96.0, abs=0.01)
 
 def test_high_value_receipt_flow() -> None:
     """Test receiving a very high value PIX (1 Billion) via Charge flow."""
@@ -325,7 +326,8 @@ def test_high_value_receipt_flow() -> None:
     # 3. Verify Balance
     response = client.get("/pix/extrato", cookies=cookies)
     statement = response.json()
-    assert statement["balance"] == pytest.approx(1000000000.0, abs=0.01)  # R$1B -- free deposit
+    # Inbound deposit charges R$4.00 flat fee: net = 1000000000.0 - 4.0 = 999999996.0
+    assert statement["balance"] == pytest.approx(999999996.0, abs=0.01)  # R$1B - R$4 fee
 
 
 def test_self_transfer_blocked() -> None:

@@ -115,7 +115,7 @@ PIX_INBOUND_NETWORK_FEE = Decimal("2.00")  # "Taxa de rede" — inbound componen
 # Reinstated 18/03/2026 after cost incident: Asaas charges R$2.00/transfer;
 # platform must collect R$4.00 to cover gateway cost and maintain positive margin.
 _PIX_SENT_PF = PIX_NETWORK_FEE + PIX_MAINTENANCE_FEE             # R$4.00 = R$3 rede + R$1 manutencao
-_PIX_RECV_PF = Decimal("0.00")  # Deposits are free — Asaas inbound cost absorbed by platform
+_PIX_RECV_PF = Decimal("4.00")  # Deposits: R$4.00 flat fee — same as outbound
 
 # ---------------------------------------------------------------- PJ constants
 # Outbound: minimum R$4.00; percentage 0.80% applies above R$500 (0.80% x 500 = R$4.00 breakeven).
@@ -158,23 +158,17 @@ def calculate_pix_outbound_fee(cpf_cnpj: str, amount: float) -> Decimal:
 
     Internal transfers → always call with is_external=False via calculate_pix_fee.
     """
-    value = Decimal(str(amount))
-    if is_pj(cpf_cnpj):
-        fee = value * _PIX_SENT_RATE_PJ
-        return max(fee, _PIX_SENT_MIN_PJ).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
-    return _PIX_SENT_PF
+    return _PIX_SENT_PF  # R$4.00 flat — PF and PJ, any value
 
 
 def calculate_pix_receive_fee(cpf_cnpj: str, amount: float) -> Decimal:
     """
     Fee charged for RECEIVING a PIX from another bank (bank-to-bank deposit).
 
-    Policy (current): deposits are FREE for all users (PF and PJ).
-    Full gross value is credited to the account holder with no deduction.
-    Rationale: Asaas inbound cost is absorbed by the platform as a competitive
-    advantage; the outbound fee margin (R$4/tx) cross-subsidises inbound.
+    Policy: R$4.00 flat for all users (PF and PJ), any value.
+    Same flat rate as outbound — no PF/PJ distinction, no percentage.
     """
-    return Decimal("0.00")
+    return _PIX_RECV_PF  # R$4.00 flat
 
 
 def calculate_pix_fee(
@@ -279,21 +273,17 @@ def fee_breakdown(cpf_cnpj: str, amount: float, *, is_external: bool, is_receive
         }
 
     if is_received:
-        gw_cost  = Decimal("0.00")
-        p_fee    = Decimal("0.00")
-        net_fee  = Decimal("0.00")
-        svc_fee  = Decimal("0.00")
-        label    = "Depósito PIX gratuito"
+        gw_cost  = ASAAS_PIX_INBOUND_NET_COST
+        p_fee    = calculate_pix_receive_fee(cpf_cnpj, amount)
+        net_fee  = PIX_INBOUND_NETWORK_FEE
+        svc_fee  = (p_fee - net_fee).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
+        label    = "Taxa de servico: R$ 4,00"
     else:
         gw_cost  = ASAAS_PIX_OUTBOUND_COST
         p_fee    = calculate_pix_outbound_fee(cpf_cnpj, amount)
         net_fee  = PLATFORM_PIX_OUTBOUND_NETWORK_FEE
         svc_fee  = (p_fee - net_fee).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
-        label    = (
-            "Taxa PJ (0,80% do valor, mín. R$ 3,00)"
-            if is_pj(cpf_cnpj)
-            else "Taxa de serviço (Pix externo)"
-        )
+        label    = "Taxa de servico: R$ 4,00"
 
     return {
         "gateway_cost": gw_cost,
@@ -483,11 +473,12 @@ def growth_projection(
 
 def calculate_boleto_fee(cpf_cnpj: str) -> Decimal:
     """
-    Returns the fixed fee for boleto payments based on account type.
+    Returns the fixed fee for boleto payments.
     Boleto is deprecated — use Pix cobranca instead. Never offer boleto to
     new clients; this function is retained for legacy transaction history only.
+    Fee: R$4.00 flat, same as all other external operations.
     """
-    return _BOLETO_PJ if is_pj(cpf_cnpj) else _BOLETO_PF
+    return Decimal("4.00")
 
 
 def fee_display(fee: Decimal) -> str:
