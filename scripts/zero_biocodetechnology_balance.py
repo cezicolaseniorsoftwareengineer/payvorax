@@ -59,7 +59,7 @@ def run() -> None:
             },
         )
 
-        user.balance = 0.0
+        user.balance = Decimal("0.00")
         db.add(user)
         db.commit()
         db.refresh(user)

@@ -23,7 +23,7 @@ from app.adapters.gateway_factory import get_payment_gateway
 from app.pix.internal_transfer import find_recipient_user, execute_internal_transfer
 from app.core.fees import calculate_pix_fee, fee_display, PLATFORM_PIX_OUTBOUND_NETWORK_FEE
 from app.core.matrix import credit_fee
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def get_balance(db: Session, user_id: str) -> float:
@@ -120,6 +120,58 @@ def reverse_ledger_entries(db: Session, tx_id: str) -> int:
 # Cap at R$50,000 ensures any limit above this requires explicit review.
 CREDIT_LIMIT_CAP = Decimal("50000.00")
 
+# Daily transaction limits — applied per user per UTC calendar day.
+# Aligned with Banco Central PIX limits for PF/PJ accounts.
+DAILY_SEND_LIMIT = Decimal("20000.00")
+DAILY_RECEIVE_LIMIT = Decimal("20000.00")
+
+
+def _today_utc_range():
+    """Returns (start, end) naive UTC datetimes for the current calendar day."""
+    now = datetime.now(timezone.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    end = start + timedelta(days=1)
+    return start, end
+
+
+def get_daily_sent_total(db: Session, user_id: str) -> Decimal:
+    """Sum of outbound PIX (value + fee) sent today (UTC day), excluding FAILED."""
+    start, end = _today_utc_range()
+    total = db.query(
+        func.coalesce(
+            func.sum(PixTransaction.value + func.coalesce(PixTransaction.fee_amount, 0)),
+            0,
+        )
+    ).filter(
+        PixTransaction.user_id == user_id,
+        PixTransaction.type == TransactionType.SENT,
+        PixTransaction.status.in_([
+            PixStatus.CREATED, PixStatus.PROCESSING, PixStatus.CONFIRMED,
+        ]),
+        PixTransaction.created_at >= start,
+        PixTransaction.created_at < end,
+    ).scalar()
+    if not isinstance(total, (int, float, Decimal)):
+        return Decimal("0.00")
+    return Decimal(str(total or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def get_daily_received_total(db: Session, user_id: str) -> Decimal:
+    """Sum of inbound PIX (gross value) confirmed today (UTC day)."""
+    start, end = _today_utc_range()
+    total = db.query(
+        func.coalesce(func.sum(PixTransaction.value), 0)
+    ).filter(
+        PixTransaction.user_id == user_id,
+        PixTransaction.type == TransactionType.RECEIVED,
+        PixTransaction.status == PixStatus.CONFIRMED,
+        PixTransaction.created_at >= start,
+        PixTransaction.created_at < end,
+    ).scalar()
+    if not isinstance(total, (int, float, Decimal)):
+        return Decimal("0.00")
+    return Decimal(str(total or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
 
 def credit_pix_receipt(
     db: Session,
@@ -154,6 +206,26 @@ def credit_pix_receipt(
     _gross_dec = Decimal(str(gross_value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     _fee_dec = Decimal(str(receive_fee)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     _net_dec = max(Decimal("0.00"), _gross_dec - _fee_dec)
+
+    # Daily receive limit check — log compliance event; credit cannot be refused
+    # after Asaas has already confirmed receipt (money is at the gateway).
+    received_today = get_daily_received_total(db, receiver.id)
+    if received_today + _gross_dec > DAILY_RECEIVE_LIMIT:
+        audit_log(
+            action="DAILY_RECEIVE_LIMIT_EXCEEDED",
+            user=str(receiver.id),
+            resource=f"source={source}",
+            details={
+                "received_today": float(received_today),
+                "gross_value": gross_value,
+                "daily_limit": float(DAILY_RECEIVE_LIMIT),
+            },
+        )
+        logger.warning(
+            f"DAILY_RECEIVE_LIMIT_EXCEEDED: user={receiver.id}, "
+            f"received_today=R${received_today:.2f}, gross=R${gross_value:.2f}, "
+            f"limit=R${DAILY_RECEIVE_LIMIT:.2f} — crediting anyway (money at gateway)"
+        )
 
     net_credit = float(_net_dec)
 
@@ -272,6 +344,28 @@ def create_pix(
                         f"Saldo insuficiente. Disponivel: R$ {available:.2f}, "
                         f"Necessario: R$ {total_required:.2f} "
                         f"(valor R$ {data.value:.2f} + taxa {fee_display(pix_fee)})"
+                    )
+
+                # Daily send limit (R$20.000,00 / dia UTC)
+                sent_today = get_daily_sent_total(db, user_id)
+                if sent_today + total_required > DAILY_SEND_LIMIT:
+                    remaining = max(Decimal("0.00"), DAILY_SEND_LIMIT - sent_today)
+                    audit_log(
+                        action="DAILY_SEND_LIMIT_EXCEEDED",
+                        user=user_id,
+                        resource="pix_send",
+                        details={
+                            "sent_today": float(sent_today),
+                            "total_required": float(total_required),
+                            "daily_limit": float(DAILY_SEND_LIMIT),
+                            "remaining": float(remaining),
+                        },
+                    )
+                    raise ValueError(
+                        f"Limite diario de envio atingido. "
+                        f"Enviado hoje: R$ {sent_today:.2f}. "
+                        f"Limite: R$ {DAILY_SEND_LIMIT:.2f}. "
+                        f"Disponivel hoje: R$ {remaining:.2f}."
                     )
 
                 gateway = get_payment_gateway()
