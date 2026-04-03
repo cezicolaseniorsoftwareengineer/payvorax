@@ -61,7 +61,13 @@ def get_available_balance(db: Session, user_id: str) -> Decimal:
         PixTransaction.status == PixStatus.PROCESSING,
     ).scalar()
 
-    return Decimal(str(user.balance)) - Decimal(str(pending_outbound or 0))
+    available = Decimal(str(user.balance)) - Decimal(str(pending_outbound or 0))
+    # Clamp: never expose negative available balance to callers.
+    # Pending outbound can exceed current balance when admin manually resets balance
+    # between dispatch and TRANSFER_DONE webhook confirmation (deferred debit race).
+    # The overdraft is handled at commit time by the TRANSFER_DONE handler; the
+    # display layer must never show negative to the account holder.
+    return max(Decimal("0.00"), available)
 
 
 def create_ledger_entry(
