@@ -2140,7 +2140,7 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
             if pix_tx:
                 from app.pix.service import settle_ledger_entries, reverse_ledger_entries
                 from app.core.fees import PLATFORM_PIX_OUTBOUND_NETWORK_FEE as _WH_NET_FEE
-                from app.core.matrix import credit_fee as _wh_credit_fee
+                from app.core.matrix import credit_fee as _wh_credit_fee, get_matrix_user as _get_matrix_user
                 from decimal import ROUND_HALF_UP as _WH_ROUND
 
                 _wh_previous_status = pix_tx.status
@@ -2193,11 +2193,32 @@ def _process_asaas_webhook_event(event: str, payment: dict, payment_id, db, logg
                             db.add(sender)
 
                             if sender.balance < 0:
+                                _shortfall = abs(sender.balance).quantize(Decimal("0.01"), rounding=_WH_ROUND)
                                 logger.critical(
-                                    f"BALANCE_NEGATIVE_POST_CONFIRM: user={sender.id} "
+                                    f"BALANCE_OVERDRAFT_POST_CONFIRM: user={sender.id} "
                                     f"balance={sender.balance:.2f} after debit of "
                                     f"R${total_debit:.2f} (transfer {transfer_id}). "
-                                    "Asaas transfer already completed — debit forced."
+                                    f"Clamping to R$0.00; Matrix absorbs shortfall R${_shortfall:.2f}."
+                                )
+                                sender.balance = Decimal("0.00")
+                                _matrix_ov = _get_matrix_user(db)
+                                if _matrix_ov:
+                                    _m_cur = Decimal(str(_matrix_ov.balance)).quantize(Decimal("0.01"), rounding=_WH_ROUND)
+                                    _matrix_ov.balance = max(
+                                        Decimal("0.00"),
+                                        (_m_cur - _shortfall).quantize(Decimal("0.01"), rounding=_WH_ROUND),
+                                    )
+                                    db.add(_matrix_ov)
+                                audit_log(
+                                    action="BALANCE_OVERDRAFT_COMPENSATED",
+                                    user=sender.id,
+                                    resource=f"pix_id={pix_tx.id}",
+                                    details={
+                                        "shortfall": float(_shortfall),
+                                        "transfer_id": transfer_id,
+                                        "total_debit": float(total_debit),
+                                        "previous_balance": float(previous),
+                                    },
                                 )
 
                             # Credit service margin to Matrix
