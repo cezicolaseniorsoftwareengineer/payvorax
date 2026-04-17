@@ -2053,13 +2053,19 @@ async def asaas_webhook(
     # SECURITY INVARIANT: if ASAAS_WEBHOOK_TOKEN is not configured, ALL webhook
     # calls are rejected. Accepting unauthenticated webhooks would allow fake
     # payment confirmation that credits user balances without a real Asaas payment.
+    from fastapi.responses import JSONResponse
+
     if not _settings.ASAAS_WEBHOOK_TOKEN:
         logger.error(
             "[webhook/security] ASAAS_WEBHOOK_TOKEN not configured. "
             "All webhook calls rejected to prevent fake balance injection. "
             f"Origin: {request.client.host if request.client else 'unknown'}"
         )
-        return {"received": False, "action": "rejected", "reason": "webhook_token_not_configured"}
+        # Return 500 so Asaas will retry delivery instead of silently dropping
+        return JSONResponse(
+            status_code=500,
+            content={"received": False, "action": "rejected", "reason": "webhook_token_not_configured"},
+        )
 
     incoming_token = request.headers.get("asaas-access-token", "")
     if not incoming_token or not hmac.compare_digest(incoming_token, _settings.ASAAS_WEBHOOK_TOKEN):
@@ -2067,8 +2073,11 @@ async def asaas_webhook(
             f"Asaas webhook rejected: invalid token. "
             f"Origin: {request.client.host if request.client else 'unknown'}"
         )
-        # Return 200 to avoid Asaas retry storm, but take no action
-        return {"received": False, "action": "rejected", "reason": "invalid_token"}
+        # Return 401 so Asaas treats this as a failure and retries delivery
+        return JSONResponse(
+            status_code=401,
+            content={"received": False, "action": "rejected", "reason": "invalid_token"},
+        )
 
     event = payload.get("event", "")
     payment = payload.get("payment", {})
