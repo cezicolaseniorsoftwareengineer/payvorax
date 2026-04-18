@@ -19,3 +19,8 @@ tenacity==9.0.0
 resend>=2.23.0
 pyotp>=2.9.0
 prometheus-client>=0.21.0
+opentelemetry-distro==0.50b0
+opentelemetry-instrumentation-fastapi==0.50b0
+opentelemetry-instrumentation-sqlalchemy==0.50b0
+opentelemetry-exporter-otlp-proto-grpc==1.29.0
+python-json-logger==2.0.7

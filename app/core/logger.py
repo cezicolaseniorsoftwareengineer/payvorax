@@ -1,10 +1,12 @@
 """
 Structured logging subsystem implementing observability patterns.
 Correlation IDs for distributed tracing and sensitive data masking.
+JSON logs for intelligent monitoring.
 """
 import logging
 import sys
 from typing import Any, Dict, MutableMapping, Tuple
+from pythonjsonlogger import jsonlogger
 from app.core.config import settings
 
 
@@ -17,12 +19,12 @@ class CorrelationFilter(logging.Filter):
         return True
 
 
-# Configuração de structured logging
+# Configuração de structured logging com JSON
 # Create handler with filter to ensure correlation_id is always present before formatting
 handler = logging.StreamHandler(sys.stdout)
 handler.addFilter(CorrelationFilter())
-formatter = logging.Formatter(
-    '%(asctime)s | %(levelname)-8s | %(name)s | %(correlation_id)s | %(message)s',
+formatter = jsonlogger.JsonFormatter(
+    '%(asctime)s %(levelname)s %(name)s %(correlation_id)s %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 handler.setFormatter(formatter)

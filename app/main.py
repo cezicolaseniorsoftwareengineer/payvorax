@@ -48,6 +48,17 @@ import app.minha_conta.models  # noqa: F401 — registers UserSubscription in Ba
 import app.ia.ai_interactions  # noqa: F401 — registers AiInteraction in Base.metadata
 from fastapi.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Counter, Histogram
+
+# Prometheus metrics
+REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
+REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request latency', ['method', 'endpoint'])
 
 
 @asynccontextmanager
@@ -59,6 +70,14 @@ async def lifespan(app: FastAPI):
     logger.info("Database initialized")
     seed_matrix_account()
     logger.info("Matrix account ready")
+
+    # Initialize OpenTelemetry
+    trace.set_tracer_provider(TracerProvider())
+    trace.get_tracer_provider().add_span_processor(
+        BatchSpanProcessor(OTLPSpanExporter())
+    )
+    FastAPIInstrumentor.instrument_app(app)
+    SQLAlchemyInstrumentor().instrument()
 
     # Start background balance audit worker (30-minute cycle)
     from app.core.database import SessionLocal
@@ -170,12 +189,30 @@ async def add_correlation_id(request: Request, call_next: Callable[[Request], Aw
     response.headers["X-Correlation-ID"] = correlation_id
     response.headers["X-Process-Time"] = str(process_time)
 
+    # Prometheus metrics
+    REQUEST_COUNT.labels(method=request.method, endpoint=request.url.path, status=response.status_code).inc()
+    REQUEST_LATENCY.labels(method=request.method, endpoint=request.url.path).observe(process_time)
+
     logger.info(
         f"Response: {response.status_code} | {process_time:.3f}s",
         extra={"correlation_id": correlation_id}
     )
 
     return response
+
+
+# Health Check Endpoint
+@app.get("/health", response_class=PlainTextResponse)
+async def health_check():
+    """Health check endpoint for monitoring."""
+    return "OK"
+
+
+# Metrics Endpoint for Prometheus
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 # Router Registration
