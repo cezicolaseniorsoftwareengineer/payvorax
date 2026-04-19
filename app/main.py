@@ -23,7 +23,7 @@ if not os.environ.get("BIO_CODE_TECH_PAY_ALLOWED_START") and "pytest" not in sys
         sys.exit(1)
 
 from fastapi import FastAPI, Request, Response, Depends
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
@@ -37,6 +37,7 @@ from app.core.database import init_db, get_db
 from app.core.logger import logger
 from app.core.matrix import seed_matrix_account
 from app.core.audit_worker import balance_audit_loop
+from app.core.uia import uia, ProjectRequirements, ArchitectureType
 from app.cards.router import router as cards_router
 from app.pix.router import router as pix_router
 from app.antifraude.router import router as antifraude_router
@@ -48,6 +49,47 @@ import app.minha_conta.models  # noqa: F401 — registers UserSubscription in Ba
 import app.ia.ai_interactions  # noqa: F401 — registers AiInteraction in Base.metadata
 from fastapi.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+from fastapi import APIRouter
+
+# UIA Router
+uia_router = APIRouter()
+
+@uia_router.post("/uia/architecture", tags=["UIA"])
+async def synthesize_architecture(req: Dict[str, Any]):
+    """
+    Endpoint para Adaptive Architecture Synthesis.
+    Recebe requisitos e retorna arquitetura otimizada.
+    """
+    project_req = ProjectRequirements(
+        scale=req.get("scale", "local"),
+        complexity=req.get("complexity", "medium"),
+        legacy=req.get("legacy", False),
+        embedded=req.get("embedded", False),
+        compliance=req.get("compliance", [])
+    )
+    decision = await uia.synthesize_architecture(project_req)
+    return {
+        "architecture": decision.architecture.value,
+        "optimizations": decision.optimizations,
+        "trade_offs": decision.trade_offs,
+        "confidence": decision.confidence
+    }
+
+@uia_router.post("/uia/dependencies", tags=["UIA"])
+async def analyze_dependencies(codebase: Dict[str, str]):
+    """
+    Endpoint para análise de dependências via GNN.
+    """
+    result = await uia.analyze_dependencies(codebase)
+    return result
+
+@uia_router.post("/uia/optimize", tags=["UIA"])
+async def global_optimize(metrics: Dict[str, Any]):
+    """
+    Endpoint para Global Optimization Loop.
+    """
+    result = await uia.global_optimization_loop(metrics)
+    return result
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -216,6 +258,7 @@ async def metrics():
 
 
 # Router Registration
+app.include_router(uia_router, prefix="/uia", tags=["UIA"])
 app.include_router(cards_router, prefix="/cards", tags=["Cards"])
 app.include_router(pix_router, prefix="/pix", tags=["PIX"])
 app.include_router(antifraude_router, prefix="/antifraud", tags=["Anti-Fraud"])
