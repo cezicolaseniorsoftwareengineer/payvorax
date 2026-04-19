@@ -1,4 +1,4 @@
-﻿"""
+"""
 Fintech Tech Challenge - Enterprise FastAPI Application.
 Implements Domain-Driven Design (DDD) and Hexagonal Architecture.
 Features strict input validation, audit logging, and distributed tracing.
@@ -12,9 +12,6 @@ from typing import Callable, Awaitable, Dict, Any
 # STRICT STARTUP ENFORCEMENT
 # The application must be started via `python start.py`
 if not os.environ.get("BIO_CODE_TECH_PAY_ALLOWED_START") and "pytest" not in sys.modules:
-    # Allow production environments (Render/PythonAnywhere) to bypass if needed,
-    # but for local dev, enforce start.py.
-    # Checking for common production env vars or if explicitly disabled.
     if not os.environ.get("RENDER") and not os.environ.get("PYTHONANYWHERE_DOMAIN"):
         print("\n\033[91mCRITICAL ERROR: Forbidden Startup Method.\033[0m")
         print("You must use the standardized entry point:")
@@ -37,7 +34,6 @@ from app.core.database import init_db, get_db
 from app.core.logger import logger
 from app.core.matrix import seed_matrix_account
 from app.core.audit_worker import balance_audit_loop
-from app.core.uia import uia, ProjectRequirements, ArchitectureType
 from app.cards.router import router as cards_router
 from app.pix.router import router as pix_router
 from app.antifraude.router import router as antifraude_router
@@ -49,47 +45,7 @@ import app.minha_conta.models  # noqa: F401 — registers UserSubscription in Ba
 import app.ia.ai_interactions  # noqa: F401 — registers AiInteraction in Base.metadata
 from fastapi.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-from fastapi import APIRouter
 
-# UIA Router
-uia_router = APIRouter()
-
-@uia_router.post("/uia/architecture", tags=["UIA"])
-async def synthesize_architecture(req: Dict[str, Any]):
-    """
-    Endpoint para Adaptive Architecture Synthesis.
-    Recebe requisitos e retorna arquitetura otimizada.
-    """
-    project_req = ProjectRequirements(
-        scale=req.get("scale", "local"),
-        complexity=req.get("complexity", "medium"),
-        legacy=req.get("legacy", False),
-        embedded=req.get("embedded", False),
-        compliance=req.get("compliance", [])
-    )
-    decision = await uia.synthesize_architecture(project_req)
-    return {
-        "architecture": decision.architecture.value,
-        "optimizations": decision.optimizations,
-        "trade_offs": decision.trade_offs,
-        "confidence": decision.confidence
-    }
-
-@uia_router.post("/uia/dependencies", tags=["UIA"])
-async def analyze_dependencies(codebase: Dict[str, str]):
-    """
-    Endpoint para análise de dependências via GNN.
-    """
-    result = await uia.analyze_dependencies(codebase)
-    return result
-
-@uia_router.post("/uia/optimize", tags=["UIA"])
-async def global_optimize(metrics: Dict[str, Any]):
-    """
-    Endpoint para Global Optimization Loop.
-    """
-    result = await uia.global_optimization_loop(metrics)
-    return result
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -98,7 +54,6 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Counter, Histogram
 
-# Prometheus metrics
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
 REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request latency', ['method', 'endpoint'])
 
@@ -106,14 +61,12 @@ REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request laten
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifecycle management (startup/shutdown hooks)."""
-    # Startup
     logger.info(f"Initializing {settings.APP_NAME} v{settings.VERSION}")
     init_db()
     logger.info("Database initialized")
     seed_matrix_account()
     logger.info("Matrix account ready")
 
-    # Initialize OpenTelemetry
     trace.set_tracer_provider(TracerProvider())
     trace.get_tracer_provider().add_span_processor(
         BatchSpanProcessor(OTLPSpanExporter())
@@ -121,7 +74,6 @@ async def lifespan(app: FastAPI):
     FastAPIInstrumentor.instrument_app(app)
     SQLAlchemyInstrumentor().instrument()
 
-    # Start background balance audit worker (30-minute cycle)
     from app.core.database import SessionLocal
     from app.adapters.gateway_factory import get_payment_gateway
     _audit_task = asyncio.create_task(
@@ -131,12 +83,10 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
     _audit_task.cancel()
     logger.info("Shutting down application")
 
 
-# FastAPI Application Factory
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.VERSION,
@@ -147,11 +97,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Trust X-Forwarded-Proto headers from Render's Load Balancer
 _TRUSTED_PROXIES = ["127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] if not os.environ.get("RENDER") else "*"
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=_TRUSTED_PROXIES)
 
-# CORS Configuration — restrict origins; wildcard with credentials is a critical misconfiguration.
 _ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
@@ -160,7 +108,6 @@ _ALLOWED_ORIGINS = [
     "https://new-credit-fintech.onrender.com",
     "https://biocodetechpay.onrender.com",
 ]
-# Development fallback: allow localhost when DEBUG is set
 if settings.DEBUG:
     _ALLOWED_ORIGINS += ["http://localhost:8000", "http://127.0.0.1:8000"]
 
@@ -173,29 +120,15 @@ app.add_middleware(
 )
 
 
-# Middleware for distributed tracing and logging
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-    """
-    Security Middleware to add HTTP security headers to every response.
-    Protects against XSS, Clickjacking, and MIME-sniffing.
-    """
+    """Adds HTTP security headers to every response."""
     response = await call_next(request)
-
-    # HSTS (HTTP Strict Transport Security) - Force HTTPS for 1 year
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-
-    # Prevent Clickjacking (X-Frame-Options)
     response.headers["X-Frame-Options"] = "DENY"
-
-    # XSS Protection
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-XSS-Protection"] = "1; mode=block"
-
-    # Referrer Policy
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-    # Content-Security-Policy — restrict resource loading origins
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://unpkg.com https://html2canvas.hertzen.com; "
@@ -205,21 +138,16 @@ async def add_security_headers(request: Request, call_next: Callable[[Request], 
         "connect-src 'self' https://openrouter.ai; "
         "frame-ancestors 'none'"
     )
-
     return response
 
 
 @app.middleware("http")
 async def add_correlation_id(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-    """
-    Middleware for distributed tracing.
-    Injects a unique Correlation ID into the request context and propagates it to the response headers.
-    """
+    """Injects a unique Correlation ID into every request and propagates it to the response."""
     correlation_id = request.headers.get("X-Correlation-ID", str(uuid4()))
     request.state.correlation_id = correlation_id
 
     start_time = time.time()
-
     logger.info(
         f"Request: {request.method} {request.url.path}",
         extra={"correlation_id": correlation_id}
@@ -231,7 +159,6 @@ async def add_correlation_id(request: Request, call_next: Callable[[Request], Aw
     response.headers["X-Correlation-ID"] = correlation_id
     response.headers["X-Process-Time"] = str(process_time)
 
-    # Prometheus metrics
     REQUEST_COUNT.labels(method=request.method, endpoint=request.url.path, status=response.status_code).inc()
     REQUEST_LATENCY.labels(method=request.method, endpoint=request.url.path).observe(process_time)
 
@@ -239,26 +166,36 @@ async def add_correlation_id(request: Request, call_next: Callable[[Request], Aw
         f"Response: {response.status_code} | {process_time:.3f}s",
         extra={"correlation_id": correlation_id}
     )
-
     return response
 
 
-# Health Check Endpoint
-@app.get("/health", response_class=PlainTextResponse)
-async def health_check():
-    """Health check endpoint for monitoring."""
-    return "OK"
+@app.get("/health", tags=["Health"])
+def health_check(db: Session = Depends(get_db)) -> Dict[str, str]:
+    """
+    Readiness probe and database warm-up endpoint.
+    Executes a lightweight query to wake the Neon serverless compute
+    and keep the connection pool warm.
+    """
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception:
+        db_status = "degraded"
+
+    return {
+        "status": "healthy",
+        "db": db_status,
+        "app": settings.APP_NAME,
+        "version": settings.VERSION,
+    }
 
 
-# Metrics Endpoint for Prometheus
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint."""
     return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-# Router Registration
-app.include_router(uia_router, prefix="/uia", tags=["UIA"])
 app.include_router(cards_router, prefix="/cards", tags=["Cards"])
 app.include_router(pix_router, prefix="/pix", tags=["PIX"])
 app.include_router(antifraude_router, prefix="/antifraud", tags=["Anti-Fraud"])
@@ -272,11 +209,9 @@ app.include_router(minha_conta_router, tags=["Minha Conta"])
 from app.core.metrics import router as metrics_router
 app.include_router(metrics_router, tags=["Metrics"])
 
-# Mount Static Files
 static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# Web UI Router (Frontend)
 app.include_router(web_router, tags=["Web UI"])
 
 
@@ -305,12 +240,9 @@ def service_worker() -> Response:
     return Response(status_code=204)
 
 
-# API Info Endpoint (Moved from root)
 @app.get("/api-info", tags=["Health"])
 def api_info() -> Dict[str, Any]:
-    """
-    Endpoint exposing API metadata and service discovery links.
-    """
+    """Endpoint exposing API metadata and service discovery links."""
     return {
         "app": settings.APP_NAME,
         "version": settings.VERSION,
@@ -323,39 +255,14 @@ def api_info() -> Dict[str, Any]:
             "pix_statement": "/pix/statement",
             "antifraud": "/antifraud/analyze",
             "docs": "/docs",
-            "redoc": "/redoc"
-        }
+            "redoc": "/redoc",
+        },
     }
 
 
-@app.get("/health", tags=["Health"])
-def health_check(db: Session = Depends(get_db)) -> Dict[str, str]:
-    """
-    Readiness probe and database warm-up endpoint.
-    Executes a lightweight query to wake the Neon serverless compute
-    and keep the connection pool warm. Called silently by the frontend
-    on every page load to eliminate cold-start latency for user actions.
-    """
-    try:
-        db.execute(text("SELECT 1"))
-        db_status = "connected"
-    except Exception:
-        db_status = "degraded"
-
-    return {
-        "status": "healthy",
-        "db": db_status,
-        "app": settings.APP_NAME,
-        "version": settings.VERSION
-    }
-
-
-# Global Exception Handler
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """
-    Handle HTTP exceptions, including 401 Unauthorized for browser redirects.
-    """
+    """Handles HTTP exceptions including 401 browser redirects."""
     correlation_id = getattr(request.state, "correlation_id", "N/A")
     accept = request.headers.get("accept", "")
 
@@ -364,14 +271,12 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         extra={"correlation_id": correlation_id}
     )
 
-    # Handle 401 Unauthorized for Browser Requests (Redirect to Login)
     if exc.status_code == 401 and "text/html" in accept:
         logger.info("Redirecting to /login", extra={"correlation_id": correlation_id})
         response = RedirectResponse(url="/login", status_code=302)
         response.delete_cookie("access_token")
         return response
 
-    # Handle 404 Not Found for Browser/PWA Requests (Redirect to Login)
     if exc.status_code == 404 and "text/html" in accept:
         logger.info("404 browser request — redirecting to /login", extra={"correlation_id": correlation_id})
         return RedirectResponse(url="/login", status_code=302)
@@ -387,20 +292,18 @@ async def global_exception_handler(request: Request, exc: Exception):
     """
     Global exception barrier.
     Captures unhandled exceptions, logs stack traces with Correlation IDs,
-    and returns a sanitized 500 Internal Server Error response.
+    and returns a sanitized 500 response.
     """
     correlation_id = getattr(request.state, "correlation_id", "N/A")
-
     logger.error(
         f"Unhandled exception: {str(exc)}",
         exc_info=True,
         extra={"correlation_id": correlation_id}
     )
-
     return JSONResponse(
         status_code=500,
         content={
             "detail": "Internal Server Error",
-            "correlation_id": correlation_id
-        }
+            "correlation_id": correlation_id,
+        },
     )

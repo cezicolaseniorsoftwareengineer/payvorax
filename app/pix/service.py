@@ -107,6 +107,74 @@ def settle_ledger_entries(db: Session, tx_id: str) -> int:
     return len(entries)
 
 
+# ---------------------------------------------------------------------------
+# Account balance operations — canonical implementations live here (financial
+# domain). auth.service re-exports these to avoid breaking existing callers.
+# ---------------------------------------------------------------------------
+
+def get_user_balance(db: Session, user_id: str) -> float:
+    """Returns current balance for a user. Raises ValueError if not found."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise ValueError(f"User {user_id} not found")
+    return float(user.balance)
+
+
+def deposit_funds(
+    db: Session,
+    user_id: str,
+    amount: float,
+    description: str = "Deposit",
+    correlation_id: Optional[str] = None,
+) -> dict:
+    """
+    Credits funds to a user account.
+    Arithmetic uses Decimal to prevent IEEE 754 drift.
+    Raises ValueError for invalid amounts or unknown user.
+    """
+    if amount <= 0:
+        raise ValueError("Deposit amount must be positive")
+    if amount > 1_000_000:
+        raise ValueError("Deposit amount exceeds limit of R$ 1,000,000.00")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise ValueError(f"User {user_id} not found")
+
+    previous_balance = Decimal(str(user.balance))
+    user.balance = previous_balance + Decimal(str(amount))
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    audit_log(
+        action="deposit_funds",
+        user=user_id,
+        resource=f"user_id={user_id}",
+        details={
+            "amount": amount,
+            "previous_balance": float(previous_balance),
+            "new_balance": float(user.balance),
+            "description": description,
+            "correlation_id": correlation_id,
+        },
+    )
+
+    logger.info(
+        f"Deposit: user={user_id} amount={amount:.2f} "
+        f"prev={float(previous_balance):.2f} new={float(user.balance):.2f}"
+    )
+
+    return {
+        "user_id": user_id,
+        "amount": amount,
+        "previous_balance": float(previous_balance),
+        "new_balance": float(user.balance),
+        "description": description,
+        "timestamp": datetime.now(timezone.utc),
+    }
+
+
 def reverse_ledger_entries(db: Session, tx_id: str) -> int:
     """Reverses all PENDING ledger entries for a transaction. Returns count reversed."""
     now = datetime.now(timezone.utc)

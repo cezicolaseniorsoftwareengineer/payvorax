@@ -13,6 +13,8 @@ class AntifraudTransaction(BaseModel):
     attempts_last_24h: int = Field(..., ge=0, description="Attempts in last 24h")
     transaction_type: str = Field(default="PIX", description="Transaction type")
     origin: Optional[str] = Field(None, description="Transaction origin")
+    account_age_days: int = Field(default=0, ge=0, description="Account age in days at transaction time")
+    total_transactions_30d: int = Field(default=0, ge=0, description="Confirmed transactions in last 30 days")
 
     @field_validator('time')
     @classmethod

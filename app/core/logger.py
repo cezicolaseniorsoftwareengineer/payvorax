@@ -6,7 +6,7 @@ JSON logs for intelligent monitoring.
 import logging
 import sys
 from typing import Any, Dict, MutableMapping, Tuple
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 from app.core.config import settings
 
 
@@ -23,7 +23,7 @@ class CorrelationFilter(logging.Filter):
 # Create handler with filter to ensure correlation_id is always present before formatting
 handler = logging.StreamHandler(sys.stdout)
 handler.addFilter(CorrelationFilter())
-formatter = jsonlogger.JsonFormatter(
+formatter = JsonFormatter(
     '%(asctime)s %(levelname)s %(name)s %(correlation_id)s %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )

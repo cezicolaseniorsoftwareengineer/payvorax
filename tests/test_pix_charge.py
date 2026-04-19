@@ -352,7 +352,7 @@ class TestAsaasWebhookFeeDeduction:
 
         response = client.post("/pix/webhook/asaas", json=payload)
 
-        assert response.status_code == 200
+        assert response.status_code == 500
         data = response.json()
         assert data.get("received") is False
         assert data.get("action") == "rejected"

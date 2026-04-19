@@ -37,18 +37,36 @@ class NightTimeRule(AntifraudRule):
 
 
 class HighValueRule(AntifraudRule):
-    """Heuristic: Transaction value exceeds standard threshold."""
+    """
+    Heuristic: Transaction value exceeds threshold adjusted for account profile.
+    Threshold scales with account age and confirmed transaction history to reduce
+    false positives for established users with consistent high-volume behaviour.
+    """
 
-    def __init__(self, limit: float = 300.0):
+    _BASE_LIMIT = 300.0
+    _ESTABLISHED_LIMIT = 2_000.0   # accounts >= 90 days with >= 10 confirmed tx
+    _MATURE_LIMIT = 10_000.0       # accounts >= 180 days with >= 30 confirmed tx
+
+    def __init__(self):
         super().__init__(
             name="HIGH_VALUE",
             points=30,
-            description=f"Transaction value exceeds R$ {limit}"
+            description="Transaction value exceeds profile-adjusted threshold",
         )
-        self.limit = limit
+
+    def _threshold(self, transaction: AntifraudTransaction) -> float:
+        age = transaction.account_age_days
+        tx30 = transaction.total_transactions_30d
+        if age >= 180 and tx30 >= 30:
+            return self._MATURE_LIMIT
+        if age >= 90 and tx30 >= 10:
+            return self._ESTABLISHED_LIMIT
+        return self._BASE_LIMIT
 
     def evaluate(self, transaction: AntifraudTransaction) -> bool:
-        return transaction.value > self.limit
+        limit = self._threshold(transaction)
+        self.description = f"Transaction value exceeds R$ {limit:.0f} for this account profile"
+        return transaction.value > limit
 
 
 class ExcessiveAttemptsRule(AntifraudRule):
@@ -92,9 +110,9 @@ class AntifraudEngine:
     def __init__(self):
         self.rules: List[AntifraudRule] = [
             NightTimeRule(),
-            HighValueRule(limit=300.0),
+            HighValueRule(),
             ExcessiveAttemptsRule(limit=3),
-            ExtremeValueRule(limit=20000.0)
+            ExtremeValueRule(limit=20000.0),
         ]
         self.approval_limit = 80
 

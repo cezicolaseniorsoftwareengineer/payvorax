@@ -26,6 +26,10 @@ import httpx
 
 from app.core.logger import audit_log, logger
 
+# Prevents concurrent OpenRouter calls from saturating the event loop
+# when the audit cycle fires faster than the HTTP timeout (12s).
+_openrouter_semaphore = asyncio.Semaphore(1)
+
 # Ensure all SQLAlchemy models are registered before any query runs,
 # so that lazy relationship references (e.g. User.cards -> CreditCard) resolve.
 import app.cards.models  # noqa: F401 — registers CreditCard mapper
@@ -105,22 +109,23 @@ async def _call_openrouter_analysis(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=12.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://new-credit-fintech.onrender.com",
-                    "X-Title": "BioCodeTechPay AutonomousAudit",
-                },
-                json={
-                    "model": "openai/gpt-4o-mini",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 350,
-                    "temperature": 0.2,
-                },
-            )
+        async with _openrouter_semaphore:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                resp = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://new-credit-fintech.onrender.com",
+                        "X-Title": "BioCodeTechPay AutonomousAudit",
+                    },
+                    json={
+                        "model": "openai/gpt-4o-mini",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 350,
+                        "temperature": 0.2,
+                    },
+                )
         if resp.status_code == 200:
             return resp.json()["choices"][0]["message"]["content"].strip()
         logger.warning(f"[audit-worker/ai] OpenRouter returned HTTP {resp.status_code}")

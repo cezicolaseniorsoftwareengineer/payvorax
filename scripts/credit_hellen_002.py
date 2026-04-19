@@ -1,15 +1,14 @@
 """
-Credita R$0.02 na conta de Hellen Cardoso (hellen.nutricao@outlook.com).
+Manual credit script for fee precision recovery.
 
-Motivo: recuperacao de margem de taxa PIX perdida por drift IEEE 754
-em transacoes anteriores ao fix de precisao Decimal aplicado em
-app/pix/service.py. Valor rastreado via auditoria de saldo em 2026-03-12.
+Context: corrects R$0.02 lost due to IEEE 754 float drift in PIX fee arithmetic
+prior to the Decimal precision fix applied on 2026-03-12.
 
-Invariantes:
-  - Aritmetica Decimal com ROUND_HALF_UP.
-  - Audit log emitido antes e apos a operacao.
-  - Transacao atomica; rollback em qualquer falha.
-  - Script idempotente: verifica saldo antes de aplicar.
+Usage:
+    python scripts/credit_hellen_002.py <user_email>
+
+The target email is passed as a CLI argument — never hardcoded — to prevent
+PII from being embedded in versioned source code.
 """
 import sys
 import os
@@ -22,26 +21,25 @@ from app.auth.models import User
 from app.cards.models import CreditCard  # noqa: F401 — resolve ORM relationship
 from app.core.logger import audit_log, logger
 
-TARGET_EMAIL   = "hellen.nutricao@outlook.com"
-CREDIT_AMOUNT  = Decimal("0.02")
-TWO_PLACES     = Decimal("0.01")
-REASON         = "fee_precision_recovery_decimal_fix_2026_03_12"
+CREDIT_AMOUNT = Decimal("0.02")
+TWO_PLACES = Decimal("0.01")
+REASON = "fee_precision_recovery_decimal_fix_2026_03_12"
 
 
-def run() -> None:
+def run(target_email: str) -> None:
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.email == TARGET_EMAIL).first()
+        user = db.query(User).filter(User.email == target_email).first()
         if not user:
-            print(f"[ERRO] Usuario nao encontrado: {TARGET_EMAIL}")
+            print(f"[ERRO] Usuario nao encontrado: {target_email}")
             sys.exit(1)
 
         balance_before = Decimal(str(user.balance)).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
-        balance_after  = (balance_before + CREDIT_AMOUNT).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+        balance_after = (balance_before + CREDIT_AMOUNT).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
 
         audit_log(
             action="MANUAL_CREDIT_PRE",
-            user=user.email,
+            user=user.id,
             resource="users.balance",
             details={
                 "balance_before": float(balance_before),
@@ -58,7 +56,7 @@ def run() -> None:
 
         audit_log(
             action="MANUAL_CREDIT_CONFIRMED",
-            user=user.email,
+            user=user.id,
             resource="users.balance",
             details={
                 "balance_before": float(balance_before),
@@ -69,7 +67,7 @@ def run() -> None:
         )
 
         print("=" * 56)
-        print(f"  Usuario  : {user.name} <{user.email}>")
+        print(f"  Usuario  : {user.name}")
         print(f"  Saldo antes : R$ {balance_before:.2f}")
         print(f"  Credito     : R$ {CREDIT_AMOUNT:.2f}")
         print(f"  Saldo apos  : R$ {confirmed:.2f}")
@@ -78,18 +76,21 @@ def run() -> None:
 
         if confirmed != balance_after:
             logger.error(
-                f"[credit_hellen_002] Divergencia pos-commit: "
+                f"[credit_002] Divergencia pos-commit: "
                 f"esperado={float(balance_after):.2f} real={float(confirmed):.2f}"
             )
             sys.exit(2)
 
     except Exception as exc:
         db.rollback()
-        logger.error(f"[credit_hellen_002] Rollback — {exc}")
+        logger.error(f"[credit_002] Rollback — {exc}")
         raise
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    run()
+    if len(sys.argv) != 2:
+        print("Uso: python scripts/credit_hellen_002.py <user_email>")
+        sys.exit(1)
+    run(sys.argv[1])
