@@ -2024,9 +2024,105 @@ def pay_pix_qrcode(
         }
     )
 
+    # ── Inline confirmation polling ──────────────────────────────────────────
+    # After dispatch, Asaas returns BANK_PROCESSING immediately. The SPI network
+    # typically settles in 5-30 seconds. Without polling, the user sees "enviado"
+    # while the maquininha still shows "aguardando" — leading to double payment.
+    #
+    # Poll Asaas GET /transfers/{id} for up to 25 seconds. If confirmed inline:
+    #   • debit the user balance (same logic as TRANSFER_DONE webhook)
+    #   • settle ledger entries
+    #   • return CONFIRMED — maquininha has time to see the credit before user acts
+    #
+    # Safety: with_for_update() on User and PixTransaction prevents a concurrent
+    # TRANSFER_DONE webhook from double-debiting in case of a race.
+    import time as _poll_time
+    from app.pix.service import settle_ledger_entries as _poll_settle, reverse_ledger_entries as _poll_reverse
+    from app.core.matrix import credit_fee as _poll_credit_fee
+    from app.core.fees import PLATFORM_PIX_OUTBOUND_NETWORK_FEE as _POLL_NET_FEE
+    from decimal import ROUND_HALF_UP as _POLL_ROUND
+
+    _poll_id = pix.id
+    _poll_deadline = _poll_time.time() + 25
+    _poll_interval = 2.5
+    _payment_warning = False
+
+    while _poll_time.time() < _poll_deadline:
+        _poll_time.sleep(_poll_interval)
+        try:
+            _chk = gateway.get_payment_status(_poll_id)
+            _remote = _chk.get("status", "")
+
+            if _remote == "CONFIRMED":
+                # Lock pix row — prevents double-process if webhook arrives simultaneously
+                _locked_pix = db.query(PixTransaction).filter(
+                    PixTransaction.id == _poll_id
+                ).with_for_update().first()
+
+                if _locked_pix and _locked_pix.status == PixStatus.PROCESSING:
+                    _locked_pix.status = PixStatus.CONFIRMED
+                    _locked_pix.correlation_id = _chk.get("end_to_end_id") or _locked_pix.correlation_id
+
+                    _locked_sender = db.query(User).filter(
+                        User.id == current_user.id
+                    ).with_for_update().first()
+                    if _locked_sender:
+                        _fee_dec = Decimal(str(_locked_pix.fee_amount or 0))
+                        _total_debit = Decimal(str(_locked_pix.value)) + _fee_dec
+                        _locked_sender.balance = Decimal(str(_locked_sender.balance)) - _total_debit
+                        if _locked_sender.balance < 0:
+                            _locked_sender.balance = Decimal("0.00")
+                        db.add(_locked_sender)
+                        _svc_margin = (_fee_dec - _POLL_NET_FEE).quantize(Decimal("0.01"), rounding=_POLL_ROUND)
+                        if _svc_margin > Decimal("0.00"):
+                            _poll_credit_fee(db, float(_svc_margin))
+
+                    _poll_settle(db, _poll_id)
+                    db.add(_locked_pix)
+                    db.commit()
+                    db.refresh(_locked_pix)
+                    pix = _locked_pix
+                    audit_log(
+                        action="PIX_QRCODE_CONFIRMED_INLINE",
+                        user=str(current_user.id),
+                        resource=f"payment_id={_poll_id}",
+                        details={"payment_id": _poll_id, "value": payment_value, "end_to_end_id": _chk.get("end_to_end_id")}
+                    )
+                    logger.info(f"QR Code payment confirmed inline: id={_poll_id}, value=R${payment_value:.2f}")
+                break
+
+            if _remote == "FAILED":
+                _locked_pix = db.query(PixTransaction).filter(
+                    PixTransaction.id == _poll_id
+                ).with_for_update().first()
+                if _locked_pix and _locked_pix.status == PixStatus.PROCESSING:
+                    _locked_pix.status = PixStatus.FAILED
+                    _poll_reverse(db, _poll_id)
+                    db.add(_locked_pix)
+                    db.commit()
+                    db.refresh(_locked_pix)
+                    pix = _locked_pix
+                break
+
+        except Exception as _poll_err:
+            logger.warning(f"QR inline poll error for {_poll_id}: {_poll_err}")
+            break
+    else:
+        # Timed out — payment still in transit. Warn the user to wait.
+        _payment_warning = True
+        logger.warning(
+            f"QR Code payment polling timed out after 25s: id={_poll_id}, status=PROCESSING. "
+            "TRANSFER_DONE webhook will confirm when SPI settles."
+        )
+
     result_dict = build_pix_response(pix, db).model_dump()
     if result.get("receiver_name"):
         result_dict["receiver_name"] = result["receiver_name"]
+    if _payment_warning:
+        result_dict["aviso"] = (
+            "Pagamento enviado e em processamento. Aguarde a confirmação na maquininha "
+            "antes de tentar pagar novamente. O débito será confirmado em instantes."
+        )
     return result_dict
 
 
