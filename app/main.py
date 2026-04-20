@@ -58,6 +58,16 @@ REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method',
 REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request latency', ['method', 'endpoint'])
 
 
+# OpenTelemetry must be configured before the app object is created.
+# FastAPIInstrumentor.instrument_app() calls add_middleware() internally;
+# Starlette raises RuntimeError if that happens after startup has begun.
+trace.set_tracer_provider(TracerProvider())
+trace.get_tracer_provider().add_span_processor(
+    BatchSpanProcessor(OTLPSpanExporter())
+)
+SQLAlchemyInstrumentor().instrument()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifecycle management (startup/shutdown hooks)."""
@@ -66,13 +76,6 @@ async def lifespan(app: FastAPI):
     logger.info("Database initialized")
     seed_matrix_account()
     logger.info("Matrix account ready")
-
-    trace.set_tracer_provider(TracerProvider())
-    trace.get_tracer_provider().add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter())
-    )
-    FastAPIInstrumentor.instrument_app(app)
-    SQLAlchemyInstrumentor().instrument()
 
     from app.core.database import SessionLocal
     from app.adapters.gateway_factory import get_payment_gateway
@@ -96,6 +99,9 @@ app = FastAPI(
     ),
     lifespan=lifespan
 )
+
+# Must be called after app is created but before startup (middleware registration window).
+FastAPIInstrumentor.instrument_app(app)
 
 _TRUSTED_PROXIES = ["127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] if not os.environ.get("RENDER") else "*"
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=_TRUSTED_PROXIES)
